@@ -185,7 +185,7 @@ test('creates study blocks with task titles, UTC times, ownership checks and val
   assert.equal(block.start_time, '2026-10-20T09:00:00.000Z');
   assert.equal(block.end_time, '2026-10-20T09:30:00.000Z');
   assert.equal(Date.parse(block.end_time) - Date.parse(block.start_time), 30 * 60 * 1000);
-  assert.equal(block.status, 'planned');
+  assert.equal(block.status, 'scheduled');
   assert.deepEqual(plain(await services.getStudyBlocksForUser('user-a')), [plain(block)]);
   assert.equal((await services.getStudyBlocksForUser('user-b')).length, 0);
   await assert.rejects(services.createStudyBlock('user-b', input), /belonging to your account/);
@@ -253,4 +253,127 @@ test('local day ranges advance calendar days, including daylight-saving changes'
     assert.equal(Date.parse(spring.end) - Date.parse(spring.start), 23 * 60 * 60 * 1000);
     assert.equal(Date.parse(autumn.end) - Date.parse(autumn.start), 25 * 60 * 60 * 1000);
   }
+});
+
+test('detects missed blocks per account and preserves done sessions during automatic updates', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Physics' });
+  const task = await services.createTask('user-a', { title: 'Practice forces', subject_id: subject.id });
+  const otherSubject = await services.createSubject('user-b', { name: 'Biology' });
+  const otherTask = await services.createTask('user-b', { title: 'Cell notes', subject_id: otherSubject.id });
+  const make = (taskId, start, end) => services.createStudyBlock(taskId === task.id ? 'user-a' : 'user-b', {
+    task_id: taskId, start_time: `2026-10-20T${start}:00Z`, end_time: `2026-10-20T${end}:00Z`,
+  });
+  const overdue = await make(task.id, '09:00', '09:15');
+  const boundary = await make(task.id, '09:30', '10:00');
+  const active = await make(task.id, '09:45', '10:15');
+  const completed = await make(task.id, '08:00', '08:30');
+  const other = await make(otherTask.id, '09:00', '09:30');
+  await services.updateStudyBlockStatus('user-a', completed.id, 'done');
+  const reference = '2026-10-20T10:00:00Z';
+  assert.deepEqual((await services.getMissedBlocksForUser('user-a', reference)).map(block => block.id), [overdue.id]);
+  assert.equal((await services.markExpiredStudyBlocks('user-a', reference)).changes, 1);
+  assert.equal((await services.markExpiredStudyBlocks('user-a', reference)).changes, 0);
+  assert.equal((await services.getMissedBlocksForUser('user-a', reference)).length, 0);
+  const blocks = await services.getStudyBlocksForUser('user-a');
+  assert.equal(blocks.find(block => block.id === overdue.id).status, 'missed');
+  assert.equal(blocks.find(block => block.id === boundary.id).status, 'scheduled');
+  assert.equal(blocks.find(block => block.id === completed.id).status, 'done');
+  assert.equal((await services.getStudyBlocksForUser('user-b'))[0].status, 'scheduled');
+  assert.equal((await services.updateStudyBlockStatus('user-a', active.id, 'done')).status, 'done');
+  assert.equal((await services.updateStudyBlockStatus('user-a', active.id, 'done')).status, 'done');
+  await assert.rejects(services.updateStudyBlockStatus('user-a', active.id, 'missed'), /already been resolved/);
+  await assert.rejects(services.updateStudyBlockStatus('user-a', other.id, 'done'), /belonging to your account/);
+  await assert.rejects(services.updateStudyBlockStatus('user-a', boundary.id, 'invalid'), /done or missed/);
+  await assert.rejects(services.updateStudyBlockStatus('', active.id, 'done'), /Sign in/);
+  await assert.rejects(services.getMissedBlocksForUser('user-a', 'invalid'), /valid reference/);
+});
+
+test('reschedules once an hour ahead, preserving all four durations and original history', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Math' });
+  const task = await services.createTask('user-a', { title: 'Algebra', subject_id: subject.id });
+  const reference = '2026-10-20T10:00:00Z';
+  for (const duration of [15, 30, 45, 60]) {
+    const start = Date.parse('2026-10-19T09:00:00Z');
+    const original = await services.createStudyBlock('user-a', {
+      task_id: task.id, start_time: new Date(start).toISOString(), end_time: new Date(start + duration * 60_000).toISOString(),
+    });
+    await services.updateStudyBlockStatus('user-a', original.id, 'missed');
+    await assert.rejects(services.rescheduleStudyBlock('user-b', original.id, reference), /belonging to your account/);
+    const [first, retry] = await Promise.all([
+      services.rescheduleStudyBlock('user-a', original.id, reference), services.rescheduleStudyBlock('user-a', original.id, reference),
+    ]);
+    assert.equal(first.id, retry.id);
+    assert.equal(first.start_time, '2026-10-20T11:00:00.000Z');
+    assert.equal(Date.parse(first.end_time) - Date.parse(first.start_time), duration * 60_000);
+    assert.equal(first.status, 'scheduled');
+    assert.equal(first.rescheduled_from, original.id);
+    const saved = await services.getStudyBlocksForUser('user-a');
+    const history = saved.find(block => block.id === original.id);
+    assert.equal(history.status, 'missed');
+    assert.equal(history.start_time, original.start_time);
+    assert.equal(history.rescheduled_to, first.id);
+    assert.equal(saved.filter(block => block.rescheduled_from === original.id).length, 1);
+    await assert.rejects(services.rescheduleStudyBlock('user-a', first.id, reference), /Only missed/);
+  }
+  assert.equal((await services.getStudyBlocksForUser('user-a')).length, 8);
+  assert.equal((await services.getStudyBlocksForUser('user-b')).length, 0);
+});
+
+test('surfaces older unresolved misses and supports rescheduling across midnight', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Math' });
+  const task = await services.createTask('user-a', { title: 'Algebra', subject_id: subject.id });
+  const original = await services.createStudyBlock('user-a', {
+    task_id: task.id, start_time: new Date('2026-10-19T14:00:00').toISOString(), end_time: new Date('2026-10-19T14:45:00').toISOString(),
+  });
+  const now = new Date('2026-10-20T23:30:00').toISOString();
+  await services.markExpiredStudyBlocks('user-a', now);
+  assert.equal((await services.getStudyBlocksForUser('user-a', { date: '2026-10-20' })).length, 0);
+  assert.equal((await services.getStudyBlocksForUser('user-a', { date: '2026-10-20', includeUnresolvedMissed: true }))[0].id, original.id);
+  const replacement = await services.rescheduleStudyBlock('user-a', original.id, now);
+  assert.equal(services.getLocalDateKey(new Date(replacement.start_time)), '2026-10-21');
+  assert.equal((await services.getStudyBlocksForUser('user-a', { date: '2026-10-20', includeUnresolvedMissed: true })).length, 0);
+  assert.equal((await services.getStudyBlocksForUser('user-a', { date: '2026-10-21' }))[0].id, replacement.id);
+});
+
+test('migrates legacy planned blocks without losing data and can reopen safely', async t => {
+  const filename = path.join(os.tmpdir(), `yotei-legacy-test-${randomUUID()}.db`);
+  const instances = [];
+  t.after(async () => {
+    for (const instance of instances) await instance.close();
+    for (const suffix of ['', '-wal', '-shm']) if (fs.existsSync(filename + suffix)) fs.unlinkSync(filename + suffix);
+  });
+  const legacy = new DatabaseSync(filename);
+  try {
+    legacy.exec(`
+      CREATE TABLE Subject (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, color TEXT NOT NULL, UNIQUE(id, user_id));
+      CREATE TABLE Task (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, subject_id INTEGER NOT NULL, title TEXT NOT NULL, deadline TEXT, estimated_minutes INTEGER DEFAULT 30, status TEXT DEFAULT 'pending', postpone_count INTEGER DEFAULT 0);
+      CREATE TABLE StudyBlock (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES Task(id), start_time TEXT NOT NULL, end_time TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'planned');
+      INSERT INTO Subject VALUES (1, 'user-a', 'Math', '#B8A0F5');
+      INSERT INTO Task (id, user_id, subject_id, title) VALUES (1, 'user-a', 1, 'Algebra');
+      INSERT INTO StudyBlock VALUES (1, 1, '2026-10-19T09:00:00Z', '2026-10-19T09:30:00Z', 'planned');
+      INSERT INTO StudyBlock VALUES (2, 1, '2026-10-19T10:00:00Z', '2026-10-19T10:30:00Z', 'done');
+    `);
+  } finally { legacy.close(); }
+  const first = await loadServices(filename);
+  instances.push(first);
+  const migrated = await first.getStudyBlocksForUser('user-a');
+  assert.deepEqual(migrated.map(block => block.status), ['scheduled', 'done']);
+  assert.equal(migrated[0].rescheduled_from, null);
+  await first.markExpiredStudyBlocks('user-a', '2026-10-20T09:00:00Z');
+  const replacement = await first.rescheduleStudyBlock('user-a', 1, '2026-10-20T09:00:00Z');
+  await first.close();
+  const second = await loadServices(filename);
+  instances.push(second);
+  const reopened = await second.getStudyBlocksForUser('user-a');
+  assert.equal(reopened.length, 3);
+  assert.equal(reopened.find(block => block.id === 1).rescheduled_to, replacement.id);
+  assert.equal(reopened.find(block => block.id === 2).status, 'done');
+  const database = await second.getDatabase();
+  assert.equal((await database.getAllAsync('PRAGMA table_info(StudyBlock)')).filter(column => column.name === 'rescheduled_from').length, 1);
 });

@@ -36,7 +36,8 @@ async function initializeDatabase() {
           task_id INTEGER NOT NULL REFERENCES Task (id) ON DELETE CASCADE,
           start_time TEXT NOT NULL,
           end_time TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'planned'
+          status TEXT NOT NULL DEFAULT 'scheduled',
+          rescheduled_from INTEGER REFERENCES StudyBlock (id) ON DELETE SET NULL
         );
 
         CREATE TABLE IF NOT EXISTS ReviewItem (
@@ -65,6 +66,17 @@ async function initializeDatabase() {
         CREATE INDEX IF NOT EXISTS idx_review_subject ON ReviewItem (subject_id);
         CREATE INDEX IF NOT EXISTS idx_material_subject ON Material (subject_id);
         CREATE INDEX IF NOT EXISTS idx_material_task ON Material (task_id);
+      `);
+      // Existing installations already have StudyBlock; CREATE IF NOT EXISTS
+      // cannot add its new column. Migrate inside the initialization transaction.
+      const columns = /** @type {{ name: string }[]} */ (await database.getAllAsync('PRAGMA table_info(StudyBlock)'));
+      if (!columns.some(column => column.name === 'rescheduled_from')) {
+        await database.execAsync('ALTER TABLE StudyBlock ADD COLUMN rescheduled_from INTEGER REFERENCES StudyBlock (id) ON DELETE SET NULL');
+      }
+      await database.execAsync(`
+        UPDATE StudyBlock SET status = 'scheduled' WHERE status = 'planned';
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_study_block_rescheduled_from ON StudyBlock (rescheduled_from) WHERE rescheduled_from IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_study_block_status_end ON StudyBlock (status, end_time);
       `);
     });
     return database;

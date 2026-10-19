@@ -3,8 +3,41 @@ import { getLocalDayRange } from './dateUtils';
 
 /**
  * @typedef {{ id: number, task_id: number, start_time: string, end_time: string,
- * status: string, task_title: string, subject_name: string, subject_color: string }} StudyBlock
+ * status: 'scheduled' | 'done' | 'missed', rescheduled_from: number | null,
+ * rescheduled_to: number | null, task_title: string, subject_name: string, subject_color: string }} StudyBlock
  */
+
+const BLOCK_SELECT = `
+  SELECT block.*, task.title AS task_title,
+    subject.name AS subject_name, subject.color AS subject_color,
+    replacement.id AS rescheduled_to
+  FROM StudyBlock AS block
+  INNER JOIN Task AS task ON task.id = block.task_id
+  INNER JOIN Subject AS subject ON subject.id = task.subject_id AND subject.user_id = task.user_id
+  LEFT JOIN StudyBlock AS replacement ON replacement.rescheduled_from = block.id
+`;
+
+/** @param {number} id */
+function requireBlockId(id) {
+  if (!Number.isSafeInteger(id) || id < 1) throw new Error('Choose a valid study block.');
+}
+
+/** @param {string} now */
+function parseNow(now) {
+  const time = typeof now === 'string' ? Date.parse(now) : NaN;
+  if (!Number.isFinite(time)) throw new Error('Choose a valid reference time.');
+  return time;
+}
+
+/** @param {string} userId @param {number} id @returns {Promise<StudyBlock>} */
+async function getBlock(userId, id) {
+  const database = await getDatabase();
+  const block = /** @type {StudyBlock | null} */ (await database.getFirstAsync(
+    `${BLOCK_SELECT} WHERE block.id = ? AND task.user_id = ?`, id, userId,
+  ));
+  if (!block) throw new Error('Choose a study block belonging to your account.');
+  return block;
+}
 
 /**
  * @param {string} userId
@@ -37,11 +70,11 @@ export async function createStudyBlock(userId, { task_id, start_time, end_time }
   const result = await database.runAsync(`
     INSERT INTO StudyBlock (task_id, start_time, end_time, status)
     SELECT id, ?, ?, ? FROM Task WHERE id = ? AND user_id = ?
-  `, startTime, endTime, 'planned', task_id, userId);
+  `, startTime, endTime, 'scheduled', task_id, userId);
   if (result.changes !== 1) throw new Error('This task is no longer available to schedule.');
   return {
     id: result.lastInsertRowId, task_id, start_time: startTime, end_time: endTime,
-    status: 'planned', task_title: task.title,
+    status: 'scheduled', rescheduled_from: null, rescheduled_to: null, task_title: task.title,
     subject_name: task.subject_name, subject_color: task.subject_color,
   };
 }
@@ -49,21 +82,87 @@ export async function createStudyBlock(userId, { task_id, start_time, end_time }
 /**
  * Optionally fetch only blocks overlapping a local calendar date.
  * @param {string} userId
- * @param {{ date?: string }} [options]
+ * @param {{ date?: string, includeUnresolvedMissed?: boolean }} [options]
  * @returns {Promise<StudyBlock[]>}
  */
-export async function getStudyBlocksForUser(userId, { date } = {}) {
+export async function getStudyBlocksForUser(userId, { date, includeUnresolvedMissed = false } = {}) {
   requireUserId(userId);
   const range = date === undefined ? null : getLocalDayRange(date);
   const database = await getDatabase();
   return database.getAllAsync(`
-    SELECT block.*, task.title AS task_title,
-      subject.name AS subject_name, subject.color AS subject_color
-    FROM StudyBlock AS block
-    INNER JOIN Task AS task ON task.id = block.task_id
-    INNER JOIN Subject AS subject ON subject.id = task.subject_id AND subject.user_id = task.user_id
+    ${BLOCK_SELECT}
     WHERE task.user_id = ?
-      ${range ? 'AND julianday(block.start_time) < julianday(?) AND julianday(block.end_time) > julianday(?)' : ''}
+      ${range ? `AND ((julianday(block.start_time) < julianday(?) AND julianday(block.end_time) > julianday(?))
+        ${includeUnresolvedMissed ? "OR (block.status = 'missed' AND replacement.id IS NULL)" : ''})` : ''}
     ORDER BY julianday(block.start_time) ASC, block.id ASC
   `, ...(range ? [userId, range.end, range.start] : [userId]));
+}
+
+/** Fetch expired sessions still awaiting a status update. @param {string} userId @param {string} [now] @returns {Promise<StudyBlock[]>} */
+export async function getMissedBlocksForUser(userId, now = new Date().toISOString()) {
+  requireUserId(userId);
+  const reference = new Date(parseNow(now)).toISOString();
+  const database = await getDatabase();
+  return database.getAllAsync(`${BLOCK_SELECT}
+    WHERE task.user_id = ? AND block.status = 'scheduled' AND julianday(block.end_time) < julianday(?)
+    ORDER BY julianday(block.end_time) ASC, block.id ASC
+  `, userId, reference);
+}
+
+/** Mark expired scheduled sessions without overwriting completed sessions. @param {string} userId @param {string} [now] */
+export async function markExpiredStudyBlocks(userId, now = new Date().toISOString()) {
+  requireUserId(userId);
+  const reference = new Date(parseNow(now)).toISOString();
+  const database = await getDatabase();
+  return database.runAsync(`
+    UPDATE StudyBlock SET status = 'missed'
+    WHERE status = 'scheduled' AND julianday(end_time) < julianday(?)
+      AND task_id IN (SELECT id FROM Task WHERE user_id = ?)
+  `, reference, userId);
+}
+
+/** @param {string} userId @param {number} blockId @param {'done' | 'missed'} status @returns {Promise<StudyBlock>} */
+export async function updateStudyBlockStatus(userId, blockId, status) {
+  requireUserId(userId);
+  requireBlockId(blockId);
+  if (status !== 'done' && status !== 'missed') throw new Error('Use done or missed as the study block status.');
+  const database = await getDatabase();
+  await database.runAsync(`
+    UPDATE StudyBlock SET status = ? WHERE id = ? AND status = 'scheduled'
+      AND task_id IN (SELECT id FROM Task WHERE user_id = ?)
+  `, status, blockId, userId);
+  const block = await getBlock(userId, blockId);
+  if (block.status !== status) throw new Error('This study block has already been resolved.');
+  return block;
+}
+
+/**
+ * Preserve the missed session, and link one replacement starting an hour ahead.
+ * The unique link and guarded INSERT make retries/rapid taps idempotent.
+ * @param {string} userId @param {number} blockId @param {string} [now]
+ * @returns {Promise<StudyBlock>}
+ */
+export async function rescheduleStudyBlock(userId, blockId, now = new Date().toISOString()) {
+  requireUserId(userId);
+  requireBlockId(blockId);
+  const reference = parseNow(now);
+  const original = await getBlock(userId, blockId);
+  if (original.status !== 'missed') throw new Error('Only missed study blocks can be rescheduled.');
+  const duration = Date.parse(original.end_time) - Date.parse(original.start_time);
+  if (!Number.isFinite(duration) || duration <= 0) throw new Error('This study block has invalid times.');
+  const startTime = new Date(reference + 60 * 60 * 1000).toISOString();
+  const endTime = new Date(reference + 60 * 60 * 1000 + duration).toISOString();
+  const database = await getDatabase();
+  await database.runAsync(`
+    INSERT INTO StudyBlock (task_id, start_time, end_time, status, rescheduled_from)
+    SELECT block.task_id, ?, ?, 'scheduled', block.id
+    FROM StudyBlock AS block INNER JOIN Task AS task ON task.id = block.task_id
+    WHERE block.id = ? AND task.user_id = ? AND block.status = 'missed'
+      AND NOT EXISTS (SELECT 1 FROM StudyBlock AS child WHERE child.rescheduled_from = block.id)
+  `, startTime, endTime, blockId, userId);
+  const replacement = /** @type {StudyBlock | null} */ (await database.getFirstAsync(
+    `${BLOCK_SELECT} WHERE block.rescheduled_from = ? AND task.user_id = ?`, blockId, userId,
+  ));
+  if (!replacement) throw new Error('This study block is no longer available to reschedule.');
+  return replacement;
 }

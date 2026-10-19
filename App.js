@@ -9,7 +9,10 @@ import { authService, USE_REAL_AUTH } from './auth';
 import { DEMO_EMAIL, DEMO_PASSWORD } from './auth/MockAuthService';
 import { createSubject, getSubjectsForUser } from './db/SubjectService';
 import { createTask, getTasksForUser } from './db/TaskService';
-import { createStudyBlock, getStudyBlocksForUser } from './db/StudyBlockService';
+import {
+  createStudyBlock, getStudyBlocksForUser, markExpiredStudyBlocks,
+  rescheduleStudyBlock, updateStudyBlockStatus,
+} from './db/StudyBlockService';
 import { getLocalDateKey, getLocalDayRange } from './db/dateUtils';
 
 const colors = {
@@ -59,6 +62,12 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
   const [studyBlocks, setStudyBlocks] = useState(/** @type {import('./db/StudyBlockService').StudyBlock[]} */ ([]));
   const [today, setToday] = useState(() => getLocalDateKey());
   const [schedulingTaskId, setSchedulingTaskId] = useState(/** @type {number | null} */ (null));
+  const [editorTaskId, setEditorTaskId] = useState(/** @type {number | null} */ (null));
+  const [durationMinutes, setDurationMinutes] = useState(30);
+  const [startDelay, setStartDelay] = useState(0);
+  const [updatingBlockId, setUpdatingBlockId] = useState(/** @type {number | null} */ (null));
+  const [clock, setClock] = useState(() => Date.now());
+  const [scheduleNotice, setScheduleNotice] = useState('');
   const [scheduleError, setScheduleError] = useState('');
   const [subjectName, setSubjectName] = useState('');
   const [taskTitle, setTaskTitle] = useState('');
@@ -71,12 +80,12 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
   const [saving, setSaving] = useState(/** @type {'subject' | 'task' | null} */ (null));
   const savingRef = useRef(false);
   const mounted = useRef(false);
-  const busy = signingOut || saving !== null || schedulingTaskId !== null;
+  const busy = signingOut || saving !== null || schedulingTaskId !== null || updatingBlockId !== null;
   const formsDisabled = busy || loading || Boolean(loadError);
   const todaysBlocks = useMemo(() => {
     const { start, end } = getLocalDayRange(today);
-    return studyBlocks.filter(block => Date.parse(block.start_time) < Date.parse(end)
-      && Date.parse(block.end_time) > Date.parse(start));
+    return studyBlocks.filter(block => (Date.parse(block.start_time) < Date.parse(end)
+      && Date.parse(block.end_time) > Date.parse(start)) || (block.status === 'missed' && !block.rescheduled_to));
   }, [studyBlocks, today]);
 
   useEffect(() => {
@@ -86,13 +95,15 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
       clearTimeout(midnightTimer);
       const date = getLocalDateKey();
       setToday(date);
+      setClock(Date.now());
       midnightTimer = setTimeout(updateToday, Math.max(100, Date.parse(getLocalDayRange(date).end) - Date.now() + 100));
     }
     updateToday();
+    const clockTimer = setInterval(() => setClock(Date.now()), 30_000);
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') updateToday();
     });
-    return () => { clearTimeout(midnightTimer); subscription.remove(); };
+    return () => { clearTimeout(midnightTimer); clearInterval(clockTimer); subscription.remove(); };
   }, []);
 
   useEffect(() => {
@@ -106,8 +117,10 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
       setLoading(true);
       setLoadError('');
       try {
+        await markExpiredStudyBlocks(user.id);
         const [nextSubjects, nextTasks, nextBlocks] = await Promise.all([
-          getSubjectsForUser(user.id), getTasksForUser(user.id), getStudyBlocksForUser(user.id, { date: today }),
+          getSubjectsForUser(user.id), getTasksForUser(user.id),
+          getStudyBlocksForUser(user.id, { date: today, includeUnresolvedMissed: true }),
         ]);
         if (!active) return;
         setSubjects(nextSubjects);
@@ -124,6 +137,25 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
     void loadData();
     return () => { active = false; };
   }, [user.id, reloadAttempt, today]);
+
+  useEffect(() => {
+    if (loading || busy || loadError || !studyBlocks.some(block => block.status === 'scheduled' && Date.parse(block.end_time) < clock)) return;
+    let active = true;
+    async function refreshExpiredBlocks() {
+      try {
+        await markExpiredStudyBlocks(user.id);
+        const nextBlocks = await getStudyBlocksForUser(user.id, { date: today, includeUnresolvedMissed: true });
+        if (active) {
+          setStudyBlocks(nextBlocks);
+          setScheduleError('');
+        }
+      } catch {
+        if (active) setScheduleError('We couldn’t refresh your sessions. Please try again.');
+      }
+    }
+    void refreshExpiredBlocks();
+    return () => { active = false; };
+  }, [busy, clock, loading, loadError, studyBlocks, today, user.id]);
 
   async function addSubject() {
     if (savingRef.current || formsDisabled) return;
@@ -174,20 +206,35 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
   }
 
   /** @param {number} taskId */
+  function openSchedule(taskId) {
+    if (savingRef.current || formsDisabled) return;
+    setEditorTaskId(current => current === taskId ? null : taskId);
+    setDurationMinutes(30);
+    setStartDelay(0);
+    setScheduleError('');
+    setScheduleNotice('');
+  }
+
+  /** @param {number} taskId */
   async function scheduleTask(taskId) {
     if (savingRef.current || formsDisabled) return;
     savingRef.current = true;
     setSchedulingTaskId(taskId);
     setScheduleError('');
+    setScheduleNotice('');
     const start = new Date();
+    start.setTime(start.getTime() + startDelay * 60 * 1000);
     try {
       const block = await createStudyBlock(user.id, {
         task_id: taskId,
         start_time: start.toISOString(),
-        end_time: new Date(start.getTime() + 30 * 60 * 1000).toISOString(),
+        end_time: new Date(start.getTime() + durationMinutes * 60 * 1000).toISOString(),
       });
       if (!mounted.current) return;
       setStudyBlocks(current => [...current, block].sort((a, b) => Date.parse(a.start_time) - Date.parse(b.start_time) || a.id - b.id));
+      setEditorTaskId(null);
+      setClock(new Date().getTime());
+      setScheduleNotice(`Scheduled for ${formatSessionStart(block.start_time)}.`);
     } catch {
       if (mounted.current) setScheduleError('We couldn’t schedule this session. Please try again.');
     } finally {
@@ -196,9 +243,40 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
     }
   }
 
+  /** @param {number} blockId @param {boolean} [reschedule] */
+  async function changeBlock(blockId, reschedule = false) {
+    if (savingRef.current || formsDisabled) return;
+    savingRef.current = true;
+    setUpdatingBlockId(blockId);
+    setScheduleError('');
+    setScheduleNotice('');
+    try {
+      const result = reschedule
+        ? await rescheduleStudyBlock(user.id, blockId)
+        : await updateStudyBlockStatus(user.id, blockId, 'done');
+      if (!mounted.current) return;
+      setStudyBlocks(current => reschedule
+        ? [...current.filter(block => block.id !== result.id).map(block => block.id === blockId ? { ...block, rescheduled_to: result.id } : block), result]
+          .sort((a, b) => Date.parse(a.start_time) - Date.parse(b.start_time) || a.id - b.id)
+        : current.map(block => block.id === blockId ? result : block));
+      setClock(new Date().getTime());
+      setScheduleNotice(reschedule ? `Rescheduled for ${formatSessionStart(result.start_time)}.` : 'Study block completed. A little progress, made.');
+    } catch {
+      if (mounted.current) setScheduleError('We couldn’t update this session. Please try again.');
+    } finally {
+      savingRef.current = false;
+      if (mounted.current) setUpdatingBlockId(null);
+    }
+  }
+
   /** @param {string} timestamp */
   function formatTime(timestamp) {
     return new Date(timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
+  /** @param {string} timestamp */
+  function formatSessionStart(timestamp) {
+    return new Date(timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
 
   return (
@@ -316,13 +394,49 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
                   <Text style={dashboardStyles.taskSubject}>{item.subject_name}</Text>
                 </View>
                 <Pressable
-                  accessibilityRole="button" accessibilityLabel={`Schedule 30 minutes for ${item.title}`}
+                  accessibilityRole="button" accessibilityLabel={`Schedule ${item.title}`}
                   accessibilityState={{ disabled: formsDisabled, busy: schedulingTaskId === item.id }}
-                  disabled={formsDisabled} onPress={() => void scheduleTask(item.id)}
+                  disabled={formsDisabled} onPress={() => openSchedule(item.id)}
                   style={({ pressed }) => [dashboardStyles.scheduleButton, pressed && styles.pressed, formsDisabled && styles.disabled]}
                 >
-                  {schedulingTaskId === item.id ? <ActivityIndicator color={colors.accent} size="small" /> : <Text style={dashboardStyles.scheduleText}>Schedule 30m</Text>}
+                  <Text style={dashboardStyles.scheduleText}>Schedule</Text>
                 </Pressable>
+                {editorTaskId === item.id && (
+                  <View style={dashboardStyles.scheduleEditor}>
+                    <Text style={styles.label}>Duration</Text>
+                    <View style={dashboardStyles.optionRow} accessibilityRole="radiogroup" accessibilityLabel="Study duration">
+                      {[15, 30, 45, 60].map(minutes => (
+                        <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} minutes`}
+                          accessibilityState={{ checked: durationMinutes === minutes, disabled: busy }} disabled={busy}
+                          onPress={() => setDurationMinutes(minutes)}
+                          style={[dashboardStyles.subjectChoice, durationMinutes === minutes && dashboardStyles.selectedChoice]}>
+                          <Text style={[dashboardStyles.choiceText, durationMinutes === minutes && dashboardStyles.selectedChoiceText]}>{minutes}m</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <Text style={styles.label}>Start time</Text>
+                    <View style={dashboardStyles.optionRow} accessibilityRole="radiogroup" accessibilityLabel="Study start time">
+                      {[0, 60].map(delay => (
+                        <Pressable key={delay} accessibilityRole="radio" accessibilityLabel={delay === 0 ? 'Now' : 'In 1 hour'}
+                          accessibilityState={{ checked: startDelay === delay, disabled: busy }} disabled={busy}
+                          onPress={() => setStartDelay(delay)}
+                          style={[dashboardStyles.subjectChoice, startDelay === delay && dashboardStyles.selectedChoice]}>
+                          <Text style={[dashboardStyles.choiceText, startDelay === delay && dashboardStyles.selectedChoiceText]}>{delay === 0 ? 'Now' : 'In 1 hour'}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <ErrorMessage message={scheduleError} />
+                    <Pressable accessibilityRole="button" accessibilityLabel="Confirm schedule" disabled={formsDisabled}
+                      accessibilityState={{ disabled: formsDisabled, busy: schedulingTaskId === item.id }}
+                      onPress={() => void scheduleTask(item.id)}
+                      style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, formsDisabled && styles.disabled]}>
+                      {schedulingTaskId === item.id ? <ActivityIndicator color={colors.background} /> : <Text style={styles.primaryText}>Confirm schedule</Text>}
+                    </Pressable>
+                    <Pressable accessibilityRole="button" disabled={busy} onPress={() => setEditorTaskId(null)} style={dashboardStyles.scheduleButton}>
+                      <Text style={dashboardStyles.scheduleText}>Cancel</Text>
+                    </Pressable>
+                  </View>
+                )}
               </View>
               <Text style={dashboardStyles.status}>{item.status === 'pending' ? 'To do' : item.status.replace(/_/g, ' ')}</Text>
             </View>
@@ -334,6 +448,7 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
                 <Text style={dashboardStyles.sectionTitle}>Today&apos;s Focus</Text><Text style={dashboardStyles.count}>{todaysBlocks.length}</Text>
               </View>
               <ErrorMessage message={scheduleError} />
+              {Boolean(scheduleNotice) && <Text style={dashboardStyles.hint} accessibilityLiveRegion="polite">{scheduleNotice}</Text>}
               <View accessibilityLiveRegion="polite">
                 {todaysBlocks.map(block => (
                   <View key={block.id} style={dashboardStyles.taskRow}>
@@ -341,8 +456,28 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
                     <View style={dashboardStyles.taskDetails}>
                       <Text style={dashboardStyles.taskTitle}>{block.task_title}</Text>
                       <View style={dashboardStyles.taskMeta}>
-                        <Text style={dashboardStyles.taskSubject}>{formatTime(block.start_time)} – {formatTime(block.end_time)}</Text>
+                        <Text style={dashboardStyles.taskSubject}>{getLocalDateKey(new Date(block.start_time)) === today ? formatTime(block.start_time) : formatSessionStart(block.start_time)} – {formatTime(block.end_time)}</Text>
                       </View>
+                      <Text style={[dashboardStyles.scheduleText, dashboardStyles.blockStatus]}>{block.rescheduled_to ? 'Missed · Rescheduled' : block.status === 'done' ? 'Done' : block.status === 'missed' ? 'Missed' : Date.parse(block.start_time) <= clock ? 'In progress' : 'Scheduled'}</Text>
+                      {block.status === 'scheduled' && Date.parse(block.start_time) <= clock && Date.parse(block.end_time) >= clock && (
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Mark ${block.task_title} done`}
+                          accessibilityState={{ disabled: formsDisabled, busy: updatingBlockId === block.id }} disabled={formsDisabled}
+                          onPress={() => void changeBlock(block.id)}
+                          style={({ pressed }) => [dashboardStyles.scheduleButton, pressed && styles.pressed, formsDisabled && styles.disabled]}>
+                          {updatingBlockId === block.id ? <ActivityIndicator color={colors.accent} size="small" /> : <Text style={dashboardStyles.scheduleText}>Mark Done</Text>}
+                        </Pressable>
+                      )}
+                      {block.status === 'missed' && !block.rescheduled_to && (
+                        <>
+                          <Text style={[dashboardStyles.taskSubject, dashboardStyles.missedPrompt]}>You missed this block. Reschedule?</Text>
+                          <Pressable accessibilityRole="button" accessibilityLabel={`Reschedule ${block.task_title} in 1 hour`}
+                            accessibilityState={{ disabled: formsDisabled, busy: updatingBlockId === block.id }} disabled={formsDisabled}
+                            onPress={() => void changeBlock(block.id, true)}
+                            style={({ pressed }) => [dashboardStyles.scheduleButton, pressed && styles.pressed, formsDisabled && styles.disabled]}>
+                            {updatingBlockId === block.id ? <ActivityIndicator color={colors.accent} size="small" /> : <Text style={dashboardStyles.scheduleText}>Reschedule in 1 hour</Text>}
+                          </Pressable>
+                        </>
+                      )}
                     </View>
                   </View>
                 ))}
@@ -680,4 +815,8 @@ const dashboardStyles = StyleSheet.create({
   scheduleButton: { minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: colors.line, borderRadius: 12 },
   scheduleText: { color: colors.accent, fontSize: 12, fontWeight: '600' },
   focusDot: { marginTop: 7 },
+  scheduleEditor: { marginTop: 18 },
+  optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 },
+  blockStatus: { marginTop: 10 },
+  missedPrompt: { marginTop: 10 },
 });
