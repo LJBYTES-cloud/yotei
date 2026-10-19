@@ -13,7 +13,7 @@ const publicUser = ({ id, name, email }) => ({ id, name, email });
 // Development-only fake authentication. Credentials never leave memory.
 export default class MockAuthService extends AuthService {
   constructor() {
-    super();
+    super('mock-auth');
     this.users = new Map([
       [DEMO_EMAIL, { id: 'demo-student', name: 'Student', email: DEMO_EMAIL, password: DEMO_PASSWORD }],
     ]);
@@ -21,19 +21,25 @@ export default class MockAuthService extends AuthService {
     this.currentUser = null;
   }
 
-  /** @param {AuthUser} user */
-  async saveSession(user) {
+  /** @param {AuthUser} user @param {boolean} rememberMe */
+  async saveSession(user, rememberMe) {
+    await this.initializeSession();
     const sessionUser = publicUser(user);
+    // Disarm any previous remembered session before replacing it. A failed
+    // session/flag write must not leave a newly created session remembered.
+    await this.saveRememberMe(false);
     if (await SecureStore.isAvailableAsync()) {
       await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(sessionUser));
     }
+    await this.saveRememberMe(rememberMe);
     // On platforms without SecureStore (web), the demo session is memory-only.
     this.currentUser = sessionUser;
+    this.sessionEstablished = true;
     return { ...sessionUser };
   }
 
   /** @param {import('./AuthService').SignUpCredentials} credentials */
-  async signUp({ name, email, password }) {
+  async signUp({ name, email, password, rememberMe = false }) {
     const normalizedEmail = email.trim().toLowerCase();
     const trimmedName = name.trim();
     if (!trimmedName || trimmedName.length > 128) {
@@ -54,28 +60,32 @@ export default class MockAuthService extends AuthService {
       email: normalizedEmail,
       password,
     };
-    const session = await this.saveSession(user);
+    const session = await this.saveSession(user, rememberMe);
     this.users.set(normalizedEmail, user);
     return session;
   }
 
   /** @param {import('./AuthService').SignInCredentials} credentials */
-  async signIn({ email, password }) {
+  async signIn({ email, password, rememberMe = false }) {
     const user = this.users.get(email.trim().toLowerCase());
     if (!user || user.password !== password) {
       throw new Error('The email or password is incorrect. Please try again.');
     }
-    return this.saveSession(user);
+    return this.saveSession(user, rememberMe);
   }
 
   async signOut() {
+    await this.saveRememberMe(false);
     if (await SecureStore.isAvailableAsync()) {
       await SecureStore.deleteItemAsync(SESSION_KEY);
     }
     this.currentUser = null;
+    this.sessionEstablished = false;
   }
 
   async getCurrentUser() {
+    const restoreAllowed = await this.initializeSession();
+    if (!restoreAllowed && !this.sessionEstablished) return null;
     if (!(await SecureStore.isAvailableAsync())) {
       return this.currentUser ? { ...this.currentUser } : null;
     }
@@ -99,6 +109,7 @@ export default class MockAuthService extends AuthService {
     }
     // Restore the public session, never the in-memory password database.
     this.currentUser = publicUser(parsed);
+    this.sessionEstablished = true;
     return { ...this.currentUser };
   }
 }

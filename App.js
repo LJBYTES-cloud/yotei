@@ -367,6 +367,7 @@ function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
   const submitting = useRef(false);
@@ -403,6 +404,7 @@ function AuthScreen() {
     const credentials = {
       email: demo ? DEMO_EMAIL : email.trim().toLowerCase(),
       password: demo ? DEMO_PASSWORD : password,
+      rememberMe,
     };
     setError('');
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(credentials.email)) {
@@ -451,6 +453,7 @@ function AuthScreen() {
       setUser(null);
       setPassword('');
       setIsSignUp(false);
+      setRememberMe(false);
     } catch {
       setError('We couldn’t sign you out. Please try again.');
     } finally {
@@ -535,6 +538,17 @@ function AuthScreen() {
                     }
                   />
                   <ErrorMessage message={error} />
+                  <Pressable
+                    accessibilityRole="checkbox" accessibilityLabel="Remember me"
+                    accessibilityState={{ checked: rememberMe, disabled: working }}
+                    disabled={working} onPress={() => setRememberMe(value => !value)}
+                    style={({ pressed }) => [styles.rememberRow, pressed && styles.pressed, working && styles.disabled]}
+                  >
+                    <View style={[styles.rememberCheckbox, rememberMe && styles.rememberCheckboxChecked]}>
+                      {rememberMe && <Text style={styles.rememberCheck}>✓</Text>}
+                    </View>
+                    <Text style={styles.rememberLabel}>Remember me</Text>
+                  </Pressable>
                   <Pressable
                     accessibilityRole="button" accessibilityLabel={isSignUp ? 'Create account' : 'Sign in'}
                     accessibilityState={{ disabled: working, busy: working }} disabled={working}
@@ -625,6 +639,11 @@ const styles = StyleSheet.create({
   successIcon: { backgroundColor: '#27392C', width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
   check: { color: colors.accent, fontSize: 25 },
   accountEmail: { color: colors.accent, fontSize: 15, marginTop: -12, marginBottom: 28 },
+  rememberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, marginBottom: 8, alignSelf: 'flex-start' },
+  rememberCheckbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.input, alignItems: 'center', justifyContent: 'center' },
+  rememberCheckboxChecked: { borderColor: colors.accent, backgroundColor: colors.accent },
+  rememberCheck: { color: colors.background, fontSize: 13, fontWeight: '700' },
+  rememberLabel: { color: colors.muted, fontSize: 13, fontWeight: '500' },
 });
 
 const dashboardStyles = StyleSheet.create({

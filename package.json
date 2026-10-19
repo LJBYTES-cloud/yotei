@@ -20,7 +20,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "test:db": "node --experimental-vm-modules --test tests/database.test.cjs"
+    "test:db": "node --experimental-vm-modules --test tests/database.test.cjs",
+    "test:auth": "node --experimental-vm-modules --test tests/auth.test.cjs"
   },
   "private": true,
   "devDependencies": {
