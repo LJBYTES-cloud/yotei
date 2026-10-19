@@ -152,7 +152,7 @@ function AuthScreen() {
   }
 
   if (user && !restoring && !restoreError) {
-    return <Dashboard key={user.id} user={user} onSignOut={signOut} signingOut={working} signOutError={error} />;
+    return <Dashboard key={user.id} user={user} onSignOut={signOut} signingOut={working} signOutError={error} showDemoTools={!USE_REAL_AUTH} />;
   }
 
   return (

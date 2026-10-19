@@ -9,8 +9,15 @@ const vm = require('node:vm');
 
 // Execute the production services against real SQLite. Only Expo's native
 // transport is replaced, so SQL, constraints, transactions and joins are real.
-async function loadServices(filename = ':memory:', failFirstInitialization = false) {
-  const context = vm.createContext({});
+async function loadServices(filename = ':memory:', failFirstInitialization = false, now) {
+  class FixedDate extends Date {
+    constructor(...args) {
+      if (args.length) super(...args);
+      else super(now);
+    }
+    static now() { return Date.parse(now); }
+  }
+  const context = vm.createContext(now ? { Date: FixedDate } : {});
   const connections = [];
   let opens = 0;
   const sqlite = new vm.SyntheticModule(['openDatabaseAsync'], function () {
@@ -31,6 +38,16 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
           native.exec('BEGIN');
           try {
             await callback();
+            native.exec('COMMIT');
+          } catch (error) {
+            native.exec('ROLLBACK');
+            throw error;
+          }
+        },
+        withExclusiveTransactionAsync: async callback => {
+          native.exec('BEGIN');
+          try {
+            await callback(connection);
             native.exec('COMMIT');
           } catch (error) {
             native.exec('ROLLBACK');
@@ -73,15 +90,114 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
   const loadService = modules.get(path.resolve('db/StudyLoadService.js')).namespace;
   const scheduling = await load('./utils/scheduling.js', parent);
   await scheduling.evaluate();
+  const demo = await load('./db/seedData.js', parent);
+  await demo.evaluate();
   const database = modules.get(path.resolve('db/database.js')).namespace;
   return {
-    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace,
+    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace,
     get opens() { return opens; },
     close: async () => { for (const connection of connections) await connection.closeAsync(); },
   };
 }
 
 const plain = value => JSON.parse(JSON.stringify(value));
+
+test('demo reset replaces only the selected account and can be repeated', async t => {
+  const services = await loadServices(':memory:', false, '2026-10-20T12:00:00');
+  t.after(services.close);
+  const database = await services.getDatabase();
+  const snapshots = {};
+  for (const user of ['demo-user', 'other-user']) {
+    const subject = await services.createSubject(user, { name: 'Old subject' });
+    const task = await services.createTask(user, { subject_id: subject.id, title: 'Old task' });
+    await services.createStudyBlock(user, {
+      task_id: task.id, start_time: '2026-10-20T09:00:00Z', end_time: '2026-10-20T09:30:00Z',
+    });
+    await database.runAsync('INSERT INTO ReviewItem (subject_id, topic) VALUES (?, ?)', subject.id, 'Old review');
+    await database.runAsync('INSERT INTO Material (subject_id, task_id, title) VALUES (?, ?, ?)', subject.id, task.id, 'Old notes');
+    snapshots[user] = { subject, task, blocks: plain(await services.getStudyBlocksForUser(user)) };
+  }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    assert.deepEqual(plain(await services.seedDemoData('demo-user')), { subjects: 3, tasks: 6, studyBlocks: 4, totalMinutes: 240 });
+    const subjects = await services.getSubjectsForUser('demo-user');
+    const tasks = await services.getTasksForUser('demo-user');
+    assert.deepEqual(subjects.map(subject => subject.name).sort(), ['Biology', 'History', 'Mathematics']);
+    assert.equal(tasks.length, 6);
+    assert.equal(tasks.filter(task => task.postpone_count >= 2).length, 2);
+    assert.equal(tasks[0].postpone_count, 2, 'coaching examples appear first');
+    assert.equal(tasks.filter(task => task.deadline === '2026-10-20').length, 2);
+    assert.equal(tasks.filter(task => task.deadline === '2026-10-21').length, 3);
+    assert.equal(tasks.filter(task => task.deadline === '2026-10-19').length, 1);
+    assert.equal((await services.getStudyBlocksForUser('demo-user')).length, 4);
+    assert.deepEqual(plain(await services.getSubjectsForUser('other-user')), [plain(snapshots['other-user'].subject)]);
+    assert.deepEqual(plain(await services.getTasksForUser('other-user')), [plain(snapshots['other-user'].task)]);
+    assert.deepEqual(plain(await services.getStudyBlocksForUser('other-user')), snapshots['other-user'].blocks);
+    for (const table of ['ReviewItem', 'Material']) {
+      const rows = await database.getAllAsync(`SELECT * FROM ${table}`);
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].subject_id, snapshots['other-user'].subject.id);
+    }
+  }
+  await assert.rejects(services.seedDemoData(' '), /Sign in/i);
+});
+
+test('demo data rolls back completely if an insert fails after the reset', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  await services.seedDemoData('demo-user');
+  const database = await services.getDatabase();
+  const before = {};
+  const tables = ['Subject', 'Task', 'StudyBlock', 'ReviewItem', 'Material'];
+  for (const table of tables) before[table] = await database.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
+  const run = database.runAsync;
+  database.runAsync = async (sql, ...params) => {
+    if (sql.includes('INSERT INTO Task')) throw new Error('Simulated disk error');
+    return run(sql, ...params);
+  };
+  await assert.rejects(services.seedDemoData('demo-user'), /Simulated disk error/);
+  database.runAsync = run;
+  for (const table of tables) assert.deepEqual(await database.getAllAsync(`SELECT * FROM ${table} ORDER BY id`), before[table]);
+});
+
+test('demo sessions stay at 240 minutes and trigger the guardrail at all times of day', async t => {
+  for (const localNow of [
+    '2026-10-20T00:01:00', '2026-10-20T12:00:00', '2026-10-20T23:59:00',
+    '2026-03-08T00:01:00', '2026-03-08T23:59:00',
+    '2026-11-01T00:01:00', '2026-11-01T23:59:00',
+  ]) {
+    await t.test(localNow, async t => {
+      const services = await loadServices(':memory:', false, localNow);
+      t.after(services.close);
+      await services.seedDemoData('demo-user');
+      const today = services.getLocalDateKey(new Date(localNow));
+      const { start, end } = services.getLocalDayRange(today);
+      const blocks = await services.getStudyBlocksForUser('demo-user', { date: today });
+      assert.equal(blocks.length, 4);
+      assert.equal(blocks.reduce((sum, block) => sum + (Date.parse(block.end_time) - Date.parse(block.start_time)) / 60000, 0), 240);
+      for (const block of blocks) {
+        assert.ok(Date.parse(block.start_time) >= Date.parse(start));
+        assert.ok(Date.parse(block.end_time) <= Date.parse(end));
+        if (Date.parse(block.end_time) <= Date.parse(localNow)) assert.equal(block.status, 'done');
+      }
+      await services.markExpiredStudyBlocks('demo-user', new Date(localNow).toISOString());
+      assert.equal(await services.getDailyStudyMinutes('demo-user', today), 240);
+      const input = {
+        task_id: blocks[0].task_id,
+        start_time: new Date(localNow).toISOString(),
+        end_time: new Date(Date.parse(localNow) + 5 * 60000).toISOString(),
+      };
+      await assert.rejects(services.createStudyBlock('demo-user', input), error => {
+        assert.equal(error.name, 'StudyLoadWarning');
+        assert.equal(error.days[0].current_minutes, 240);
+        assert.ok(error.days[0].total_minutes > 240);
+        return true;
+      });
+      assert.equal((await services.getStudyBlocksForUser('demo-user')).length, 4, 'warning inserts no data');
+      const confirmed = await services.createStudyBlock('demo-user', input, { allowHeavyDay: true });
+      assert.equal(confirmed.status, 'scheduled');
+    });
+  }
+});
 
 test('initializes all five tables and shares one ready connection', async t => {
   const services = await loadServices();

@@ -3,6 +3,7 @@ import { ActivityIndicator, AppState, FlatList, Pressable, ScrollView, StyleShee
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getLocalDateKey, getLocalDayRange } from '../db/dateUtils';
 import { updateStudyBlockStatus } from '../db/StudyBlockService';
+import { seedDemoData } from '../db/seedData';
 import { useDashboardData } from '../hooks/useDashboardData';
 import EntrySheet from './EntrySheet';
 import ScheduleSheet from './ScheduleSheet';
@@ -51,8 +52,8 @@ function FocusCard({ block, clock, today, busy, working, onDone, onReschedule })
   );
 }
 
-/** @param {{ user: import('../auth/AuthService').AuthUser, onSignOut: () => Promise<void>, signingOut: boolean, signOutError: string }} props */
-export default function Dashboard({ user, onSignOut, signingOut, signOutError }) {
+/** @param {{ user: import('../auth/AuthService').AuthUser, onSignOut: () => Promise<void>, signingOut: boolean, signOutError: string, showDemoTools?: boolean }} props */
+export default function Dashboard({ user, onSignOut, signingOut, signOutError, showDemoTools = false }) {
   const [clock, setClock] = useState(() => Date.now());
   const [today, setToday] = useState(() => getLocalDateKey());
   const data = useDashboardData(user.id, today);
@@ -62,12 +63,14 @@ export default function Dashboard({ user, onSignOut, signingOut, signOutError })
   const [entry, setEntry] = useState(/** @type {'task' | 'subject' | null} */ (null));
   const [schedule, setSchedule] = useState(/** @type {{task: {id: number, title: string, subject_name: string}, sourceBlock?: StudyBlock, initialDuration?: number} | null} */ (null));
   const [workingBlock, setWorkingBlock] = useState(/** @type {number | null} */ (null));
+  const [seeding, setSeeding] = useState(false);
   const [notice, setNotice] = useState('');
   const [actionError, setActionError] = useState('');
   const mutation = useRef(false);
+  const list = useRef(/** @type {FlatList<DashboardRow> | null} */ (null));
   const busyRef = useRef(false);
   const mounted = useRef(false);
-  const busy = signingOut || workingBlock !== null;
+  const busy = signingOut || workingBlock !== null || seeding;
   const disabled = busy || !data.ready || data.refreshing;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { busyRef.current = busy || entry !== null || schedule !== null; }, [busy, entry, schedule]);
@@ -107,6 +110,34 @@ export default function Dashboard({ user, onSignOut, signingOut, signOutError })
     finally { mutation.current = false; if (mounted.current) setWorkingBlock(null); }
   }
 
+  async function loadDemoData() {
+    if (!showDemoTools || mutation.current || disabled || entry || schedule) return;
+    mutation.current = true;
+    busyRef.current = true;
+    setSeeding(true);
+    setActionError('');
+    setNotice('');
+    try {
+      await seedDemoData(user.id);
+      if (!mounted.current) return;
+      setSubjectId(null);
+      setTab('tasks');
+      setClock(new Date().getTime());
+      setToday(getLocalDateKey());
+      await data.refresh();
+      if (mounted.current) {
+        setNotice('Demo ready: 3 subjects, 6 tasks, and 4h today. Schedule a task to try the workload warning.');
+        list.current?.scrollToOffset({ offset: 0, animated: true });
+      }
+    } catch {
+      if (mounted.current) setActionError('Demo data couldn’t load. Your previous study data is unchanged; please try again.');
+    } finally {
+      mutation.current = false;
+      busyRef.current = false;
+      if (mounted.current) setSeeding(false);
+    }
+  }
+
   /** @param {StudyBlock} block */
   function savedSession(block) {
     setSchedule(null); setTab('focus'); setActionError('');
@@ -139,14 +170,30 @@ export default function Dashboard({ user, onSignOut, signingOut, signOutError })
 
   return (
     <SafeAreaView style={s.screen} edges={['top', 'left', 'right']}>
-      <FlatList data={rows} keyExtractor={item => item.kind === 'task' ? `task-${item.task.id}` : `block-${item.block.id}`} contentContainerStyle={s.content}
+      <FlatList ref={list} data={rows} keyExtractor={item => item.kind === 'task' ? `task-${item.task.id}` : `block-${item.block.id}`} contentContainerStyle={s.content}
         ListHeaderComponent={header} refreshing={data.refreshing && data.ready} onRefresh={() => { if (!busyRef.current) void data.refresh(); }} initialNumToRender={8}
         renderItem={({ item }) => item.kind === 'task'
           ? <TaskCard task={item.task} disabled={disabled} onSchedule={minutes => { setActionError(''); setSchedule({ task: item.task, initialDuration: minutes ?? 30 }); }} />
           : <FocusCard block={item.block} today={today} clock={clock} busy={disabled} working={workingBlock === item.block.id} onDone={() => void complete(item.block.id)}
             onReschedule={() => setSchedule({ task: { id: item.block.task_id, title: item.block.task_title, subject_name: item.block.subject_name }, sourceBlock: item.block, initialDuration: Math.max(1, Math.round((Date.parse(item.block.end_time) - Date.parse(item.block.start_time)) / 60000)) })} />}
         ListEmptyComponent={!data.ready && data.refreshing ? <ActivityIndicator color={p.accent} style={s.loader} /> : !data.error ? <View style={s.empty}><Text style={s.emptyMark}>{tab === 'tasks' ? '✳' : '◷'}</Text><Text style={s.emptyTitle}>{tab === 'tasks' ? 'Start with one thing.' : 'Your day has room.'}</Text><Text style={s.emptyText}>{tab === 'tasks' ? 'Add a task, give it a home, and take the next small step.' : 'Choose a task and set aside a little time. You set the pace.'}</Text>{tab === 'focus' && <Button label="Find a small step ↗" tone="outline" compact onPress={() => setTab('tasks')} />}</View> : null}
-        ListFooterComponent={<Text style={s.footer}>PROGRESS, AT YOUR PACE.</Text>} />
+        ListFooterComponent={
+          <View>
+            <Text style={s.footer}>PROGRESS, AT YOUR PACE.</Text>
+            {showDemoTools && (
+              <View style={s.demoTools}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Load Demo Data"
+                  accessibilityState={{ disabled: disabled || entry !== null || schedule !== null, busy: seeding }}
+                  disabled={disabled || entry !== null || schedule !== null} onPress={() => void loadDemoData()}
+                  style={({ pressed }) => [s.demoButton, pressed && s.pressed]}>
+                  {seeding && <ActivityIndicator color={p.muted} size="small" />}
+                  <Text style={s.accountText}>{seeding ? 'Loading demo…' : 'Load Demo Data'}</Text>
+                </Pressable>
+                <Text style={s.demoHint}>Replaces this demo account’s local study data.</Text>
+              </View>
+            )}
+          </View>
+        } />
       <SafeAreaView edges={['bottom']} style={s.bottomBar}><View style={s.bottomInner}><View style={s.flex}><Text style={s.bottomKicker}>NO PERFECT DAYS REQUIRED</Text><Text style={s.bottomText}>Just a next step.</Text></View><Button label={data.subjects.length ? '＋ New task' : '＋ First subject'} disabled={disabled} onPress={() => setEntry(data.subjects.length ? 'task' : 'subject')} /></View></SafeAreaView>
       {entry && <EntrySheet key={entry} kind={entry} userId={user.id} subjects={data.subjects} initialSubject={subjectId} onClose={() => setEntry(null)} onSaved={() => { setEntry(null); setNotice(entry === 'subject' ? 'A new home for your learning. Add a task when you’re ready.' : 'One small step, ready when you are.'); void data.refresh(); }} />}
       {schedule && <ScheduleSheet userId={user.id} {...schedule} onClose={() => setSchedule(null)} onSaved={savedSession} />}
@@ -169,4 +216,5 @@ const s = StyleSheet.create({
   focusBody: { flexDirection: 'row', gap: 14, marginVertical: 22 }, timelineLine: { width: 2, borderRadius: 1 }, focusTitle: { color: p.text, fontSize: 18, lineHeight: 26, marginVertical: 8 }, oldDate: { color: p.muted, fontSize: 11, marginTop: 6 }, recovery: { backgroundColor: p.warmSoft, borderRadius: 14, padding: 14 }, recoveryNote: { color: p.muted, fontSize: 12, lineHeight: 19, marginTop: 6, marginBottom: 14 },
   empty: { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 20 }, emptyMark: { color: p.accent, fontSize: 48, marginBottom: 18 }, emptyTitle: { color: p.text, fontSize: 22, letterSpacing: -0.6, marginBottom: 10 }, emptyText: { color: p.muted, fontSize: 13, lineHeight: 22, textAlign: 'center', marginBottom: 20 }, loader: { marginVertical: 32 }, footer: { color: '#777687', fontSize: 8, letterSpacing: 2, textAlign: 'center', paddingVertical: 28 },
   notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 4 }, dismiss: { height: 36, width: 36, alignItems: 'center', justifyContent: 'center' }, bottomBar: { backgroundColor: p.background, borderTopWidth: 1, borderTopColor: p.line }, bottomInner: { width: '100%', maxWidth: 600, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 22, paddingTop: 16, paddingBottom: 14 }, bottomKicker: { color: p.muted, fontSize: 7, letterSpacing: 1 }, bottomText: { color: p.text, fontSize: 14, marginTop: 6 },
+  demoTools: { alignItems: 'center', paddingBottom: 20 }, demoButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14 }, demoHint: { color: p.muted, fontSize: 10, lineHeight: 16, textAlign: 'center' },
 });
