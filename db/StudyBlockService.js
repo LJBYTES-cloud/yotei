@@ -1,5 +1,16 @@
 import { getDatabase, requireUserId } from './database';
 import { getLocalDayRange } from './dateUtils';
+import { checkStudyLoad } from './StudyLoadService';
+
+// Serialize scheduling writes so simultaneous submissions see each other's
+// SQLite totals before applying the daily guardrail.
+let scheduleQueue = Promise.resolve();
+/** @param {() => Promise<StudyBlock>} action */
+function scheduleMutation(action) {
+  const result = scheduleQueue.then(action);
+  scheduleQueue = result.then(() => {}, () => {});
+  return result;
+}
 
 /**
  * @typedef {{ id: number, task_id: number, start_time: string, end_time: string,
@@ -42,9 +53,15 @@ async function getBlock(userId, id) {
 /**
  * @param {string} userId
  * @param {{ task_id: number, start_time: string, end_time: string }} input
+ * @param {{ allowHeavyDay?: boolean }} [options]
  * @returns {Promise<StudyBlock>}
  */
-export async function createStudyBlock(userId, { task_id, start_time, end_time }) {
+export function createStudyBlock(userId, input, { allowHeavyDay = false } = {}) {
+  return scheduleMutation(() => createBlock(userId, input, allowHeavyDay));
+}
+
+/** @param {string} userId @param {{ task_id: number, start_time: string, end_time: string }} input @param {boolean} allowHeavyDay @returns {Promise<StudyBlock>} */
+async function createBlock(userId, { task_id, start_time, end_time }, allowHeavyDay) {
   requireUserId(userId);
   if (!Number.isSafeInteger(task_id) || task_id < 1) {
     throw new Error('Choose a task to schedule.');
@@ -66,6 +83,7 @@ export async function createStudyBlock(userId, { task_id, start_time, end_time }
   if (!task) throw new Error('Choose a task belonging to your account.');
   const startTime = new Date(start).toISOString();
   const endTime = new Date(end).toISOString();
+  await checkStudyLoad(userId, startTime, endTime, allowHeavyDay);
   // Ownership is checked again atomically at insertion, not just in the lookup.
   const result = await database.runAsync(`
     INSERT INTO StudyBlock (task_id, start_time, end_time, status)
@@ -140,18 +158,27 @@ export async function updateStudyBlockStatus(userId, blockId, status) {
  * Preserve the missed session, and link one replacement starting an hour ahead.
  * The unique link and guarded INSERT make retries/rapid taps idempotent.
  * @param {string} userId @param {number} blockId @param {string} [now]
+ * @param {{ start_time?: string, end_time?: string, allowHeavyDay?: boolean }} [options]
  * @returns {Promise<StudyBlock>}
  */
-export async function rescheduleStudyBlock(userId, blockId, now = new Date().toISOString()) {
+export function rescheduleStudyBlock(userId, blockId, now = new Date().toISOString(), options = {}) {
+  return scheduleMutation(() => rescheduleBlock(userId, blockId, now, options));
+}
+
+/** @param {string} userId @param {number} blockId @param {string} now @param {{ start_time?: string, end_time?: string, allowHeavyDay?: boolean }} options @returns {Promise<StudyBlock>} */
+async function rescheduleBlock(userId, blockId, now, { start_time, end_time, allowHeavyDay = false }) {
   requireUserId(userId);
   requireBlockId(blockId);
   const reference = parseNow(now);
   const original = await getBlock(userId, blockId);
   if (original.status !== 'missed') throw new Error('Only missed study blocks can be rescheduled.');
+  if (original.rescheduled_to) return getBlock(userId, original.rescheduled_to);
   const duration = Date.parse(original.end_time) - Date.parse(original.start_time);
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('This study block has invalid times.');
-  const startTime = new Date(reference + 60 * 60 * 1000).toISOString();
-  const endTime = new Date(reference + 60 * 60 * 1000 + duration).toISOString();
+  const startTime = new Date(start_time === undefined ? reference + 60 * 60 * 1000 : parseNow(start_time)).toISOString();
+  const endTime = new Date(end_time === undefined ? Date.parse(startTime) + duration : parseNow(end_time)).toISOString();
+  if (Date.parse(endTime) <= Date.parse(startTime)) throw new Error('Choose an end time after the start.');
+  await checkStudyLoad(userId, startTime, endTime, allowHeavyDay);
   const database = await getDatabase();
   await database.runAsync(`
     INSERT INTO StudyBlock (task_id, start_time, end_time, status, rescheduled_from)

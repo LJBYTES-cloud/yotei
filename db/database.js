@@ -77,6 +77,14 @@ async function initializeDatabase() {
         UPDATE StudyBlock SET status = 'scheduled' WHERE status = 'planned';
         CREATE UNIQUE INDEX IF NOT EXISTS idx_study_block_rescheduled_from ON StudyBlock (rescheduled_from) WHERE rescheduled_from IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_study_block_status_end ON StudyBlock (status, end_time);
+        CREATE TRIGGER IF NOT EXISTS count_study_block_postponement
+        AFTER INSERT ON StudyBlock WHEN NEW.rescheduled_from IS NOT NULL
+        BEGIN
+          UPDATE Task SET postpone_count = postpone_count + 1 WHERE id = NEW.task_id;
+        END;
+        UPDATE Task SET postpone_count = MAX(postpone_count, (
+          SELECT COUNT(*) FROM StudyBlock WHERE task_id = Task.id AND rescheduled_from IS NOT NULL
+        ));
       `);
     });
     return database;

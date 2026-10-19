@@ -70,9 +70,12 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
   const blocks = await load('./db/StudyBlockService.js', parent);
   await blocks.evaluate();
   const dates = modules.get(path.resolve('db/dateUtils.js')).namespace;
+  const loadService = modules.get(path.resolve('db/StudyLoadService.js')).namespace;
+  const scheduling = await load('./utils/scheduling.js', parent);
+  await scheduling.evaluate();
   const database = modules.get(path.resolve('db/database.js')).namespace;
   return {
-    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database,
+    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace,
     get opens() { return opens; },
     close: async () => { for (const connection of connections) await connection.closeAsync(); },
   };
@@ -367,6 +370,9 @@ test('migrates legacy planned blocks without losing data and can reopen safely',
   assert.equal(migrated[0].rescheduled_from, null);
   await first.markExpiredStudyBlocks('user-a', '2026-10-20T09:00:00Z');
   const replacement = await first.rescheduleStudyBlock('user-a', 1, '2026-10-20T09:00:00Z');
+  assert.equal((await first.getTasksForUser('user-a'))[0].postpone_count, 1);
+  // Older versions created reschedule history without updating this counter.
+  await (await first.getDatabase()).runAsync('UPDATE Task SET postpone_count = 0 WHERE id = ? AND user_id = ?', 1, 'user-a');
   await first.close();
   const second = await loadServices(filename);
   instances.push(second);
@@ -374,6 +380,110 @@ test('migrates legacy planned blocks without losing data and can reopen safely',
   assert.equal(reopened.length, 3);
   assert.equal(reopened.find(block => block.id === 1).rescheduled_to, replacement.id);
   assert.equal(reopened.find(block => block.id === 2).status, 'done');
+  assert.equal((await second.getTasksForUser('user-a'))[0].postpone_count, 1);
   const database = await second.getDatabase();
   assert.equal((await database.getAllAsync('PRAGMA table_info(StudyBlock)')).filter(column => column.name === 'rescheduled_from').length, 1);
+});
+
+test('warns above 240 minutes, permits exactly 240, and writes only after an explicit override', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Math' });
+  const task = await services.createTask('user-a', { title: 'Algebra', subject_id: subject.id });
+  const date = '2026-10-20';
+  const input = (hour, minutes) => {
+    const start = new Date(`${date}T${hour}:00:00`).getTime();
+    return { task_id: task.id, start_time: new Date(start).toISOString(), end_time: new Date(start + minutes * 60000).toISOString() };
+  };
+  const first = await services.createStudyBlock('user-a', input('08', 220));
+  await services.createStudyBlock('user-a', input('13', 20));
+  assert.equal(await services.getDailyStudyMinutes('user-a', date), 240);
+  await assert.rejects(services.createStudyBlock('user-a', input('14', 5)), error => {
+    assert.equal(error.name, 'StudyLoadWarning');
+    assert.equal(error.days[0].current_minutes, 240);
+    assert.equal(error.days[0].total_minutes, 245);
+    return true;
+  });
+  assert.equal((await services.getStudyBlocksForUser('user-a')).length, 2);
+  await services.createStudyBlock('user-a', input('14', 5), { allowHeavyDay: true });
+  assert.equal(await services.getDailyStudyMinutes('user-a', date), 245);
+  await services.updateStudyBlockStatus('user-a', first.id, 'done');
+  assert.equal(await services.getDailyStudyMinutes('user-a', date), 245);
+  assert.equal(await services.getDailyStudyMinutes('user-b', date), 0);
+  const otherSubject = await services.createSubject('user-b', { name: 'Biology' });
+  const otherTask = await services.createTask('user-b', { title: 'Cell notes', subject_id: otherSubject.id });
+  await services.createStudyBlock('user-b', { ...input('08', 240), task_id: otherTask.id });
+  assert.equal(await services.getDailyStudyMinutes('user-b', date), 240);
+  assert.equal(await services.getDailyStudyMinutes('user-a', date), 245);
+});
+
+test('serializes simultaneous scheduling requests so the second sees the updated daily total', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Math' });
+  const task = await services.createTask('user-a', { title: 'Algebra', subject_id: subject.id });
+  const input = minutes => ({ task_id: task.id, start_time: new Date('2026-10-20T08:00:00').toISOString(), end_time: new Date(new Date('2026-10-20T08:00:00').getTime() + minutes * 60000).toISOString() });
+  await services.createStudyBlock('user-a', input(230));
+  const results = await Promise.allSettled([services.createStudyBlock('user-a', input(10)), services.createStudyBlock('user-a', input(10))]);
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  assert.equal(results.filter(result => result.status === 'rejected' && result.reason.name === 'StudyLoadWarning').length, 1);
+  assert.equal(await services.getDailyStudyMinutes('user-a', '2026-10-20'), 240);
+});
+
+test('splits workload at local midnight and excludes missed history from daily totals', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Math' });
+  const task = await services.createTask('user-a', { title: 'Algebra', subject_id: subject.id });
+  const morning = await services.createStudyBlock('user-a', { task_id: task.id, start_time: new Date('2026-10-20T08:00:00').toISOString(), end_time: new Date('2026-10-20T11:45:00').toISOString() });
+  await services.createStudyBlock('user-a', { task_id: task.id, start_time: new Date('2026-10-20T23:50:00').toISOString(), end_time: new Date('2026-10-21T00:20:00').toISOString() });
+  assert.equal(await services.getDailyStudyMinutes('user-a', '2026-10-20'), 235);
+  assert.equal(await services.getDailyStudyMinutes('user-a', '2026-10-21'), 20);
+  await services.createStudyBlock('user-a', { task_id: task.id, start_time: new Date('2026-10-21T08:00:00').toISOString(), end_time: new Date('2026-10-21T11:40:00').toISOString() });
+  await assert.rejects(services.createStudyBlock('user-a', { task_id: task.id, start_time: new Date('2026-10-20T23:59:00').toISOString(), end_time: new Date('2026-10-21T00:01:00').toISOString() }), error => {
+    assert.equal(error.days[0].date, '2026-10-21');
+    assert.equal(error.days[0].total_minutes, 241);
+    return true;
+  });
+  await services.updateStudyBlockStatus('user-a', morning.id, 'missed');
+  assert.equal(await services.getDailyStudyMinutes('user-a', '2026-10-20'), 10);
+});
+
+test('increments postponement counts once per replacement and applies guardrails to custom reschedules', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Math' });
+  const task = await services.createTask('user-a', { title: 'Algebra', subject_id: subject.id });
+  await services.createStudyBlock('user-a', { task_id: task.id, start_time: new Date('2026-10-20T08:00:00').toISOString(), end_time: new Date('2026-10-20T12:00:00').toISOString() });
+  const original = await services.createStudyBlock('user-a', { task_id: task.id, start_time: new Date('2026-10-19T08:00:00').toISOString(), end_time: new Date('2026-10-19T08:05:00').toISOString() });
+  await services.updateStudyBlockStatus('user-a', original.id, 'missed');
+  const reference = new Date('2026-10-20T12:00:00').toISOString();
+  const options = { start_time: new Date('2026-10-20T14:30:00').toISOString(), end_time: new Date('2026-10-20T14:47:00').toISOString() };
+  await assert.rejects(services.rescheduleStudyBlock('user-a', original.id, reference, options), error => error.name === 'StudyLoadWarning');
+  assert.equal((await services.getTasksForUser('user-a'))[0].postpone_count, 0);
+  const replacement = await services.rescheduleStudyBlock('user-a', original.id, reference, { ...options, allowHeavyDay: true });
+  assert.equal(replacement.start_time, options.start_time);
+  assert.equal(Date.parse(replacement.end_time) - Date.parse(replacement.start_time), 17 * 60000);
+  await services.rescheduleStudyBlock('user-a', original.id, reference, options);
+  assert.equal((await services.getTasksForUser('user-a'))[0].postpone_count, 1);
+  await services.updateStudyBlockStatus('user-a', replacement.id, 'missed');
+  await services.rescheduleStudyBlock('user-a', replacement.id, reference, { ...options, allowHeavyDay: true });
+  assert.equal((await services.getTasksForUser('user-a'))[0].postpone_count, 2);
+  assert.equal((await services.getTasksForUser('user-b')).length, 0);
+});
+
+test('validates custom duration and local HH:mm inputs without silently moving past times', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const now = new Date('2026-10-20T12:00:00');
+  const nowTimes = services.buildStudyTimes({ duration: '7', mode: 'now', time: '' }, now);
+  assert.equal(nowTimes.start_time, now.toISOString());
+  assert.equal(Date.parse(nowTimes.end_time) - Date.parse(nowTimes.start_time), 7 * 60000);
+  const custom = services.buildStudyTimes({ duration: '83', mode: 'custom', time: '14:30' }, now);
+  assert.equal(custom.start_time, new Date('2026-10-20T14:30:00').toISOString());
+  assert.equal(Date.parse(custom.end_time) - Date.parse(custom.start_time), 83 * 60000);
+  for (const duration of ['0', '-5', '1.5', 'abc', '', '1e2']) assert.throws(() => services.buildStudyTimes({ duration, mode: 'now', time: '' }, now));
+  for (const time of ['24:00', '14:60', '2:30', '12:00', '09:00', 'tomorrow']) assert.throws(() => services.buildStudyTimes({ duration: '25', mode: 'custom', time }, now));
+  const overnight = services.buildStudyTimes({ duration: '30', mode: 'custom', time: '23:50' }, now);
+  assert.equal(services.getLocalDateKey(new Date(overnight.end_time)), '2026-10-21');
 });
