@@ -67,9 +67,12 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
   await subjects.evaluate();
   const tasks = await load('./db/TaskService.js', parent);
   await tasks.evaluate();
+  const blocks = await load('./db/StudyBlockService.js', parent);
+  await blocks.evaluate();
+  const dates = modules.get(path.resolve('db/dateUtils.js')).namespace;
   const database = modules.get(path.resolve('db/database.js')).namespace;
   return {
-    ...subjects.namespace, ...tasks.namespace, ...database,
+    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database,
     get opens() { return opens; },
     close: async () => { for (const connection of connections) await connection.closeAsync(); },
   };
@@ -157,9 +160,97 @@ test('retains saved subjects and tasks after closing and reopening the database'
   instances.push(first);
   const subject = await first.createSubject('returning-user', { name: 'Physics' });
   const task = await first.createTask('returning-user', { title: 'Practice forces', subject_id: subject.id });
+  const block = await first.createStudyBlock('returning-user', {
+    task_id: task.id, start_time: '2026-10-20T09:00:00Z', end_time: '2026-10-20T09:30:00Z',
+  });
+  // Simulate the existing database before the scheduler indexes were added.
+  const database = await first.getDatabase();
+  await database.execAsync('DROP INDEX idx_task_user_deadline; DROP INDEX idx_study_block_task_time;');
   await first.close();
   const second = await loadServices(filename);
   instances.push(second);
   assert.deepEqual(plain(await second.getSubjectsForUser('returning-user')), [plain(subject)]);
   assert.deepEqual(plain(await second.getTasksForUser('returning-user')), [plain(task)]);
+  assert.deepEqual(plain(await second.getStudyBlocksForUser('returning-user')), [plain(block)]);
+});
+
+test('creates study blocks with task titles, UTC times, ownership checks and validation', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Math' });
+  const task = await services.createTask('user-a', { title: 'Practice algebra', subject_id: subject.id });
+  const input = { task_id: task.id, start_time: '2026-10-20T17:00:00+08:00', end_time: '2026-10-20T17:30:00+08:00' };
+  const block = await services.createStudyBlock('user-a', input);
+  assert.equal(block.task_title, task.title);
+  assert.equal(block.start_time, '2026-10-20T09:00:00.000Z');
+  assert.equal(block.end_time, '2026-10-20T09:30:00.000Z');
+  assert.equal(Date.parse(block.end_time) - Date.parse(block.start_time), 30 * 60 * 1000);
+  assert.equal(block.status, 'planned');
+  assert.deepEqual(plain(await services.getStudyBlocksForUser('user-a')), [plain(block)]);
+  assert.equal((await services.getStudyBlocksForUser('user-b')).length, 0);
+  await assert.rejects(services.createStudyBlock('user-b', input), /belonging to your account/);
+  for (const call of [
+    () => services.getStudyBlocksForUser(''),
+    () => services.createStudyBlock('', input),
+    () => services.createStudyBlock('user-a', { ...input, task_id: 0 }),
+    () => services.createStudyBlock('user-a', { ...input, task_id: 99999 }),
+    () => services.createStudyBlock('user-a', { ...input, start_time: 'invalid' }),
+    () => services.createStudyBlock('user-a', { ...input, end_time: input.start_time }),
+    () => services.createStudyBlock('user-a', { ...input, end_time: '2026-10-19T00:00:00Z' }),
+  ]) await assert.rejects(call);
+  assert.equal((await services.getStudyBlocksForUser('user-a')).length, 1);
+});
+
+test('date queries include due tasks and overlapping sessions once, with exclusive midnight boundaries', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Physics' });
+  const otherSubject = await services.createSubject('user-b', { name: 'Biology' });
+  const date = '2026-10-20';
+  const local = hour => new Date(`2026-10-20T${hour}:00:00`).toISOString();
+  const due = await services.createTask('user-a', { title: 'Due today', subject_id: subject.id, deadline: local('12') });
+  const calendarDue = await services.createTask('user-a', { title: 'Calendar deadline', subject_id: subject.id, deadline: date });
+  const scheduled = await services.createTask('user-a', { title: 'Scheduled today', subject_id: subject.id });
+  const crossing = await services.createTask('user-a', { title: 'Crosses midnight', subject_id: subject.id });
+  const endingAtMidnight = await services.createTask('user-a', { title: 'Ends as today begins', subject_id: subject.id });
+  const tomorrow = await services.createTask('user-a', { title: 'Tomorrow', subject_id: subject.id, deadline: new Date('2026-10-21T00:00:00').toISOString() });
+  const other = await services.createTask('user-b', { title: 'Other user', subject_id: otherSubject.id, deadline: date });
+  await services.createStudyBlock('user-a', { task_id: due.id, start_time: local('10'), end_time: local('11') });
+  for (const hour of ['09', '14']) {
+    await services.createStudyBlock('user-a', { task_id: scheduled.id, start_time: local(hour), end_time: new Date(Date.parse(local(hour)) + 30 * 60 * 1000).toISOString() });
+  }
+  await services.createStudyBlock('user-a', { task_id: crossing.id, start_time: new Date('2026-10-19T23:45:00').toISOString(), end_time: local('01') });
+  await services.createStudyBlock('user-a', { task_id: endingAtMidnight.id, start_time: new Date('2026-10-19T23:00:00').toISOString(), end_time: local('00') });
+  await services.createStudyBlock('user-a', { task_id: tomorrow.id, start_time: new Date('2026-10-21T00:00:00').toISOString(), end_time: new Date('2026-10-21T00:30:00').toISOString() });
+  await services.createStudyBlock('user-b', { task_id: other.id, start_time: local('09'), end_time: local('10') });
+  const expectedIds = [due.id, calendarDue.id, scheduled.id, crossing.id].sort((a, b) => b - a);
+  assert.deepEqual((await services.getTasksForDate('user-a', date)).map(task => task.id), expectedIds);
+  assert.deepEqual((await services.getTasksForUser('user-a', { date, hasDeadline: true })).map(task => task.id), [calendarDue.id, due.id]);
+  assert.deepEqual((await services.getTasksWithDeadlines('user-a')).map(task => task.id), [tomorrow.id, calendarDue.id, due.id]);
+  const blocks = await services.getStudyBlocksForUser('user-a', { date });
+  assert.equal(blocks.length, 4);
+  assert.equal(blocks[0].task_id, crossing.id);
+  assert.equal(blocks.some(block => [endingAtMidnight.id, tomorrow.id, other.id].includes(block.task_id)), false);
+  await assert.rejects(services.getTasksForDate('user-a', '2026-02-30'), /valid calendar date/);
+  await assert.rejects(services.getStudyBlocksForUser('user-a', { date: '10/20/2026' }), /YYYY-MM-DD/);
+  await assert.rejects(services.getTasksWithDeadlines(''), /Sign in/);
+});
+
+test('local day ranges advance calendar days, including daylight-saving changes', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  for (const date of ['2026-03-08', '2026-11-01', '2026-12-31', '2028-02-29']) {
+    const range = services.getLocalDayRange(date);
+    assert.equal(Date.parse(range.start), new Date(`${date}T00:00:00`).getTime());
+    const end = new Date(`${date}T12:00:00`);
+    end.setDate(end.getDate() + 1);
+    end.setHours(0, 0, 0, 0);
+    assert.equal(Date.parse(range.end), end.getTime());
+  }
+  if (process.env.TZ === 'America/New_York') {
+    const spring = services.getLocalDayRange('2026-03-08');
+    const autumn = services.getLocalDayRange('2026-11-01');
+    assert.equal(Date.parse(spring.end) - Date.parse(spring.start), 23 * 60 * 60 * 1000);
+    assert.equal(Date.parse(autumn.end) - Date.parse(autumn.start), 25 * 60 * 60 * 1000);
+  }
 });

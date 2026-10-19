@@ -58,8 +58,10 @@ async function initializeDatabase() {
 
         CREATE INDEX IF NOT EXISTS idx_subject_user ON Subject (user_id, id);
         CREATE INDEX IF NOT EXISTS idx_task_user ON Task (user_id, id);
+        CREATE INDEX IF NOT EXISTS idx_task_user_deadline ON Task (user_id, deadline);
         CREATE INDEX IF NOT EXISTS idx_task_subject ON Task (subject_id, user_id);
         CREATE INDEX IF NOT EXISTS idx_study_block_task ON StudyBlock (task_id);
+        CREATE INDEX IF NOT EXISTS idx_study_block_task_time ON StudyBlock (task_id, start_time, end_time);
         CREATE INDEX IF NOT EXISTS idx_review_subject ON ReviewItem (subject_id);
         CREATE INDEX IF NOT EXISTS idx_material_subject ON Material (subject_id);
         CREATE INDEX IF NOT EXISTS idx_material_task ON Material (task_id);

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
-  ActivityIndicator, FlatList, Keyboard, KeyboardAvoidingView, Platform, Pressable,
+  ActivityIndicator, AppState, FlatList, Keyboard, KeyboardAvoidingView, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
@@ -9,6 +9,8 @@ import { authService, USE_REAL_AUTH } from './auth';
 import { DEMO_EMAIL, DEMO_PASSWORD } from './auth/MockAuthService';
 import { createSubject, getSubjectsForUser } from './db/SubjectService';
 import { createTask, getTasksForUser } from './db/TaskService';
+import { createStudyBlock, getStudyBlocksForUser } from './db/StudyBlockService';
+import { getLocalDateKey, getLocalDayRange } from './db/dateUtils';
 
 const colors = {
   background: '#0C1117', surface: '#151D27', input: '#0E151E',
@@ -54,6 +56,10 @@ function ErrorMessage({ message }) {
 function Dashboard({ user, onSignOut, signingOut, signOutError }) {
   const [subjects, setSubjects] = useState(/** @type {import('./db/SubjectService').Subject[]} */ ([]));
   const [tasks, setTasks] = useState(/** @type {import('./db/TaskService').Task[]} */ ([]));
+  const [studyBlocks, setStudyBlocks] = useState(/** @type {import('./db/StudyBlockService').StudyBlock[]} */ ([]));
+  const [today, setToday] = useState(() => getLocalDateKey());
+  const [schedulingTaskId, setSchedulingTaskId] = useState(/** @type {number | null} */ (null));
+  const [scheduleError, setScheduleError] = useState('');
   const [subjectName, setSubjectName] = useState('');
   const [taskTitle, setTaskTitle] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState(/** @type {number | null} */ (null));
@@ -65,8 +71,29 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
   const [saving, setSaving] = useState(/** @type {'subject' | 'task' | null} */ (null));
   const savingRef = useRef(false);
   const mounted = useRef(false);
-  const busy = signingOut || saving !== null;
+  const busy = signingOut || saving !== null || schedulingTaskId !== null;
   const formsDisabled = busy || loading || Boolean(loadError);
+  const todaysBlocks = useMemo(() => {
+    const { start, end } = getLocalDayRange(today);
+    return studyBlocks.filter(block => Date.parse(block.start_time) < Date.parse(end)
+      && Date.parse(block.end_time) > Date.parse(start));
+  }, [studyBlocks, today]);
+
+  useEffect(() => {
+    /** @type {ReturnType<typeof setTimeout>} */
+    let midnightTimer;
+    function updateToday() {
+      clearTimeout(midnightTimer);
+      const date = getLocalDateKey();
+      setToday(date);
+      midnightTimer = setTimeout(updateToday, Math.max(100, Date.parse(getLocalDayRange(date).end) - Date.now() + 100));
+    }
+    updateToday();
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') updateToday();
+    });
+    return () => { clearTimeout(midnightTimer); subscription.remove(); };
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -79,12 +106,13 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
       setLoading(true);
       setLoadError('');
       try {
-        const [nextSubjects, nextTasks] = await Promise.all([
-          getSubjectsForUser(user.id), getTasksForUser(user.id),
+        const [nextSubjects, nextTasks, nextBlocks] = await Promise.all([
+          getSubjectsForUser(user.id), getTasksForUser(user.id), getStudyBlocksForUser(user.id, { date: today }),
         ]);
         if (!active) return;
         setSubjects(nextSubjects);
         setTasks(nextTasks);
+        setStudyBlocks(nextBlocks);
         setSelectedSubjectId(current => nextSubjects.some(subject => subject.id === current)
           ? current : nextSubjects[0]?.id ?? null);
       } catch {
@@ -95,7 +123,7 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
     }
     void loadData();
     return () => { active = false; };
-  }, [user.id, reloadAttempt]);
+  }, [user.id, reloadAttempt, today]);
 
   async function addSubject() {
     if (savingRef.current || formsDisabled) return;
@@ -143,6 +171,34 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
       savingRef.current = false;
       if (mounted.current) setSaving(null);
     }
+  }
+
+  /** @param {number} taskId */
+  async function scheduleTask(taskId) {
+    if (savingRef.current || formsDisabled) return;
+    savingRef.current = true;
+    setSchedulingTaskId(taskId);
+    setScheduleError('');
+    const start = new Date();
+    try {
+      const block = await createStudyBlock(user.id, {
+        task_id: taskId,
+        start_time: start.toISOString(),
+        end_time: new Date(start.getTime() + 30 * 60 * 1000).toISOString(),
+      });
+      if (!mounted.current) return;
+      setStudyBlocks(current => [...current, block].sort((a, b) => Date.parse(a.start_time) - Date.parse(b.start_time) || a.id - b.id));
+    } catch {
+      if (mounted.current) setScheduleError('We couldn’t schedule this session. Please try again.');
+    } finally {
+      savingRef.current = false;
+      if (mounted.current) setSchedulingTaskId(null);
+    }
+  }
+
+  /** @param {string} timestamp */
+  function formatTime(timestamp) {
+    return new Date(timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   }
 
   return (
@@ -249,6 +305,7 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
               </View>
             </>
           }
+          extraData={schedulingTaskId}
           renderItem={({ item }) => (
             <View style={dashboardStyles.taskRow}>
               <View style={dashboardStyles.taskMarker} />
@@ -258,12 +315,42 @@ function Dashboard({ user, onSignOut, signingOut, signOutError }) {
                   <View style={[dashboardStyles.colorDot, { backgroundColor: item.subject_color }]} />
                   <Text style={dashboardStyles.taskSubject}>{item.subject_name}</Text>
                 </View>
+                <Pressable
+                  accessibilityRole="button" accessibilityLabel={`Schedule 30 minutes for ${item.title}`}
+                  accessibilityState={{ disabled: formsDisabled, busy: schedulingTaskId === item.id }}
+                  disabled={formsDisabled} onPress={() => void scheduleTask(item.id)}
+                  style={({ pressed }) => [dashboardStyles.scheduleButton, pressed && styles.pressed, formsDisabled && styles.disabled]}
+                >
+                  {schedulingTaskId === item.id ? <ActivityIndicator color={colors.accent} size="small" /> : <Text style={dashboardStyles.scheduleText}>Schedule 30m</Text>}
+                </Pressable>
               </View>
               <Text style={dashboardStyles.status}>{item.status === 'pending' ? 'To do' : item.status.replace(/_/g, ' ')}</Text>
             </View>
           )}
           ListEmptyComponent={!loading && !loadError ? <Text style={dashboardStyles.empty}>Room for your next step. Add a task when you’re ready.</Text> : null}
-          ListFooterComponent={<View style={styles.footer}><View style={styles.footerDot} /><Text style={styles.footerText}>A little more intention. Every day.</Text></View>}
+          ListFooterComponent={
+            <>
+              <View style={dashboardStyles.sectionHeading}>
+                <Text style={dashboardStyles.sectionTitle}>Today&apos;s Focus</Text><Text style={dashboardStyles.count}>{todaysBlocks.length}</Text>
+              </View>
+              <ErrorMessage message={scheduleError} />
+              <View accessibilityLiveRegion="polite">
+                {todaysBlocks.map(block => (
+                  <View key={block.id} style={dashboardStyles.taskRow}>
+                    <View style={[dashboardStyles.colorDot, dashboardStyles.focusDot, { backgroundColor: block.subject_color }]} />
+                    <View style={dashboardStyles.taskDetails}>
+                      <Text style={dashboardStyles.taskTitle}>{block.task_title}</Text>
+                      <View style={dashboardStyles.taskMeta}>
+                        <Text style={dashboardStyles.taskSubject}>{formatTime(block.start_time)} – {formatTime(block.end_time)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+              {!todaysBlocks.length && !loading && !loadError && <Text style={dashboardStyles.empty}>A little room to focus. Schedule a task above to begin.</Text>}
+              <View style={styles.footer}><View style={styles.footerDot} /><Text style={styles.footerText}>A little more intention. Every day.</Text></View>
+            </>
+          }
         />
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -571,4 +658,7 @@ const dashboardStyles = StyleSheet.create({
   taskMeta: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 8 },
   taskSubject: { flex: 1, color: colors.muted, fontSize: 11, lineHeight: 17 },
   status: { color: colors.accent, fontSize: 10, fontWeight: '600', paddingTop: 4, maxWidth: 60 },
+  scheduleButton: { minHeight: 44, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: 12, marginTop: 12, borderWidth: 1, borderColor: colors.line, borderRadius: 12 },
+  scheduleText: { color: colors.accent, fontSize: 12, fontWeight: '600' },
+  focusDot: { marginTop: 7 },
 });

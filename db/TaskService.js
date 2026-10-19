@@ -1,4 +1,5 @@
 import { getDatabase, requireUserId } from './database';
+import { getLocalDayRange } from './dateUtils';
 
 /**
  * @typedef {{ id: number, user_id: string, subject_id: number, title: string,
@@ -46,15 +47,50 @@ export async function createTask(userId, { title, subject_id, deadline = null, e
   };
 }
 
-/** @param {string} userId @returns {Promise<Task[]>} */
-export async function getTasksForUser(userId) {
+/**
+ * With `date`, return tasks due on or scheduled during that local calendar day.
+ * `hasDeadline` optionally limits results to tasks with a deadline.
+ * @param {string} userId
+ * @param {{ date?: string, hasDeadline?: boolean }} [options]
+ * @returns {Promise<Task[]>}
+ */
+export async function getTasksForUser(userId, { date, hasDeadline = false } = {}) {
   requireUserId(userId);
+  const range = date === undefined ? null : getLocalDayRange(date);
+  const conditions = ['task.user_id = ?'];
+  const parameters = [userId];
+  if (hasDeadline) conditions.push("task.deadline IS NOT NULL AND trim(task.deadline) <> ''");
+  if (range) {
+    // Date-only deadlines are calendar dates, not midnight UTC. Timestamp
+    // deadlines and blocks are compared as instants, including legacy offsets.
+    conditions.push(`(
+      task.deadline = ?
+      OR (length(task.deadline) > 10 AND julianday(task.deadline) >= julianday(?) AND julianday(task.deadline) < julianday(?))
+      OR EXISTS (
+        SELECT 1 FROM StudyBlock AS block
+        WHERE block.task_id = task.id AND task.user_id = ?
+          AND julianday(block.start_time) < julianday(?)
+          AND julianday(block.end_time) > julianday(?)
+      )
+    )`);
+    parameters.push(/** @type {string} */ (date), range.start, range.end, userId, range.end, range.start);
+  }
   const database = await getDatabase();
   return database.getAllAsync(`
     SELECT task.*, subject.name AS subject_name, subject.color AS subject_color
     FROM Task AS task
     INNER JOIN Subject AS subject ON subject.id = task.subject_id AND subject.user_id = task.user_id
-    WHERE task.user_id = ?
+    WHERE ${conditions.join(' AND ')}
     ORDER BY task.id DESC
-  `, userId);
+  `, ...parameters);
+}
+
+/** @param {string} userId @returns {Promise<Task[]>} */
+export function getTasksWithDeadlines(userId) {
+  return getTasksForUser(userId, { hasDeadline: true });
+}
+
+/** @param {string} userId @param {string} date YYYY-MM-DD @returns {Promise<Task[]>} */
+export function getTasksForDate(userId, date) {
+  return getTasksForUser(userId, { date });
 }
