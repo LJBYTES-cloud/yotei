@@ -15,11 +15,11 @@ function scheduleMutation(action) {
 /**
  * @typedef {{ id: number, task_id: number, start_time: string, end_time: string,
  * status: 'scheduled' | 'done' | 'missed', rescheduled_from: number | null,
- * rescheduled_to: number | null, task_title: string, subject_name: string, subject_color: string }} StudyBlock
+ * rescheduled_to: number | null, task_title: string, subject_id: number, subject_name: string, subject_color: string }} StudyBlock
  */
 
 const BLOCK_SELECT = `
-  SELECT block.*, task.title AS task_title,
+  SELECT block.*, task.title AS task_title, task.subject_id,
     subject.name AS subject_name, subject.color AS subject_color,
     replacement.id AS rescheduled_to
   FROM StudyBlock AS block
@@ -72,9 +72,9 @@ async function createBlock(userId, { task_id, start_time, end_time }, allowHeavy
     throw new Error('Choose valid study times with the end after the start.');
   }
   const database = await getDatabase();
-  const task = /** @type {{ title: string, subject_name: string, subject_color: string } | null} */ (
+  const task = /** @type {{ title: string, subject_id: number, subject_name: string, subject_color: string } | null} */ (
     await database.getFirstAsync(`
-      SELECT task.title, subject.name AS subject_name, subject.color AS subject_color
+      SELECT task.title, task.subject_id, subject.name AS subject_name, subject.color AS subject_color
       FROM Task AS task
       INNER JOIN Subject AS subject ON subject.id = task.subject_id AND subject.user_id = task.user_id
       WHERE task.id = ? AND task.user_id = ?
@@ -93,7 +93,7 @@ async function createBlock(userId, { task_id, start_time, end_time }, allowHeavy
   return {
     id: result.lastInsertRowId, task_id, start_time: startTime, end_time: endTime,
     status: 'scheduled', rescheduled_from: null, rescheduled_to: null, task_title: task.title,
-    subject_name: task.subject_name, subject_color: task.subject_color,
+    subject_id: task.subject_id, subject_name: task.subject_name, subject_color: task.subject_color,
   };
 }
 

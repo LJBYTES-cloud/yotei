@@ -141,6 +141,23 @@ test('review queue binds topics, validates input, and isolates accounts for ever
   assert.deepEqual(plain(await services.getDueReviews('other-user')), [plain(other)], 'another account is unchanged');
 });
 
+test('a failed review subject lookup leaves no topic behind and retries create it once', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Biology' });
+  const database = await services.getDatabase();
+  const read = database.getFirstAsync;
+  let failOnce = true;
+  database.getFirstAsync = async (...args) => {
+    if (failOnce) { failOnce = false; throw new Error('Storage read failed'); }
+    return read(...args);
+  };
+  await assert.rejects(services.createReviewItem('user-a', { subject_id: subject.id, topic: 'Cell division' }), /Storage read failed/);
+  assert.equal((await database.getAllAsync('SELECT * FROM ReviewItem')).length, 0);
+  const item = await services.createReviewItem('user-a', { subject_id: subject.id, topic: 'Cell division' });
+  assert.deepEqual(plain(await services.getDueReviews('user-a')), [plain(item)]);
+});
+
 test('due reviews include new, past, and exact-boundary timestamps but exclude the future', async t => {
   const services = await loadServices(':memory:', false, '2026-10-20T12:00:00.000Z');
   t.after(services.close);
@@ -226,6 +243,69 @@ test('review schedule survives reopening the database', async t => {
   assert.deepEqual(plain(await second.getDueReviews('user-a')), [plain(reviewed)]);
 });
 
+test('study completion feeds review topics and repeated missed sessions increment task coaching counts once each', async t => {
+  const services = await loadServices(':memory:', false, '2026-10-20T09:00:00Z');
+  t.after(services.close);
+  const subject = await services.createSubject('student', { name: 'Biology' });
+  const task = await services.createTask('student', { subject_id: subject.id, title: 'Study the cell cycle' });
+  const block = await services.createStudyBlock('student', {
+    task_id: task.id, start_time: '2026-10-20T09:00:00Z', end_time: '2026-10-20T09:30:00Z',
+  });
+  assert.equal(block.subject_id, subject.id);
+  services.setNow('2026-10-20T09:25:00Z');
+  const completed = await services.updateStudyBlockStatus('student', block.id, 'done');
+  assert.equal(completed.subject_id, subject.id);
+  assert.equal(completed.task_title, task.title);
+  const review = await services.createReviewItem('student', {
+    subject_id: completed.subject_id, topic: 'The checkpoints between cell-cycle phases',
+  });
+  assert.equal(review.subject_id, subject.id);
+  assert.deepEqual((await services.getDueReviews('student')).map(item => item.id), [review.id]);
+
+  const original = await services.createStudyBlock('student', {
+    task_id: task.id, start_time: '2026-10-20T09:30:00Z', end_time: '2026-10-20T10:00:00Z',
+  });
+  const otherSubject = await services.createSubject('other-student', { name: 'Biology' });
+  const otherTask = await services.createTask('other-student', { subject_id: otherSubject.id, title: 'Genetics' });
+  const otherBlock = await services.createStudyBlock('other-student', {
+    task_id: otherTask.id, start_time: original.start_time, end_time: original.end_time,
+  });
+  services.setNow('2026-10-20T10:01:00Z');
+  assert.equal((await services.markExpiredStudyBlocks('student')).changes, 1);
+  const missed = (await services.getStudyBlocksForUser('student')).find(item => item.id === original.id);
+  assert.equal(missed.status, 'missed');
+  assert.equal((await services.getTasksForUser('student'))[0].postpone_count, 0, 'a miss alone does not count as a reschedule');
+  const [firstReplacement, retry] = await Promise.all([
+    services.rescheduleStudyBlock('student', original.id),
+    services.rescheduleStudyBlock('student', original.id),
+  ]);
+  assert.equal(firstReplacement.id, retry.id);
+  assert.equal(firstReplacement.rescheduled_from, original.id);
+  assert.equal(firstReplacement.subject_id, subject.id);
+  assert.equal(firstReplacement.start_time, '2026-10-20T11:01:00.000Z');
+  assert.equal((await services.getTasksForUser('student'))[0].postpone_count, 1);
+
+  services.setNow('2026-10-20T11:32:00Z');
+  assert.equal((await services.markExpiredStudyBlocks('student')).changes, 1);
+  const secondReplacement = await services.rescheduleStudyBlock('student', firstReplacement.id);
+  assert.equal(secondReplacement.rescheduled_from, firstReplacement.id);
+  assert.equal(secondReplacement.start_time, '2026-10-20T12:32:00.000Z');
+  assert.equal((await services.getTasksForUser('student'))[0].postpone_count, 2, 'two recommitments enable task coaching');
+  await services.rescheduleStudyBlock('student', firstReplacement.id);
+  assert.equal((await services.getTasksForUser('student'))[0].postpone_count, 2, 'retrying a replacement never increments again');
+  const history = await services.getStudyBlocksForUser('student');
+  assert.equal(history.find(item => item.id === block.id).status, 'done');
+  assert.equal(history.find(item => item.id === original.id).rescheduled_to, firstReplacement.id);
+  assert.equal(history.find(item => item.id === firstReplacement.id).rescheduled_to, secondReplacement.id);
+  assert.equal(history.find(item => item.id === secondReplacement.id).status, 'scheduled');
+  assert.equal((await services.getStudyBlocksForUser('other-student'))[0].id, otherBlock.id);
+  assert.equal((await services.getStudyBlocksForUser('other-student'))[0].status, 'scheduled');
+  assert.equal((await services.getTasksForUser('other-student'))[0].postpone_count, 0);
+  assert.equal((await services.getDueReviews('other-student')).length, 0);
+  await services.markReviewed('student', review.id, 'Good');
+  assert.equal((await services.getDueReviews('student')).length, 0);
+});
+
 test('demo reset replaces only the selected account and can be repeated', async t => {
   const services = await loadServices(':memory:', false, '2026-10-20T12:00:00');
   t.after(services.close);
@@ -242,7 +322,7 @@ test('demo reset replaces only the selected account and can be repeated', async 
     snapshots[user] = { subject, task, blocks: plain(await services.getStudyBlocksForUser(user)) };
   }
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    assert.deepEqual(plain(await services.seedDemoData('demo-user')), { subjects: 3, tasks: 6, studyBlocks: 4, totalMinutes: 240 });
+    assert.deepEqual(plain(await services.seedDemoData('demo-user')), { subjects: 3, tasks: 6, studyBlocks: 4, reviewItems: 3, totalMinutes: 240 });
     const subjects = await services.getSubjectsForUser('demo-user');
     const tasks = await services.getTasksForUser('demo-user');
     assert.deepEqual(subjects.map(subject => subject.name).sort(), ['Biology', 'History', 'Mathematics']);
@@ -253,14 +333,22 @@ test('demo reset replaces only the selected account and can be repeated', async 
     assert.equal(tasks.filter(task => task.deadline === '2026-10-21').length, 3);
     assert.equal(tasks.filter(task => task.deadline === '2026-10-19').length, 1);
     assert.equal((await services.getStudyBlocksForUser('demo-user')).length, 4);
+    const reviews = await services.getDueReviews('demo-user');
+    assert.equal(reviews.length, 3);
+    assert.deepEqual(reviews.map(review => review.subject_name).sort(), ['Biology', 'History', 'Mathematics']);
+    assert.ok(reviews.every(review => review.next_review_at === null && review.last_reviewed_at === null));
+    assert.ok(reviews.every(review => review.topic !== 'Old review'));
     assert.deepEqual(plain(await services.getSubjectsForUser('other-user')), [plain(snapshots['other-user'].subject)]);
     assert.deepEqual(plain(await services.getTasksForUser('other-user')), [plain(snapshots['other-user'].task)]);
     assert.deepEqual(plain(await services.getStudyBlocksForUser('other-user')), snapshots['other-user'].blocks);
     for (const table of ['ReviewItem', 'Material']) {
-      const rows = await database.getAllAsync(`SELECT * FROM ${table}`);
+      const rows = await database.getAllAsync(`SELECT item.* FROM ${table} AS item INNER JOIN Subject AS subject ON subject.id = item.subject_id WHERE subject.user_id = ?`, 'other-user');
       assert.equal(rows.length, 1);
       assert.equal(rows[0].subject_id, snapshots['other-user'].subject.id);
+      if (table === 'ReviewItem') assert.equal(rows[0].topic, 'Old review');
     }
+    assert.equal((await database.getAllAsync('SELECT * FROM Material')).length, 1, 'only the other account retains its old material');
+    assert.equal((await database.getAllAsync('SELECT * FROM ReviewItem')).length, 4, 'reloading replaces demo reviews instead of duplicating them');
   }
   await assert.rejects(services.seedDemoData(' '), /Sign in/i);
 });

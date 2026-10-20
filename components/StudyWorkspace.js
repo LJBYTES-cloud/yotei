@@ -10,6 +10,7 @@ import { createReviewItem, markReviewed } from '../db/ReviewService';
 import { useDashboardData } from '../hooks/useDashboardData';
 import EntrySheet from './EntrySheet';
 import ScheduleSheet from './ScheduleSheet';
+import CompletionReviewSheet from './CompletionReviewSheet';
 import { formatTime } from './theme';
 
 /** @typedef {import('../db/StudyBlockService').StudyBlock} StudyBlock */
@@ -26,6 +27,7 @@ function useWorkspaceState(user) {
   const [entry, setEntry] = useState(/** @type {'task' | 'subject' | null} */ (null));
   const [initialSubject, setInitialSubject] = useState(/** @type {number | null} */ (null));
   const [schedule, setSchedule] = useState(/** @type {Schedule | null} */ (null));
+  const [reviewPrompt, setReviewPrompt] = useState(/** @type {StudyBlock | null} */ (null));
   const [workingBlock, setWorkingBlock] = useState(/** @type {number | null} */ (null));
   const [addingReview, setAddingReview] = useState(false);
   const [workingReview, setWorkingReview] = useState(/** @type {{id: number, difficulty: import('../db/ReviewService').ReviewDifficulty} | null} */ (null));
@@ -38,7 +40,7 @@ function useWorkspaceState(user) {
   const mounted = useRef(false);
   const busy = signingOut || workingBlock !== null || seeding || addingReview || workingReview !== null;
   const disabled = busy || !data.ready || data.refreshing;
-  const blocked = busy || entry !== null || schedule !== null;
+  const blocked = busy || entry !== null || schedule !== null || reviewPrompt !== null;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { busyRef.current = blocked; }, [blocked]);
   useEffect(() => {
@@ -73,6 +75,29 @@ function useWorkspaceState(user) {
     } finally { mutation.current = false; busyRef.current = false; if (mounted.current) setAddingReview(false); }
   }
 
+  /** @param {string} topic @returns {Promise<boolean>} */
+  async function addCompletedReview(topic) {
+    if (!reviewPrompt || mutation.current || busy) return false;
+    mutation.current = true; busyRef.current = true; setAddingReview(true); setActionError('');
+    let saved = false;
+    try {
+      await createReviewItem(user.id, { subject_id: reviewPrompt.subject_id, topic });
+      saved = true;
+      if (!mounted.current) return true;
+      setReviewPrompt(null);
+      setNotice('Session completed. Topic added to the Review Queue.');
+      await data.refresh();
+      return true;
+    } catch { return false; }
+    finally { mutation.current = false; busyRef.current = !saved; if (mounted.current) setAddingReview(false); }
+  }
+
+  function dismissReviewPrompt() {
+    if (mutation.current || busy) return;
+    busyRef.current = false;
+    setReviewPrompt(null);
+  }
+
   /** @param {number} id @param {import('../db/ReviewService').ReviewDifficulty} difficulty */
   async function review(id, difficulty) {
     if (mutation.current || disabled || busyRef.current) return;
@@ -89,19 +114,22 @@ function useWorkspaceState(user) {
 
   /** @param {number} id */
   async function complete(id) {
-    if (mutation.current || disabled) return;
+    if (mutation.current || disabled || busyRef.current) return;
     mutation.current = true; busyRef.current = true; setWorkingBlock(id); setActionError('');
+    let openedPrompt = false;
     try {
-      await updateStudyBlockStatus(user.id, id, 'done');
+      const completed = await updateStudyBlockStatus(user.id, id, 'done');
       if (!mounted.current) return;
+      openedPrompt = true;
+      setReviewPrompt(completed);
       setNotice('Session marked done.');
       await data.refresh();
     } catch { if (mounted.current) setActionError('We couldn’t update that session. Pull down to refresh, then try again.'); }
-    finally { mutation.current = false; busyRef.current = false; if (mounted.current) setWorkingBlock(null); }
+    finally { mutation.current = false; busyRef.current = openedPrompt; if (mounted.current) setWorkingBlock(null); }
   }
 
   async function loadDemoData() {
-    if (USE_REAL_AUTH || mutation.current || disabled || entry || schedule) return;
+    if (USE_REAL_AUTH || mutation.current || disabled || busyRef.current) return;
     mutation.current = true; busyRef.current = true; setSeeding(true); setActionError(''); setNotice('');
     try {
       await seedDemoData(user.id);
@@ -110,7 +138,7 @@ function useWorkspaceState(user) {
       await data.refresh();
       if (mounted.current) {
         setDemoRevision(value => value + 1);
-        setNotice('Demo ready: 3 subjects, 6 tasks, and 4h today. Schedule a task to try the workload warning.');
+        setNotice('Demo loaded: 3 subjects, 6 tasks, 3 due reviews, and 4 hours of study sessions today.');
         router.navigate('/');
       }
     } catch {
@@ -151,6 +179,7 @@ function useWorkspaceState(user) {
     complete, loadDemoData, openEntry, openSchedule, openReschedule,
     signingOut, signOutError, signOut: () => { if (!busyRef.current) void signOut(); },
     entry, initialSubject, schedule, setEntry, setSchedule, setNotice, savedSession,
+    reviewPrompt, addCompletedReview, dismissReviewPrompt,
   };
 }
 
@@ -174,6 +203,7 @@ function WorkspaceContent({ user, children }) {
           void study.data.refresh();
         }} />}
       {study.schedule && <ScheduleSheet userId={study.user.id} {...study.schedule} onClose={() => study.setSchedule(null)} onSaved={study.savedSession} />}
+      {study.reviewPrompt && <CompletionReviewSheet key={study.reviewPrompt.id} block={study.reviewPrompt} busy={study.addingReview || study.workingBlock !== null} onClose={study.dismissReviewPrompt} onAdd={study.addCompletedReview} />}
     </StudyContext.Provider>
   );
 }

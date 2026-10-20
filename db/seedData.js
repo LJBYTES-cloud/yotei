@@ -45,6 +45,18 @@ export async function seedDemoData(userId) {
       );
       subjectIds.push(result.lastInsertRowId);
     }
+    const reviewTopics = [
+      'Solving quadratic equations by completing the square',
+      'The stages of mitosis and their key differences',
+      'Causes of the French Revolution',
+    ];
+    for (let index = 0; index < reviewTopics.length; index += 1) {
+      // New topics are immediately due, matching topics added from a study block.
+      await transaction.runAsync(`
+        INSERT INTO ReviewItem (subject_id, topic, last_reviewed_at, next_review_at)
+        SELECT id, ?, NULL, NULL FROM Subject WHERE id = ? AND user_id = ?
+      `, reviewTopics[index], subjectIds[index], userId);
+    }
     const tasks = [
       { subject: 0, title: 'Practice quadratic equations for the quiz', deadline: tomorrowKey, minutes: 45, postponed: 0 },
       { subject: 1, title: 'Label the cell cycle diagram', deadline: tomorrowKey, minutes: 40, postponed: 0 },
@@ -74,5 +86,5 @@ export async function seedDemoData(userId) {
       `, new Date(begins).toISOString(), new Date(ends).toISOString(), status, sessionTasks[index], userId);
     }
   });
-  return { subjects: 3, tasks: 6, studyBlocks: 4, totalMinutes: 240 };
+  return { subjects: 3, tasks: 6, studyBlocks: 4, reviewItems: 3, totalMinutes: 240 };
 }

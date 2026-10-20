@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useScrollToTop } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, useThemedStyles } from '../ThemeContext';
@@ -64,6 +64,7 @@ export default function ReviewScreen() {
 
   return (
     <SafeAreaView style={s.screen} edges={['top', 'left', 'right']}>
+      <KeyboardAvoidingView style={r.keyboard} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <FlatList ref={list} data={data.reviews} contentContainerStyle={s.content} keyExtractor={item => String(item.id)}
         refreshing={data.refreshing && data.ready} onRefresh={refresh} initialNumToRender={6} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         ListHeaderComponent={<>
@@ -84,13 +85,15 @@ export default function ReviewScreen() {
           <View style={s.card}><View style={s.section}><Text style={s.sectionTitle}>Due Reviews</Text><Text style={s.sectionCount}>{data.reviews.length}</Text></View><Text style={s.hint}>Hard: 1 day · Good: 3 days · Easy: 7 days</Text></View>
         </>}
         renderItem={({ item }) => <DueReviewCard item={item} />}
-        ListEmptyComponent={<EmptyState title="No reviews due" text="New topics appear here immediately. Reviewed topics return at their scheduled time." />} />
+        ListEmptyComponent={<EmptyState title="You're all caught up on reviews." text="New topics appear here immediately. Reviewed topics return at their scheduled time." />} />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
+  keyboard: { flex: 1 },
   label: { color: p.text, fontSize: 12, fontWeight: '600', marginBottom: 8 },
   subjects: { gap: 12, paddingBottom: 16 }, noSubjects: { gap: 12 },
   dueDate: { color: p.muted, fontSize: 12, lineHeight: 20, marginTop: 12 },

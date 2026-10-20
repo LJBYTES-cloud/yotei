@@ -11,6 +11,7 @@ import { useThemedStyles } from '../ThemeContext';
 export default function ScheduleSheet({ userId, task, sourceBlock, initialDuration = 30, onClose, onSaved }) {
   const s = useThemedStyles(createStyles);
   const [duration, setDuration] = useState(String(initialDuration));
+  const [durationError, setDurationError] = useState('');
   const [mode, setMode] = useState(/** @type {'now' | 'custom'} */ ('now'));
   const [time, setTime] = useState('');
   const [busy, setBusy] = useState(false);
@@ -18,9 +19,21 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
   const [warning, setWarning] = useState(/** @type {{ days: import('../db/StudyLoadService').StudyLoad[], times: {start_time: string, end_time: string} } | null} */ (null));
   const submitting = useRef(false);
 
+  /** @param {string} value */
+  function changeDuration(value) {
+    // Reject the whole edit: stripping characters would turn -5 into 5 or 1.5 into 15.
+    if (!/^\d*$/.test(value)) {
+      setDurationError('Enter a positive whole number of minutes using digits only.');
+      return;
+    }
+    setDuration(value);
+    setDurationError('');
+    setError('');
+  }
+
   /** @param {boolean} [proceed] */
   async function submit(proceed = false) {
-    if (submitting.current) return;
+    if (submitting.current || durationError) return;
     submitting.current = true;
     setBusy(true);
     setError('');
@@ -61,13 +74,13 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
         </View>
       ) : (
         <>
-          <Input label="Duration (minutes)" value={duration} onChangeText={setDuration} keyboardType="number-pad" placeholder="e.g. 25" editable={!busy} maxLength={6} returnKeyType="done" />
+          <Input label="Duration (minutes)" value={duration} onChangeText={changeDuration} keyboardType="number-pad" placeholder="e.g. 25" editable={!busy} maxLength={6} returnKeyType="done" />
           <Text style={s.help}>Enter a positive whole number of minutes.</Text>
           <Text style={s.label}>Start time</Text>
           <View style={s.choices}><Pill label="Now" selected={mode === 'now'} disabled={busy} onPress={() => setMode('now')} /><Pill label="Pick a time" selected={mode === 'custom'} disabled={busy} onPress={() => setMode('custom')} /></View>
           {mode === 'custom' && <><Input label="Start time today · 24-hour clock" value={time} onChangeText={setTime} placeholder="14:30" keyboardType="numbers-and-punctuation" maxLength={5} editable={!busy} autoCorrect={false} /><Text style={s.help}>Your local time. Choose a time later today.</Text></>}
-          <Message text={error} />
-          <Button label={sourceBlock ? 'Reschedule session ↗' : 'Save session'} busy={busy} onPress={() => void submit()} />
+          <Message text={durationError || error} />
+          <Button label={sourceBlock ? 'Reschedule session ↗' : 'Save session'} busy={busy} disabled={Boolean(durationError)} onPress={() => void submit()} />
           <Text style={s.footnote}>Scheduled sessions appear in Home.</Text>
         </>
       )}

@@ -26,13 +26,22 @@ export async function createReviewItem(userId, { subject_id, topic }) {
   const trimmedTopic = typeof topic === 'string' ? topic.trim() : '';
   if (!trimmedTopic || trimmedTopic.length > 256) throw new Error('Enter a topic between 1 and 256 characters.');
   const database = await getDatabase();
+  const subject = /** @type {import('./SubjectService').Subject | null} */ (await database.getFirstAsync(
+    'SELECT id, user_id, name, color FROM Subject WHERE id = ? AND user_id = ?', subject_id, userId,
+  ));
+  if (!subject) throw new Error('Select a subject belonging to your account.');
   // Bind ownership to the insert itself so another account's subject cannot be used.
   const result = await database.runAsync(`
     INSERT INTO ReviewItem (subject_id, topic, last_reviewed_at, next_review_at)
     SELECT id, ?, NULL, NULL FROM Subject WHERE id = ? AND user_id = ?
   `, trimmedTopic, subject_id, userId);
   if (result.changes !== 1) throw new Error('Select a subject belonging to your account.');
-  return getReview(userId, result.lastInsertRowId);
+  // No fallible read follows the committed insert: a failed lookup must not
+  // report an existing topic as unsaved and invite a duplicate on retry.
+  return {
+    id: result.lastInsertRowId, subject_id: subject.id, topic: trimmedTopic,
+    last_reviewed_at: null, next_review_at: null, subject_name: subject.name, subject_color: subject.color,
+  };
 }
 
 /** @param {string} userId @returns {Promise<ReviewItem[]>} */

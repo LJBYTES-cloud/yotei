@@ -44,7 +44,7 @@ export default function HomeScreen() {
           </View>
         </>}
         renderItem={({ item }) => <FocusCard block={item} />}
-        ListEmptyComponent={<EmptyState title="No sessions scheduled" text="Select a task in Library to schedule a study session." action="Open Library ↗" onPress={() => router.navigate('/library')} />} />
+        ListEmptyComponent={<EmptyState title="No study blocks scheduled for today." text="Select a task in Library to schedule a study session." action="Open Library ↗" onPress={() => router.navigate('/library')} />} />
     </SafeAreaView>
   );
 }

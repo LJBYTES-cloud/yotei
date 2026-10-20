@@ -27,7 +27,7 @@ export default function SettingsScreen() {
         <Feedback />
         {!USE_REAL_AUTH && <>
           <Text style={t.label}>02 / DEMO DATA</Text>
-          <View style={s.card}><Text style={t.title}>Demo study data</Text><Text style={t.body}>Load three subjects, six tasks, and four hours of study sessions.</Text><Button label="Load Demo Data" tone="outline" disabled={disabled || blocked} busy={seeding} onPress={() => void loadDemoData()} /><Text style={t.footnote}>Replaces only this demo account’s local study data.</Text></View>
+          <View style={s.card}><Text style={t.title}>Demo study data</Text><Text style={t.body}>Load three subjects, six tasks, three due reviews, and four hours of study sessions.</Text><Button label="Load Demo Data" tone="outline" disabled={disabled || blocked} busy={seeding} onPress={() => void loadDemoData()} /><Text style={t.footnote}>Replaces only this demo account’s local study data.</Text></View>
         </>}
         <Text style={t.label}>{USE_REAL_AUTH ? '02' : '03'} / YOUR ACCOUNT</Text>
         <View style={s.card}><Text style={t.title}>Sign out</Text><Text style={t.body}>Your study data remains stored on this device.</Text><Message text={signOutError} /><Button label="Sign Out ↗" busy={signingOut} disabled={blocked} onPress={signOut} /></View>
