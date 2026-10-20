@@ -7,6 +7,7 @@ import { getLocalDateKey } from '../db/dateUtils';
 import { updateStudyBlockStatus } from '../db/StudyBlockService';
 import { seedDemoData } from '../db/seedData';
 import { createReviewItem, markReviewed } from '../db/ReviewService';
+import { exportBackup, importBackup } from '../db/BackupService';
 import { useDashboardData } from '../hooks/useDashboardData';
 import EntrySheet from './EntrySheet';
 import ScheduleSheet from './ScheduleSheet';
@@ -32,13 +33,15 @@ function useWorkspaceState(user) {
   const [addingReview, setAddingReview] = useState(false);
   const [workingReview, setWorkingReview] = useState(/** @type {{id: number, difficulty: import('../db/ReviewService').ReviewDifficulty} | null} */ (null));
   const [seeding, setSeeding] = useState(false);
+  const [backupAction, setBackupAction] = useState(/** @type {'export' | 'import' | null} */ (null));
+  // Full data replacements invalidate subject selections and unfinished topics.
   const [demoRevision, setDemoRevision] = useState(0);
   const [notice, setNotice] = useState('');
   const [actionError, setActionError] = useState('');
   const mutation = useRef(false);
   const busyRef = useRef(false);
   const mounted = useRef(false);
-  const busy = signingOut || workingBlock !== null || seeding || addingReview || workingReview !== null;
+  const busy = signingOut || workingBlock !== null || seeding || backupAction !== null || addingReview || workingReview !== null;
   const disabled = busy || !data.ready || data.refreshing;
   const blocked = busy || entry !== null || schedule !== null || reviewPrompt !== null;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -146,6 +149,35 @@ function useWorkspaceState(user) {
     } finally { mutation.current = false; busyRef.current = false; if (mounted.current) setSeeding(false); }
   }
 
+  /** @param {'export' | 'import'} action */
+  async function manageBackup(action) {
+    if (mutation.current || disabled || busyRef.current) return;
+    mutation.current = true; busyRef.current = true; setBackupAction(action); setActionError(''); setNotice('');
+    try {
+      if (action === 'export') {
+        await exportBackup(user.id);
+        if (mounted.current) setNotice('Backup prepared. Use the share sheet to save a copy.');
+      } else {
+        const counts = await importBackup(user.id);
+        if (!counts || !mounted.current) return;
+        setClock(Date.now()); setToday(getLocalDateKey());
+        setDemoRevision(value => value + 1);
+        await data.refresh();
+        if (mounted.current) setNotice(`Backup imported: ${counts.subjects} subjects, ${counts.tasks} tasks, ${counts.studyBlocks} study blocks, ${counts.reviewItems} review topics, and ${counts.materials} materials.`);
+      }
+    } catch (error) {
+      if (mounted.current) {
+        const message = error instanceof Error ? error.message : 'Please try again.';
+        setActionError(action === 'import'
+          ? `Import failed. ${message} Your existing local data was not replaced.`
+          : `Export failed. ${message}`);
+      }
+    } finally {
+      mutation.current = false; busyRef.current = false;
+      if (mounted.current) setBackupAction(null);
+    }
+  }
+
   /** @param {StudyBlock} block */
   function savedSession(block) {
     setSchedule(null); setActionError('');
@@ -176,7 +208,7 @@ function useWorkspaceState(user) {
     user, data, clock, today, disabled, blocked, workingBlock, seeding, demoRevision, addingReview, workingReview, addReview, review,
     notice, dismissNotice: () => setNotice(''), error: data.error || actionError,
     refresh: refreshData, refreshInBackground,
-    complete, loadDemoData, openEntry, openSchedule, openReschedule,
+    complete, loadDemoData, backupAction, manageBackup, openEntry, openSchedule, openReschedule,
     signingOut, signOutError, signOut: () => { if (!busyRef.current) void signOut(); },
     entry, initialSubject, schedule, setEntry, setSchedule, setNotice, savedSession,
     reviewPrompt, addCompletedReview, dismissReviewPrompt,

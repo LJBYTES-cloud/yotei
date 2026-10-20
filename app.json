@@ -27,7 +27,8 @@
       "expo-secure-store",
       "expo-sqlite",
       "expo-router",
-      "expo-font"
+      "expo-font",
+      "expo-sharing"
     ]
   }
 }
