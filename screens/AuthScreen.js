@@ -85,7 +85,7 @@ export default function AuthScreen() {
     }
     if (isSignUp && !demo) {
       if (!name.trim()) {
-        setError('Tell us your name to create your account.');
+        setError('Enter your name to create an account.');
         return;
       }
       if (credentials.password.length < 8) {
@@ -128,11 +128,11 @@ export default function AuthScreen() {
                 {restoring ? (
                   <View style={styles.loading} accessibilityLiveRegion="polite">
                     <ActivityIndicator color={colors.accent} size="large" />
-                    <Text style={styles.subtitle}>Getting your space ready…</Text>
+                    <Text style={styles.subtitle}>Restoring session…</Text>
                   </View>
                 ) : (
                   <>
-                    <Text style={styles.cardTitle}>Let’s try that again</Text>
+                    <Text style={styles.cardTitle}>Session restore failed</Text>
                     <ErrorMessage message={restoreError} />
                     <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={retryRestore}>
                       <Text style={styles.primaryText}>Retry</Text>
@@ -143,9 +143,9 @@ export default function AuthScreen() {
             ) : (
               <>
                 <View style={styles.intro}>
-                  <Text style={styles.eyebrow}>MAKE ROOM FOR WHAT MATTERS</Text>
-                  <Text style={styles.heading}>{isSignUp ? 'Big plans.\nSmall steps' : 'Find your focus.\nOwn your day'}<Text style={styles.accentText}>.</Text></Text>
-                  <Text style={styles.subtitle}>{isSignUp ? 'Start a fresh chapter. Build a rhythm that works for you.' : 'A calmer place to plan, study, and move forward.'}</Text>
+                  <Text style={styles.eyebrow}>ACCOUNT</Text>
+                  <Text style={styles.heading}>{isSignUp ? 'Create account' : 'Sign in'}</Text>
+                  <Text style={styles.subtitle}>Access your subjects, tasks, study sessions, and review queue.</Text>
                 </View>
                 <View style={styles.card}>
                   <View style={styles.tabs} accessibilityRole="tablist">
@@ -160,8 +160,8 @@ export default function AuthScreen() {
                       </Pressable>
                     ))}
                   </View>
-                  <Text style={styles.cardTitle}>{isSignUp ? 'Your journey starts here' : 'Welcome back'}</Text>
-                  <Text style={styles.cardDescription}>{isSignUp ? 'A fresh start is just a few details away.' : 'Good to see you. Let’s get you settled in.'}</Text>
+                  <Text style={styles.cardTitle}>{isSignUp ? 'Account details' : 'Credentials'}</Text>
+                  <Text style={styles.cardDescription}>{isSignUp ? 'Enter your name, email address, and password.' : 'Enter your email address and password.'}</Text>
                   {isSignUp && <Field label="Your name" placeholder="Alex Morgan" value={name} onChangeText={setName} autoComplete="name" textContentType="name" maxLength={128} editable={!working} />}
                   <Field
                     label="Email address" placeholder="you@example.com"
@@ -201,22 +201,21 @@ export default function AuthScreen() {
                     style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, working && styles.disabled]}
                   >
                     {working ? <ActivityIndicator color={colors.onAccent} /> : (
-                      <><Text style={styles.primaryText}>{isSignUp ? 'Create account' : 'Let’s get started'}</Text><Text style={styles.buttonArrow}>↗</Text></>
+                      <><Text style={styles.primaryText}>{isSignUp ? 'Create account' : 'Sign in'}</Text><Text style={styles.buttonArrow}>↗</Text></>
                     )}
                   </Pressable>
                   {!USE_REAL_AUTH && (
                     <>
-                      <View style={styles.divider}><View style={styles.dividerLine} /><Text style={styles.dividerText}>a little look around?</Text><View style={styles.dividerLine} /></View>
+                      <View style={styles.divider}><View style={styles.dividerLine} /><Text style={styles.dividerText}>Mock authentication</Text><View style={styles.dividerLine} /></View>
                       <Pressable accessibilityRole="button" disabled={working} accessibilityState={{ disabled: working }} onPress={() => void authenticate(true)} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed, working && styles.disabled]}>
-                        <Text style={styles.secondaryText}>Explore the demo</Text>
+                        <Text style={styles.secondaryText}>Sign in to demo</Text>
                       </Pressable>
-                      <Text style={styles.demoNote}>Demo accounts are for exploring. New accounts reset when the app restarts.</Text>
+                      <Text style={styles.demoNote}>New mock accounts reset when the app restarts.</Text>
                     </>
                   )}
                 </View>
               </>
             )}
-            <View style={styles.footer}><View style={styles.footerDot} /><Text style={styles.footerText}>A little more intention. Every day.</Text></View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

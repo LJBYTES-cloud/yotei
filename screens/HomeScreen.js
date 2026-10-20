@@ -28,26 +28,23 @@ export default function HomeScreen() {
       <FlatList ref={list} data={blocks} keyExtractor={block => String(block.id)} contentContainerStyle={s.content}
         refreshing={data.refreshing && data.ready} onRefresh={refresh} initialNumToRender={6}
         ListHeaderComponent={<>
-          <ScreenHeader title="Home" edition="YOUR DAILY EDITION" eyebrow={new Date(clock).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()} subtitle="A little intention. A little room to breathe.">
-            Easy does it, {study.user.name.split(' ')[0] || 'friend'}.
-          </ScreenHeader>
+          <ScreenHeader title="Home" eyebrow={new Date(clock).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()} subtitle="View scheduled sessions and daily study time." />
           <View style={h.summary}>
-            <Text style={h.kicker}>THE SHAPE OF YOUR DAY</Text>
+            <Text style={h.kicker}>DAILY STUDY TIME</Text>
             <View style={h.numbers}><Text style={h.minutes}>{formatMinutes(data.minutes)}</Text><Text style={h.caption}>planned{ '\n' }& completed</Text></View>
             <View style={h.meter}><View style={[h.fill, { width: `${Math.min(data.minutes / 240 * 100, 100)}%`, backgroundColor: data.minutes > 240 ? p.warm : p.accent }]} /></View>
-            <Text style={h.summaryNote}>{data.minutes > 240 ? 'A full day. Leave space for breaks.' : '4 hours is a check-in, not a target.'}</Text>
+            <Text style={h.summaryNote}>{data.minutes > 240 ? 'Daily study time exceeds 4 hours. Schedule breaks.' : 'Daily workload warning threshold: 4 hours.'}</Text>
             <View style={h.stats}><Text style={s.hint}><Text style={h.statNumber}>{planned}</Text> ahead</Text><Text style={s.hint}><Text style={h.statNumber}>{completed}</Text> done today</Text></View>
           </View>
           <Feedback />
-          {coaching.length > 0 && <View style={s.card}><View style={s.section}><Text style={s.sectionTitle}>A little encouragement</Text></View>{coaching.map(task => <CoachingCard key={task.id} task={task} />)}</View>}
+          {coaching.length > 0 && <View style={s.card}><View style={s.section}><Text style={s.sectionTitle}>Postponed tasks</Text></View>{coaching.map(task => <CoachingCard key={task.id} task={task} />)}</View>}
           <View style={s.card}>
             <View style={s.section}><Text style={s.sectionTitle}>Today’s Focus</Text><Text style={s.sectionCount}>{String(blocks.length).padStart(2, '0')}</Text></View>
             <Button label="Plan a session ↗" disabled={disabled} onPress={() => router.navigate('/library')} />
           </View>
         </>}
         renderItem={({ item }) => <FocusCard block={item} />}
-        ListEmptyComponent={<EmptyState title="Your day has room." text="Choose a task from your Library and set aside a little time. You set the pace." action="Open Library ↗" onPress={() => router.navigate('/library')} />}
-        ListFooterComponent={<Text style={s.footer}>PROGRESS, AT YOUR PACE.</Text>} />
+        ListEmptyComponent={<EmptyState title="No sessions scheduled" text="Select a task in Library to schedule a study session." action="Open Library ↗" onPress={() => router.navigate('/library')} />} />
     </SafeAreaView>
   );
 }

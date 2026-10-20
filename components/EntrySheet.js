@@ -18,7 +18,7 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, onC
   async function save() {
     if (submitting.current) return;
     setError('');
-    if (!name.trim()) { setError(kind === 'subject' ? 'Give your subject a name.' : 'What’s the next small step? Add a title.'); return; }
+    if (!name.trim()) { setError(kind === 'subject' ? 'Enter a subject name.' : 'Enter a task title.'); return; }
     if (kind === 'task' && subjectId === null) { setError('Create a subject before adding a task.'); return; }
     submitting.current = true; setBusy(true);
     try {
@@ -29,15 +29,15 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, onC
     finally { submitting.current = false; setBusy(false); }
   }
   return (
-    <Sheet kicker={kind === 'subject' ? 'GIVE YOUR LEARNING A HOME' : 'ONE SMALL STEP'} title={kind === 'subject' ? 'A new subject.' : 'What’s on your mind?'} onClose={onClose} busy={busy}>
-      <Input label={kind === 'subject' ? 'Subject name' : 'Task title'} value={name} onChangeText={setName} placeholder={kind === 'subject' ? 'e.g. Architecture' : 'e.g. Sketch the first three ideas'} maxLength={kind === 'subject' ? 128 : 256} editable={!busy} returnKeyType="done" onSubmitEditing={() => void save()} />
-      <Text style={s.label}>{kind === 'subject' ? 'A color to call its own' : 'Choose a subject'}</Text>
+    <Sheet kicker={kind === 'subject' ? 'SUBJECT' : 'TASK'} title={kind === 'subject' ? 'Add subject' : 'Add task'} onClose={onClose} busy={busy}>
+      <Input label={kind === 'subject' ? 'Subject name' : 'Task title'} value={name} onChangeText={setName} placeholder={kind === 'subject' ? 'e.g. Architecture' : 'e.g. Read chapter 3'} maxLength={kind === 'subject' ? 128 : 256} editable={!busy} returnKeyType="done" onSubmitEditing={() => void save()} />
+      <Text style={s.label}>{kind === 'subject' ? 'Subject color' : 'Choose a subject'}</Text>
       {kind === 'subject' ? (
         <View style={s.colorRow}>{(isDark ? [p.accent, '#B0CDBD', '#EAC68D', '#E7A8A6', '#99BCE5'] : [p.accent, '#444444', '#777777', '#999999', '#BBBBBB']).map((value, index) => <Pill key={value} label={(isDark ? ['Iris', 'Sage', 'Honey', 'Rose', 'Sky'] : ['Ink', 'Charcoal', 'Graphite', 'Silver', 'Stone'])[index]} color={value} selected={color === value} disabled={busy} onPress={() => setColor(value)} />)}</View>
       ) : <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={s.subjects}>{subjects.map(subject => <Pill key={subject.id} label={subject.name} color={subject.color} selected={subjectId === subject.id} disabled={busy} onPress={() => setSubjectId(subject.id)} />)}</ScrollView>}
       <Message text={error} />
-      <Button label={kind === 'subject' ? 'Create subject ↗' : 'Add to my list ↗'} busy={busy} onPress={() => void save()} />
-      <Text style={s.note}>{kind === 'subject' ? 'A little organization. A clearer head.' : 'Keep it small enough that starting feels possible.'}</Text>
+      <Button label={kind === 'subject' ? 'Create subject ↗' : 'Add task'} busy={busy} onPress={() => void save()} />
+      <Text style={s.note}>{kind === 'subject' ? 'Subjects group related tasks and review topics.' : 'Schedule this task from Library.'}</Text>
     </Sheet>
   );
 }

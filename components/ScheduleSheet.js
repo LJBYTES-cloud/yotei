@@ -46,29 +46,29 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
   }
 
   return (
-    <Sheet title={sourceBlock ? 'A fresh start.' : 'Make a little room.'} kicker="PLAN A FOCUS SESSION" onClose={onClose} busy={busy}>
+    <Sheet title={sourceBlock ? 'Reschedule session' : 'Schedule session'} kicker="STUDY SESSION" onClose={onClose} busy={busy}>
       <View style={s.task}><Text style={s.subject}>{task.subject_name}</Text><Text style={s.taskTitle}>{task.title}</Text></View>
       {warning ? (
         <View accessibilityRole="alert" style={s.warning}>
-          <Text style={s.warningKicker}>A MOMENT TO CHECK IN</Text>
-          <Text style={s.warningTitle}>Leave room to breathe.</Text>
-          <Text style={s.warningBody}>You’re planning a heavy day. Remember to take breaks.</Text>
+          <Text style={s.warningKicker}>WORKLOAD WARNING</Text>
+          <Text style={s.warningTitle}>Daily study time exceeds 4 hours</Text>
+          <Text style={s.warningBody}>This session would put your planned and completed study time above 4 hours.</Text>
           {warning.days.map(day => <Text key={day.date} style={s.warningDetail}>{day.date} · {formatMinutes(day.current_minutes)} already planned + {formatMinutes(day.added_minutes)} = {formatMinutes(day.total_minutes)}</Text>)}
-          <Text style={s.warningBody}>That’s over 4 hours of study. Keep this session if it feels right, or make the plan lighter.</Text>
+          <Text style={s.warningBody}>Adjust the session duration or start time, or continue scheduling.</Text>
           <Message text={error} />
           <Button label="Schedule anyway" busy={busy} onPress={() => void submit(true)} />
-          <View style={s.gap} /><Button label="Go back & adjust" tone="quiet" disabled={busy} onPress={() => { setWarning(null); setError(''); }} />
+          <View style={s.gap} /><Button label="Adjust session" tone="quiet" disabled={busy} onPress={() => { setWarning(null); setError(''); }} />
         </View>
       ) : (
         <>
-          <Input label="How much time?" value={duration} onChangeText={setDuration} keyboardType="number-pad" placeholder="e.g. 25" editable={!busy} maxLength={6} returnKeyType="done" />
-          <Text style={s.help}>Minutes. Five is a perfectly good start.</Text>
-          <Text style={s.label}>When would you like to begin?</Text>
+          <Input label="Duration (minutes)" value={duration} onChangeText={setDuration} keyboardType="number-pad" placeholder="e.g. 25" editable={!busy} maxLength={6} returnKeyType="done" />
+          <Text style={s.help}>Enter a positive whole number of minutes.</Text>
+          <Text style={s.label}>Start time</Text>
           <View style={s.choices}><Pill label="Now" selected={mode === 'now'} disabled={busy} onPress={() => setMode('now')} /><Pill label="Pick a time" selected={mode === 'custom'} disabled={busy} onPress={() => setMode('custom')} /></View>
           {mode === 'custom' && <><Input label="Start time today · 24-hour clock" value={time} onChangeText={setTime} placeholder="14:30" keyboardType="numbers-and-punctuation" maxLength={5} editable={!busy} autoCorrect={false} /><Text style={s.help}>Your local time. Choose a time later today.</Text></>}
           <Message text={error} />
-          <Button label={sourceBlock ? 'Reschedule session ↗' : 'Save my focus session ↗'} busy={busy} onPress={() => void submit()} />
-          <Text style={s.footnote}>Make a plan that leaves space for being human.</Text>
+          <Button label={sourceBlock ? 'Reschedule session ↗' : 'Save session'} busy={busy} onPress={() => void submit()} />
+          <Text style={s.footnote}>Scheduled sessions appear in Home.</Text>
         </>
       )}
     </Sheet>

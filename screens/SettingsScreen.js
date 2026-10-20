@@ -15,30 +15,32 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={s.screen} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={s.content}>
-        <ScreenHeader title="Settings" edition="MAKE IT YOURS" eyebrow="YOUR SPACE, YOUR PACE" subtitle="A few thoughtful choices for the way you like to study." />
+        <ScreenHeader title="Settings" edition="ACCOUNT & APPEARANCE" subtitle="Manage your account, appearance, and demo data." />
         <View style={[s.card, t.profile]}><View style={t.avatar}><Text style={t.initial}>{user.name.charAt(0).toUpperCase() || 'Y'}</Text></View><View style={s.flex}><Text style={t.name}>{user.name}</Text><Text style={s.hint}>{user.email}</Text></View></View>
         <Text style={t.label}>01 / APPEARANCE</Text>
         <View style={s.card}>
-          <View style={t.row}><View style={s.flex}><Text style={t.title}>Light mode</Text><Text style={t.description}>{isDark ? 'After hours. A little violet.' : 'Paper, ink, and room to think.'}</Text></View>
+          <View style={t.row}><View style={s.flex}><Text style={t.title}>Light mode</Text><Text style={t.description}>{isDark ? 'Dark background with purple accents.' : 'Light background with black text.'}</Text></View>
             <Switch accessibilityLabel="Light mode" accessibilityHint="Switch between dark purple and monochrome light themes" value={!isDark} onValueChange={toggleTheme} trackColor={{ false: p.line, true: p.accent }} thumbColor={isDark ? p.muted : p.surface} ios_backgroundColor={p.line} />
           </View>
-          <View style={t.themePreview}><View style={t.previewPage}><View style={t.previewLine} /><View style={[t.previewLine, t.shortLine]} /><View style={t.previewButton} /></View><View style={s.flex}><Text style={s.eyebrow}>{isDark ? 'DARK / VIOLET' : 'LIGHT / MONOCHROME'}</Text><Text style={s.hint}>Same intention. A different atmosphere.</Text></View></View>
+          <View style={t.themePreview}><View style={t.previewPage}><View style={t.previewLine} /><View style={[t.previewLine, t.shortLine]} /><View style={t.previewButton} /></View><View style={s.flex}><Text style={s.eyebrow}>{isDark ? 'DARK / VIOLET' : 'LIGHT / MONOCHROME'}</Text><Text style={s.hint}>Applies to all screens and dialogs.</Text></View></View>
         </View>
         <Feedback />
         {!USE_REAL_AUTH && <>
-          <Text style={t.label}>02 / TAKE A LOOK AROUND</Text>
-          <View style={s.card}><Text style={t.title}>A day, already in motion.</Text><Text style={t.body}>Three subjects, six small steps, and four hours of focus. Explore coaching and the workload check-in.</Text><Button label="Load Demo Data" tone="outline" disabled={disabled || blocked} busy={seeding} onPress={() => void loadDemoData()} /><Text style={t.footnote}>Replaces only this demo account’s local study data.</Text></View>
+          <Text style={t.label}>02 / DEMO DATA</Text>
+          <View style={s.card}><Text style={t.title}>Demo study data</Text><Text style={t.body}>Load three subjects, six tasks, and four hours of study sessions.</Text><Button label="Load Demo Data" tone="outline" disabled={disabled || blocked} busy={seeding} onPress={() => void loadDemoData()} /><Text style={t.footnote}>Replaces only this demo account’s local study data.</Text></View>
         </>}
         <Text style={t.label}>{USE_REAL_AUTH ? '02' : '03'} / YOUR ACCOUNT</Text>
-        <View style={s.card}><Text style={t.title}>Until next time.</Text><Text style={t.body}>Your study plans will be here when you return.</Text><Message text={signOutError} /><Button label="Sign Out ↗" busy={signingOut} disabled={blocked} onPress={signOut} /></View>
-        <Text style={s.footer}>YOTEI / A LITTLE MORE INTENTION.</Text>
+        <View style={s.card}><Text style={t.title}>Sign out</Text><Text style={t.body}>Your study data remains stored on this device.</Text><Message text={signOutError} /><Button label="Sign Out ↗" busy={signingOut} disabled={blocked} onPress={signOut} /></View>
       </ScrollView>
+      <View style={t.mottoBar}><Text style={t.mottoText}>By students, for students.</Text></View>
     </SafeAreaView>
   );
 }
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
+  mottoBar: { paddingHorizontal: 20, paddingVertical: 12, borderTopWidth: 1, borderTopColor: p.line, backgroundColor: p.surface },
+  mottoText: { color: p.text, fontSize: 11, lineHeight: 16, textAlign: 'center' },
   profile: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   avatar: { height: 52, width: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: p.accentSoft }, initial: { color: p.accent, fontSize: 23, fontWeight: '500' }, name: { color: p.text, fontSize: 18, fontWeight: '500', marginBottom: 4 },
   label: { color: p.muted, fontSize: 10, letterSpacing: 1.7, fontWeight: '700', marginTop: 12, marginBottom: 12 },

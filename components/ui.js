@@ -3,13 +3,13 @@ import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, Sc
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 
-/** @param {{ label: string, onPress: () => void, busy?: boolean, disabled?: boolean, tone?: 'primary' | 'quiet' | 'outline', compact?: boolean }} props */
-export function Button({ label, onPress, busy = false, disabled = false, tone = 'primary', compact = false }) {
+/** @param {{ label: string, accessibilityLabel?: string, onPress: () => void, busy?: boolean, disabled?: boolean, tone?: 'primary' | 'quiet' | 'outline', compact?: boolean }} props */
+export function Button({ label, accessibilityLabel = label, onPress, busy = false, disabled = false, tone = 'primary', compact = false }) {
   const { colors: p } = useTheme();
   const s = useThemedStyles(createStyles);
   const blocked = disabled || busy;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: blocked, busy }} disabled={blocked} onPress={onPress}
+    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ disabled: blocked, busy }} disabled={blocked} onPress={onPress}
       style={({ pressed }) => [s.button, s[tone], compact && s.compact, pressed && s.pressed, blocked && s.disabled]}>
       {busy ? <ActivityIndicator color={tone === 'primary' ? p.onAccent : p.accent} /> : <Text style={[s.buttonText, tone !== 'primary' && s.lightButtonText]}>{label}</Text>}
     </Pressable>

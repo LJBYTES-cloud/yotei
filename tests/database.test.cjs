@@ -92,15 +92,139 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
   await scheduling.evaluate();
   const demo = await load('./db/seedData.js', parent);
   await demo.evaluate();
+  const reviews = await load('./db/ReviewService.js', parent);
+  await reviews.evaluate();
   const database = modules.get(path.resolve('db/database.js')).namespace;
   return {
-    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace,
+    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace, ...reviews.namespace,
+    setNow: value => { now = value; },
     get opens() { return opens; },
     close: async () => { for (const connection of connections) await connection.closeAsync(); },
   };
 }
 
 const plain = value => JSON.parse(JSON.stringify(value));
+
+test('review queue binds topics, validates input, and isolates accounts for every operation', async t => {
+  const services = await loadServices(':memory:', false, '2026-10-20T12:00:00Z');
+  t.after(services.close);
+  const user = "review-user' OR 1=1 --";
+  const subject = await services.createSubject(user, { name: 'Biology' });
+  const otherSubject = await services.createSubject('other-user', { name: 'History' });
+  const topic = "Cell division'); DROP TABLE ReviewItem; --";
+  const item = await services.createReviewItem(user, { subject_id: subject.id, topic: `  ${topic}  ` });
+  const other = await services.createReviewItem('other-user', { subject_id: otherSubject.id, topic: 'French Revolution' });
+  assert.equal(item.topic, topic);
+  assert.equal(item.subject_name, 'Biology');
+  assert.equal(item.last_reviewed_at, null);
+  assert.equal(item.next_review_at, null);
+  assert.deepEqual(plain(await services.getDueReviews(user)), [plain(item)]);
+  assert.deepEqual(plain(await services.getDueReviews('other-user')), [plain(other)]);
+  for (const action of [
+    () => services.createReviewItem(user, { subject_id: otherSubject.id, topic: 'Wrong subject' }),
+    () => services.createReviewItem(user, { subject_id: 9999, topic: 'Missing subject' }),
+    () => services.createReviewItem(user, { subject_id: -1, topic: 'Invalid subject' }),
+    () => services.createReviewItem(user, { subject_id: subject.id, topic: ' ' }),
+    () => services.createReviewItem(user, { subject_id: subject.id, topic: 'x'.repeat(257) }),
+    () => services.createReviewItem(user, { subject_id: subject.id, topic: null }),
+    () => services.createReviewItem('', { subject_id: subject.id, topic: 'Invalid user' }),
+    () => services.getDueReviews(' '),
+    () => services.markReviewed(user, other.id, 'Good'),
+    () => services.markReviewed('', item.id, 'Hard'),
+    () => services.markReviewed(user, 0, 'Good'),
+    () => services.markReviewed(user, 99999, 'Good'),
+    () => services.markReviewed(user, item.id, 'Unknown'),
+    () => services.markReviewed(user, item.id, '__proto__'),
+    () => services.markReviewed(user, item.id, null),
+  ]) await assert.rejects(action());
+  assert.deepEqual(plain(await services.getDueReviews(user)), [plain(item)], 'invalid calls do not update or create reviews');
+  assert.deepEqual(plain(await services.getDueReviews('other-user')), [plain(other)], 'another account is unchanged');
+});
+
+test('due reviews include new, past, and exact-boundary timestamps but exclude the future', async t => {
+  const services = await loadServices(':memory:', false, '2026-10-20T12:00:00.000Z');
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Mathematics' });
+  const database = await services.getDatabase();
+  const deadlines = [null, '2026-10-19T12:00:00Z', '2026-10-20T12:00:00.000Z', '2026-10-20T12:00:00.001Z', '2026-10-20T20:00:00+08:00'];
+  const items = [];
+  for (const deadline of deadlines) {
+    const item = await services.createReviewItem('user-a', { subject_id: subject.id, topic: String(deadline) });
+    await database.runAsync('UPDATE ReviewItem SET next_review_at = ? WHERE id = ?', deadline, item.id);
+    items.push(item);
+  }
+  assert.deepEqual((await services.getDueReviews('user-a')).map(item => item.id), [items[0].id, items[1].id, items[2].id, items[4].id]);
+});
+
+test('ratings remove reviews from the due queue until 1, 3, or 7 calendar days later', async t => {
+  for (const [difficulty, days] of [['Hard', 1], ['Good', 3], ['Easy', 7]]) {
+    await t.test(difficulty, async t => {
+      const now = '2026-10-20T12:15:00Z';
+      const services = await loadServices(':memory:', false, now);
+      t.after(services.close);
+      const subject = await services.createSubject('user-a', { name: 'Biology' });
+      const item = await services.createReviewItem('user-a', { subject_id: subject.id, topic: 'Cell division' });
+      const result = await services.markReviewed('user-a', item.id, difficulty);
+      assert.equal(result.last_reviewed_at, now.replace('Z', '.000Z'));
+      assert.equal(result.next_review_at, `2026-10-${20 + days}T12:15:00.000Z`);
+      assert.equal((await services.getDueReviews('user-a')).length, 0);
+      await assert.rejects(services.markReviewed('user-a', item.id, 'Easy'), /no longer due/);
+      services.setNow(new Date(Date.parse(result.next_review_at) - 1).toISOString());
+      assert.equal((await services.getDueReviews('user-a')).length, 0);
+      services.setNow(result.next_review_at);
+      assert.equal((await services.getDueReviews('user-a'))[0].id, item.id);
+      const repeated = await services.markReviewed('user-a', item.id, 'Hard');
+      assert.equal(repeated.last_reviewed_at, result.next_review_at);
+      assert.ok(Date.parse(repeated.next_review_at) > Date.parse(result.next_review_at));
+    });
+  }
+});
+
+test('review intervals preserve local time across daylight-saving and month boundaries', async t => {
+  for (const localNow of ['2026-03-07T12:30:00', '2026-10-31T12:30:00', '2026-12-31T12:30:00']) {
+    const services = await loadServices(':memory:', false, localNow);
+    t.after(services.close);
+    const subject = await services.createSubject('user-a', { name: 'Biology' });
+    const item = await services.createReviewItem('user-a', { subject_id: subject.id, topic: 'Genetics' });
+    const result = await services.markReviewed('user-a', item.id, 'Hard');
+    const expected = new Date(localNow);
+    expected.setDate(expected.getDate() + 1);
+    assert.equal(result.next_review_at, expected.toISOString());
+    assert.equal(new Date(result.next_review_at).getHours(), 12);
+    assert.equal(new Date(result.next_review_at).getMinutes(), 30);
+  }
+});
+
+test('concurrent review ratings update a due occurrence once', async t => {
+  const services = await loadServices(':memory:', false, '2026-10-20T12:00:00Z');
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'History' });
+  const item = await services.createReviewItem('user-a', { subject_id: subject.id, topic: 'Industrial Revolution' });
+  const results = await Promise.allSettled([
+    services.markReviewed('user-a', item.id, 'Hard'), services.markReviewed('user-a', item.id, 'Easy'),
+  ]);
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  assert.equal(results.filter(result => result.status === 'rejected').length, 1);
+  assert.equal((await services.getDueReviews('user-a')).length, 0);
+});
+
+test('review schedule survives reopening the database', async t => {
+  const filename = path.join(os.tmpdir(), `yotei-review-test-${randomUUID()}.db`);
+  const instances = [];
+  t.after(async () => {
+    for (const instance of instances) await instance.close();
+    for (const suffix of ['', '-wal', '-shm']) if (fs.existsSync(filename + suffix)) fs.unlinkSync(filename + suffix);
+  });
+  const first = await loadServices(filename, false, '2026-10-20T12:00:00Z');
+  instances.push(first);
+  const subject = await first.createSubject('user-a', { name: 'Biology' });
+  const item = await first.createReviewItem('user-a', { subject_id: subject.id, topic: 'Photosynthesis' });
+  const reviewed = await first.markReviewed('user-a', item.id, 'Good');
+  await first.close();
+  const second = await loadServices(filename, false, reviewed.next_review_at);
+  instances.push(second);
+  assert.deepEqual(plain(await second.getDueReviews('user-a')), [plain(reviewed)]);
+});
 
 test('demo reset replaces only the selected account and can be repeated', async t => {
   const services = await loadServices(':memory:', false, '2026-10-20T12:00:00');

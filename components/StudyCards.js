@@ -6,12 +6,12 @@ import { createStudyStyles } from './studyStyles';
 import { formatMinutes, formatTime } from './theme';
 import { Button, Message } from './ui';
 
-/** @param {{title: string, edition: string, eyebrow: string, children?: import('react').ReactNode, subtitle: string}} props */
+/** @param {{title: string, edition?: string, eyebrow?: string, children?: import('react').ReactNode, subtitle: string}} props */
 export function ScreenHeader({ title, edition, eyebrow, children, subtitle }) {
   const s = useThemedStyles(createStudyStyles);
   return <>
-    <View style={s.masthead}><Text style={s.wordmark}>yotei<Text style={s.accent}>.</Text></Text><Text style={s.edition}>{edition}</Text></View>
-    <Text style={s.eyebrow}>{eyebrow}</Text><Text accessibilityRole="header" style={s.heading}>{title}</Text>{children && <Text style={s.headerDeck}>{children}</Text>}<Text style={s.intro}>{subtitle}</Text>
+    <View style={s.masthead}><Text style={s.wordmark}>yotei<Text style={s.accent}>.</Text></Text>{edition && <Text style={s.edition}>{edition}</Text>}</View>
+    {eyebrow && <Text style={s.eyebrow}>{eyebrow}</Text>}<Text accessibilityRole="header" style={s.heading}>{title}</Text>{children && <Text style={s.headerDeck}>{children}</Text>}<Text style={s.intro}>{subtitle}</Text>
   </>;
 }
 
@@ -29,11 +29,11 @@ export function CoachingCard({ task }) {
   const { disabled, openSchedule } = useStudy();
   const s = useThemedStyles(createStudyStyles);
   return <View style={s.coaching}>
-    <Text style={s.coachingLabel}>SMALLER IS A STRATEGY</Text>
-    <Text style={s.coachingText}>Struggling to start? Try a 5-minute micro-action.</Text>
+    <Text style={s.coachingLabel}>POSTPONED TASK</Text>
+    <Text style={s.coachingText}>This task has been postponed at least twice. Try a 5-minute session.</Text>
     <Text style={[s.hint, { marginTop: 8 }]}>{task.title}</Text>
     <Pressable accessibilityRole="button" accessibilityLabel={`Schedule a 5-minute start for ${task.title}`} disabled={disabled} onPress={() => openSchedule(task, 5)} style={s.coachingAction}>
-      <Text style={s.coachingActionText}>Just five minutes ↗</Text>
+      <Text style={s.coachingActionText}>Schedule 5 minutes</Text>
     </Pressable>
   </View>;
 }
@@ -47,7 +47,7 @@ export function TaskCard({ task }) {
     <View style={s.cardTop}><View style={[s.dot, { backgroundColor: subjectColor(task.subject_color) }]} /><Text style={s.subject}>{task.subject_name}</Text></View>
     <Text style={s.title}>{task.title}</Text>
     {task.postpone_count >= 2 && <CoachingCard task={task} />}
-    <View style={s.cardBottom}><Text style={s.hint}>{task.postpone_count ? `${task.postpone_count} fresh starts` : 'One thing at a time.'}</Text><Button label="Schedule ↗" compact tone="quiet" disabled={disabled} onPress={() => openSchedule(task)} /></View>
+    <View style={s.cardBottom}><Text style={s.hint}>{task.postpone_count ? `Postponed ${task.postpone_count} ${task.postpone_count === 1 ? 'time' : 'times'}` : `${task.estimated_minutes} minutes estimated`}</Text><Button label="Schedule ↗" compact tone="quiet" disabled={disabled} onPress={() => openSchedule(task)} /></View>
   </View>;
 }
 
@@ -64,7 +64,7 @@ export function FocusCard({ block }) {
     {getLocalDateKey(new Date(block.start_time)) !== today && <Text style={s.oldDate}>{new Date(block.start_time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>}
     <View style={s.focusBody}><View style={[s.timeline, { backgroundColor: subjectColor(block.subject_color) }]} /><View style={s.flex}><Text style={s.subject}>{block.subject_name}</Text><Text style={s.focusTitle}>{block.task_title}</Text><Text style={s.hint}>{formatMinutes((Date.parse(block.end_time) - Date.parse(block.start_time)) / 60000)} · until {formatTime(block.end_time)}</Text></View></View>
     {active && <Button label="Mark Done ✓" tone="quiet" busy={workingBlock === block.id} disabled={disabled} onPress={() => void complete(block.id)} />}
-    {missed && <View style={s.recovery}><Text style={s.coachingText}>You missed this block. Reschedule?</Text><Text style={s.hint}>The plan can change. Your next step can be smaller.</Text><Button label="Plan a fresh start ↗" tone="quiet" disabled={disabled} onPress={() => openReschedule(block)} /></View>}
+    {missed && <View style={s.recovery}><Text style={s.coachingText}>This session was missed.</Text><Text style={s.hint}>Choose a new start time and duration to reschedule.</Text><Button label="Reschedule" tone="quiet" disabled={disabled} onPress={() => openReschedule(block)} /></View>}
   </View>;
 }
 

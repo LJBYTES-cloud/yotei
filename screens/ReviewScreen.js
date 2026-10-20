@@ -1,58 +1,99 @@
-import { useMemo, useRef } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { router, useScrollToTop } from 'expo-router';
+﻿import { useCallback, useEffect, useRef, useState } from 'react';
+import { FlatList, Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useScrollToTop } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useThemedStyles } from '../ThemeContext';
-import { EmptyState, Feedback, FocusCard, ScreenHeader, TaskCard } from '../components/StudyCards';
+import { useTheme, useThemedStyles } from '../ThemeContext';
+import { REVIEW_INTERVAL_DAYS } from '../db/ReviewService';
+import { EmptyState, Feedback, ScreenHeader } from '../components/StudyCards';
 import { useStudy } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
-import { Button } from '../components/ui';
+import { Button, Input, Message, Pill } from '../components/ui';
 
-/** @typedef {{kind: 'block', block: import('../db/StudyBlockService').StudyBlock} | {kind: 'task', task: import('../db/TaskService').Task}} ReviewRow */
+/** @type {import('../db/ReviewService').ReviewDifficulty[]} */
+const difficulties = ['Hard', 'Good', 'Easy'];
 
-export default function ReviewScreen() {
-  const { data, refresh } = useStudy();
+/** @param {{item: import('../db/ReviewService').ReviewItem}} props */
+function DueReviewCard({ item }) {
+  const { review, disabled, workingReview } = useStudy();
+  const { subjectColor } = useTheme();
   const s = useThemedStyles(createStudyStyles);
   const r = useThemedStyles(createStyles);
+  return <View style={s.card}>
+    <View style={s.cardTop}><View style={[s.dot, { backgroundColor: subjectColor(item.subject_color) }]} /><Text style={s.subject}>{item.subject_name}</Text></View>
+    <Text style={s.title}>{item.topic}</Text>
+    <Text style={r.dueDate}>{item.next_review_at ? `Due: ${new Date(item.next_review_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Not reviewed yet'}</Text>
+    <View style={r.ratings}>{difficulties.map(difficulty => <View key={difficulty} style={s.flex}>
+      <Button label={difficulty} accessibilityLabel={`Rate ${item.topic} ${difficulty}; review in ${REVIEW_INTERVAL_DAYS[difficulty]} ${REVIEW_INTERVAL_DAYS[difficulty] === 1 ? 'day' : 'days'}`}
+        compact tone="quiet" disabled={disabled}
+        busy={workingReview?.id === item.id && workingReview.difficulty === difficulty}
+        onPress={() => void review(item.id, difficulty)} />
+      <Text style={r.interval}>{REVIEW_INTERVAL_DAYS[difficulty]} {REVIEW_INTERVAL_DAYS[difficulty] === 1 ? 'day' : 'days'}</Text>
+    </View>)}</View>
+  </View>;
+}
+
+export default function ReviewScreen() {
+  const { data, refresh, refreshInBackground, disabled, addingReview, addReview, openEntry, demoRevision } = useStudy();
+  const [subjectId, setSubjectId] = useState(/** @type {number | null} */ (null));
+  const [topic, setTopic] = useState('');
+  const [error, setError] = useState('');
+  const submitting = useRef(false);
   const list = useRef(null);
   useScrollToTop(list);
-  // Review uses the same account-scoped workspace data and existing actions.
-  const missed = useMemo(() => data.blocks.filter(block => block.status === 'missed' && !block.rescheduled_to), [data.blocks]);
-  const postponed = useMemo(() => data.tasks.filter(task => task.postpone_count >= 2 && task.status === 'pending'), [data.tasks]);
-  const rows = useMemo(() => /** @type {ReviewRow[]} */ ([
-    ...missed.map(block => ({ kind: 'block', block })),
-    ...postponed.map(task => ({ kind: 'task', task })),
-  ]), [missed, postponed]);
+  const s = useThemedStyles(createStudyStyles);
+  const r = useThemedStyles(createStyles);
+  const selectedSubject = data.subjects.find(subject => subject.id === subjectId) ?? data.subjects[0];
+
+  useEffect(() => { setSubjectId(null); setTopic(''); setError(''); }, [demoRevision]);
+  useFocusEffect(useCallback(() => {
+    refreshInBackground();
+    // An open queue also refreshes when a scheduled review becomes due.
+    const interval = setInterval(refreshInBackground, 60_000);
+    return () => clearInterval(interval);
+  }, [refreshInBackground]));
+
+  async function submit() {
+    if (submitting.current || disabled) return;
+    if (!selectedSubject) { setError('Create a subject before adding review topics.'); return; }
+    if (!topic.trim()) { setError('Enter a review topic.'); return; }
+    submitting.current = true; setError(''); Keyboard.dismiss();
+    try {
+      if (await addReview({ subject_id: selectedSubject.id, topic })) setTopic('');
+    } finally { submitting.current = false; }
+  }
+
   return (
     <SafeAreaView style={s.screen} edges={['top', 'left', 'right']}>
-      <FlatList ref={list} data={rows} contentContainerStyle={s.content}
-        keyExtractor={item => item.kind === 'block' ? `block-${item.block.id}` : `task-${item.task.id}`}
-        refreshing={data.refreshing && data.ready} onRefresh={refresh} initialNumToRender={6}
+      <FlatList ref={list} data={data.reviews} contentContainerStyle={s.content} keyExtractor={item => String(item.id)}
+        refreshing={data.refreshing && data.ready} onRefresh={refresh} initialNumToRender={6} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         ListHeaderComponent={<>
-          <ScreenHeader title="Review" edition="A FRESH PERSPECTIVE" eyebrow="PAUSE, REFLECT, RESET" subtitle="Revisit missed sessions and tasks that have been hard to start. A smaller plan still counts." />
+          <ScreenHeader title="Review" edition="SPACED REPETITION" subtitle="Add topics and rate your recall to schedule the next review." />
           <View style={s.card}>
-            <Text style={s.sectionTitle}>There’s room for a fresh start.</Text>
-            <View style={r.stats}>
-              <View style={r.stat}><Text style={r.number}>{missed.length}</Text><Text style={s.hint}>missed sessions</Text></View>
-              <View style={r.stat}><Text style={r.number}>{postponed.length}</Text><Text style={s.hint}>tasks to revisit</Text></View>
-            </View>
-            <Button label="Explore your Library ↗" onPress={() => router.navigate('/library')} />
+            <View style={s.section}><Text style={s.sectionTitle}>Add a review topic</Text></View>
+            {data.subjects.length > 0 ? <>
+              <Text style={r.label}>Subject</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={r.subjects}>
+                {data.subjects.map(subject => <Pill key={subject.id} label={subject.name} color={subject.color} selected={selectedSubject?.id === subject.id} disabled={disabled} onPress={() => setSubjectId(subject.id)} />)}
+              </ScrollView>
+              <Input label="Topic" placeholder="e.g. Cell division" value={topic} onChangeText={setTopic} maxLength={256} editable={!disabled} returnKeyType="done" onSubmitEditing={() => void submit()} />
+              <Message text={error} />
+              <Button label="Add to Queue" busy={addingReview} disabled={disabled} onPress={() => void submit()} />
+            </> : <View style={r.noSubjects}><Text style={s.hint}>{data.ready ? 'Create a subject before adding topics to the queue.' : 'Loading subjects…'}</Text><Button label="Create subject" disabled={disabled} onPress={() => openEntry('subject')} /></View>}
           </View>
           <Feedback />
+          <View style={s.card}><View style={s.section}><Text style={s.sectionTitle}>Due Reviews</Text><Text style={s.sectionCount}>{data.reviews.length}</Text></View><Text style={s.hint}>Hard: 1 day · Good: 3 days · Easy: 7 days</Text></View>
         </>}
-        renderItem={({ item, index }) => <>
-          {(index === 0 || rows[index - 1].kind !== item.kind) && <View style={s.card}><Text style={s.sectionTitle}>{item.kind === 'block' ? 'Missed sessions' : 'Try a smaller start'}</Text></View>}
-          {item.kind === 'block' ? <FocusCard block={item.block} /> : <TaskCard task={item.task} />}
-        </>}
-        ListEmptyComponent={<EmptyState title="A clear page." text="No missed sessions or repeatedly postponed tasks to revisit. Keep moving at your own pace." />}
-        ListFooterComponent={<Text style={s.footer}>A RESET IS PROGRESS, TOO.</Text>} />
+        renderItem={({ item }) => <DueReviewCard item={item} />}
+        ListEmptyComponent={<EmptyState title="No reviews due" text="New topics appear here immediately. Reviewed topics return at their scheduled time." />} />
     </SafeAreaView>
   );
 }
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
-  stats: { flexDirection: 'row', gap: 12, marginVertical: 16 },
-  stat: { flex: 1, backgroundColor: p.input, borderWidth: 1, borderColor: p.line, borderRadius: 12, padding: 12, gap: 8 },
-  number: { color: p.text, fontSize: 28, lineHeight: 34, fontWeight: '700' },
+  label: { color: p.text, fontSize: 12, fontWeight: '600', marginBottom: 8 },
+  subjects: { gap: 12, paddingBottom: 16 }, noSubjects: { gap: 12 },
+  dueDate: { color: p.muted, fontSize: 12, lineHeight: 20, marginTop: 12 },
+  ratings: { flexDirection: 'row', gap: 8, marginTop: 16 },
+  interval: { color: p.muted, fontSize: 11, textAlign: 'center', marginTop: 8 },
 });
