@@ -1,25 +1,29 @@
 import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { palette as p } from './theme';
+import { useTheme, useThemedStyles } from '../ThemeContext';
 
 /** @param {{ label: string, onPress: () => void, busy?: boolean, disabled?: boolean, tone?: 'primary' | 'quiet' | 'outline', compact?: boolean }} props */
 export function Button({ label, onPress, busy = false, disabled = false, tone = 'primary', compact = false }) {
+  const { colors: p } = useTheme();
+  const s = useThemedStyles(createStyles);
   const blocked = disabled || busy;
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: blocked, busy }} disabled={blocked} onPress={onPress}
       style={({ pressed }) => [s.button, s[tone], compact && s.compact, pressed && s.pressed, blocked && s.disabled]}>
-      {busy ? <ActivityIndicator color={tone === 'primary' ? p.background : p.accent} /> : <Text style={[s.buttonText, tone !== 'primary' && s.lightButtonText]}>{label}</Text>}
+      {busy ? <ActivityIndicator color={tone === 'primary' ? p.onAccent : p.accent} /> : <Text style={[s.buttonText, tone !== 'primary' && s.lightButtonText]}>{label}</Text>}
     </Pressable>
   );
 }
 
 /** @param {{ label: string, selected?: boolean, onPress: () => void, disabled?: boolean, color?: string }} props */
 export function Pill({ label, selected = false, onPress, disabled = false, color }) {
+  const { subjectColor } = useTheme();
+  const s = useThemedStyles(createStyles);
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ selected, disabled }} disabled={disabled} onPress={onPress}
       style={({ pressed }) => [s.pill, selected && s.pillSelected, pressed && s.pressed]}>
-      {color && <View style={[s.dot, { backgroundColor: color }]} />}
+      {color && <View style={[s.dot, { backgroundColor: subjectColor(color) }]} />}
       <Text style={[s.pillText, selected && s.pillTextSelected]}>{label}</Text>
     </Pressable>
   );
@@ -27,11 +31,13 @@ export function Pill({ label, selected = false, onPress, disabled = false, color
 
 /** @param {{ label: string } & import('react-native').TextInputProps} props */
 export function Input({ label, ...props }) {
+  const { colors: p } = useTheme();
+  const s = useThemedStyles(createStyles);
   const [focused, setFocused] = useState(false);
   return (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
-      <TextInput accessibilityLabel={label} placeholderTextColor="#858494" selectionColor={p.accent}
+      <TextInput accessibilityLabel={label} placeholderTextColor={p.subtle} selectionColor={p.accent}
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} {...props} style={[s.input, focused && s.inputFocused, props.style]} />
     </View>
   );
@@ -39,12 +45,14 @@ export function Input({ label, ...props }) {
 
 /** @param {{ text: string, kind?: 'error' | 'notice' }} props */
 export function Message({ text, kind = 'error' }) {
+  const s = useThemedStyles(createStyles);
   if (!text) return null;
   return <Text accessibilityRole={kind === 'error' ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.message, kind === 'notice' && s.notice]}>{text}</Text>;
 }
 
 /** @param {{ title: string, kicker: string, busy?: boolean, onClose: () => void, children: import('react').ReactNode }} props */
 export function Sheet({ title, kicker, busy = false, onClose, children }) {
+  const s = useThemedStyles(createStyles);
   const close = () => { if (!busy) onClose(); };
   return (
     <Modal transparent animationType="slide" presentationStyle="overFullScreen" statusBarTranslucent navigationBarTranslucent onRequestClose={close}>
@@ -67,18 +75,19 @@ export function Sheet({ title, kicker, busy = false, onClose, children }) {
   );
 }
 
-const s = StyleSheet.create({
+/** @param {import('../ThemeContext').ThemeColors} p */
+const createStyles = p => StyleSheet.create({
   pressed: { opacity: 0.7 }, disabled: { opacity: 0.5 },
-  button: { minHeight: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, paddingHorizontal: 20 },
-  primary: { backgroundColor: p.accent }, quiet: { backgroundColor: p.raised }, outline: { borderWidth: 1, borderColor: p.line },
+  button: { minHeight: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, paddingHorizontal: 16 },
+  primary: { backgroundColor: p.accent, width: '100%', alignSelf: 'stretch' }, quiet: { backgroundColor: p.raised }, outline: { borderWidth: 1, borderColor: p.line },
   compact: { minHeight: 44, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 13 },
-  buttonText: { color: p.background, fontSize: 14, fontWeight: '700' }, lightButtonText: { color: p.text },
+  buttonText: { color: p.onAccent, fontSize: 14, fontWeight: '700' }, lightButtonText: { color: p.text },
   pill: { flexDirection: 'row', gap: 8, alignItems: 'center', minHeight: 44, borderWidth: 1, borderColor: p.line, borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10 },
   pillSelected: { borderColor: p.accent, backgroundColor: p.accentSoft }, pillText: { color: p.muted, fontSize: 13, fontWeight: '500' }, pillTextSelected: { color: p.accent },
-  dot: { width: 7, height: 7, borderRadius: 4 }, field: { marginBottom: 20 }, label: { color: p.muted, fontSize: 12, fontWeight: '600', marginBottom: 10 },
-  input: { minHeight: 56, backgroundColor: p.background, borderWidth: 1, borderColor: p.line, borderRadius: 14, color: p.text, fontSize: 17, paddingHorizontal: 16, paddingVertical: 14 },
-  inputFocused: { borderColor: p.accent }, message: { color: '#F4B7B7', fontSize: 13, lineHeight: 20, marginBottom: 16 }, notice: { color: p.green },
-  modalRoot: { flex: 1, justifyContent: 'flex-end' }, backdrop: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.68)' },
+  dot: { width: 7, height: 7, borderRadius: 4 }, field: { marginBottom: 16 }, label: { color: p.muted, fontSize: 12, fontWeight: '600', marginBottom: 8 },
+  input: { minHeight: 52, backgroundColor: p.input, borderWidth: 1, borderColor: p.line, borderRadius: 10, color: p.text, fontSize: 16, padding: 12 },
+  inputFocused: { borderColor: p.accent }, message: { color: p.error, fontSize: 13, lineHeight: 20, marginBottom: 16 }, notice: { color: p.green },
+  modalRoot: { flex: 1, justifyContent: 'flex-end' }, backdrop: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: p.overlay },
   sheetContainer: { flex: 1, justifyContent: 'flex-end', width: '100%', maxWidth: 600, alignSelf: 'center' },
   sheet: { maxHeight: '94%', backgroundColor: p.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32, borderWidth: 1, borderColor: p.line, flexShrink: 1 },
   sheetScroll: { flexGrow: 0 },

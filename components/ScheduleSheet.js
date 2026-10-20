@@ -4,10 +4,12 @@ import { createStudyBlock, rescheduleStudyBlock } from '../db/StudyBlockService'
 import { StudyLoadWarning } from '../db/StudyLoadService';
 import { buildStudyTimes } from '../utils/scheduling';
 import { Button, Input, Message, Pill, Sheet } from './ui';
-import { formatMinutes, palette as p } from './theme';
+import { formatMinutes } from './theme';
+import { useThemedStyles } from '../ThemeContext';
 
 /** @param {{ userId: string, task: { id: number, title: string, subject_name: string }, sourceBlock?: import('../db/StudyBlockService').StudyBlock, initialDuration?: number, onClose: () => void, onSaved: (block: import('../db/StudyBlockService').StudyBlock) => void }} props */
 export default function ScheduleSheet({ userId, task, sourceBlock, initialDuration = 30, onClose, onSaved }) {
+  const s = useThemedStyles(createStyles);
   const [duration, setDuration] = useState(String(initialDuration));
   const [mode, setMode] = useState(/** @type {'now' | 'custom'} */ ('now'));
   const [time, setTime] = useState('');
@@ -73,10 +75,11 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
   );
 }
 
-const s = StyleSheet.create({
+/** @param {import('../ThemeContext').ThemeColors} p */
+const createStyles = p => StyleSheet.create({
   task: { borderLeftWidth: 2, borderLeftColor: p.accent, paddingLeft: 16, marginBottom: 28 }, subject: { color: p.muted, fontSize: 12, marginBottom: 7 }, taskTitle: { color: p.text, fontSize: 20, lineHeight: 28, fontWeight: '500' },
   label: { color: p.muted, fontSize: 12, fontWeight: '600', marginBottom: 12 }, help: { color: p.muted, fontSize: 12, lineHeight: 19, marginTop: -9, marginBottom: 24 },
   choices: { flexDirection: 'row', gap: 10, marginBottom: 24 }, footnote: { color: p.muted, fontSize: 11, textAlign: 'center', lineHeight: 18, marginTop: 18 },
-  warning: { padding: 18, borderRadius: 20, backgroundColor: p.warmSoft, borderWidth: 1, borderColor: '#64503A' }, warningKicker: { color: p.warm, fontSize: 9, letterSpacing: 1.5, fontWeight: '700', marginBottom: 12 },
-  warningTitle: { color: p.text, fontSize: 25, lineHeight: 31, letterSpacing: -0.6, marginBottom: 12 }, warningBody: { color: p.text, fontSize: 14, lineHeight: 22, marginBottom: 16 }, warningDetail: { color: p.warm, fontSize: 12, lineHeight: 21, marginBottom: 12 }, gap: { height: 10 },
+  warning: { padding: 18, borderRadius: 20, backgroundColor: p.warmSoft, borderWidth: 1, borderColor: p.line }, warningKicker: { color: p.warm, fontSize: 9, letterSpacing: 1.5, fontWeight: '700', marginBottom: 12 },
+  warningTitle: { color: p.text, fontSize: 25, lineHeight: 31, letterSpacing: -0.6, marginBottom: 12 }, warningBody: { color: p.text, fontSize: 14, lineHeight: 22, marginBottom: 16 }, warningDetail: { color: p.warm, fontSize: 12, lineHeight: 21, marginBottom: 12 }, gap: { height: 12 },
 });
