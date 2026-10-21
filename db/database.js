@@ -15,7 +15,8 @@ async function initializeDatabase() {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           user_id TEXT NOT NULL,
           name TEXT NOT NULL CHECK (length(trim(name)) > 0),
-          color TEXT NOT NULL DEFAULT '#B8A0F5',
+          field_of_study TEXT NOT NULL DEFAULT 'General' CHECK (length(trim(field_of_study)) > 0),
+          field_colors TEXT NOT NULL DEFAULT '#C2ACF3',
           UNIQUE (id, user_id)
         );
 
@@ -67,6 +68,22 @@ async function initializeDatabase() {
         CREATE INDEX IF NOT EXISTS idx_material_subject ON Material (subject_id);
         CREATE INDEX IF NOT EXISTS idx_material_task ON Material (task_id);
       `);
+      // ALTER preserves subject IDs and all dependent foreign keys. Copy the
+      // legacy color before dropping it, in the same retryable transaction.
+      const subjectColumns = /** @type {{ name: string }[]} */ (await database.getAllAsync('PRAGMA table_info(Subject)'));
+      if (!subjectColumns.some(column => column.name === 'field_of_study')) {
+        await database.execAsync("ALTER TABLE Subject ADD COLUMN field_of_study TEXT NOT NULL DEFAULT 'General' CHECK (length(trim(field_of_study)) > 0)");
+      }
+      if (!subjectColumns.some(column => column.name === 'field_colors')) {
+        await database.execAsync("ALTER TABLE Subject ADD COLUMN field_colors TEXT NOT NULL DEFAULT '#C2ACF3'");
+        if (subjectColumns.some(column => column.name === 'color')) {
+          await database.execAsync('UPDATE Subject SET field_colors = color');
+        }
+      }
+      if (subjectColumns.some(column => column.name === 'color')) {
+        await database.execAsync('ALTER TABLE Subject DROP COLUMN color');
+      }
+      await database.execAsync('CREATE INDEX IF NOT EXISTS idx_subject_user_field ON Subject (user_id, field_of_study, id)');
       // Existing installations already have StudyBlock; CREATE IF NOT EXISTS
       // cannot add its new column. Migrate inside the initialization transaction.
       const columns = /** @type {{ name: string }[]} */ (await database.getAllAsync('PRAGMA table_info(StudyBlock)'));

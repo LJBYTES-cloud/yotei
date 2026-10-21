@@ -1,5 +1,21 @@
 # Validation snapshot
 
+## Fields of study, gradient shelves, and theme persistence (2026-10-22)
+
+| Check | Result |
+| --- | --- |
+| `npx.cmd expo lint` | Passed |
+| `npx.cmd tsc --noEmit` | Passed |
+| `npx.cmd expo install --check` | Dependencies are up to date |
+| Combined database/auth/backup/theme tests | 96 total: 95 passed, 0 failed, 1 New York-specific DST check skipped in Asia/Singapore |
+| Database tests with `TZ=America/New_York` | 45 passed, 0 failed, 0 skipped |
+| Android/iOS native bundle export | Passed; `.expo/fields-verification`, active routes `src/app/` |
+| `git diff --check` | Passed |
+
+New coverage exercises actual provider hydration and ordered storage writes with isolated hook/native/storage hosts, missing/invalid/read/write failure recovery, and preference restoration after remount. Production SQL tests cover field metadata validation, derived colors in Task/StudyBlock/Review, legacy subject IDs/colors/dependencies through migration/reopen, and version-2 backup round trips plus version-1 conversion without harming existing records on invalid imports. The scheduling/review/backup/authentication regression suites remain passing.
+
+Bundle exports verify module resolution and compilation, not native visual rendering. Manually verify both-theme gradient books, full/scaled titles, shelf swiping, keyboard behavior for the new field input, and persisted theme on a real cold restart. Existing custom development clients need rebuilding to include newly added native modules; matching Expo Go includes AsyncStorage and LinearGradient per the SDK 57 docs.
+
 ## Subject palette and Review UI tuning (2026-10-22)
 
 - `npx.cmd expo lint`: passed.

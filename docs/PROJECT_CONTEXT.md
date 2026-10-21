@@ -58,7 +58,7 @@ References: [Expo custom entry setup](https://docs.expo.dev/router/installation/
 | Location | Responsibility |
 | --- | --- |
 | `App.js` | Root providers, themed navigation, protected authentication stack |
-| `ThemeContext.js` | Shared palettes, dark default, theme toggle, subject-color presentation, native appearance |
+| `ThemeContext.js` | Shared palettes, AsyncStorage theme restoration/serialized saves, subject-color presentation, native appearance |
 | `auth/AuthService.js` | Adapter interface and once-per-cold-boot remember-me gate |
 | `auth/MockAuthService.js` | In-memory users, built-in demo account, SecureStore public session |
 | `auth/AppwriteAuthService.js` | Appwrite email/password authentication and normalized users |
@@ -71,7 +71,7 @@ References: [Expo custom entry setup](https://docs.expo.dev/router/installation/
 | `components/StudyCards.js` | Screen header, task/focus/coaching cards, feedback and empty states |
 | `components/ScheduleSheet.js` | Selected full start/end dates, workload confirmation, schedule/reschedule calls |
 | `components/DateTimeField.js` | iOS compact native pickers and Android native calendar/clock dialogs |
-| `components/SubjectBookshelf.js` | Tactile book-spine grid, page/binding detail, wrapping titles, task counts, selection/reset |
+| `components/SubjectBookshelf.js` | Horizontal field-grouped gradient shelves, paper title labels, page/binding detail, counts/filter/reset |
 | `components/EntrySheet.js` | Subject and task forms |
 | `components/CompletionReviewSheet.js` | Yes/no prompt and quick topic form after marking a block done |
 | `components/theme.js` | Time and minute formatting helpers; palettes now live in ThemeContext |
@@ -111,7 +111,7 @@ Database: `yotei.db`. Initialization enables WAL and foreign keys, creates index
 
 | Table | Columns |
 | --- | --- |
-| Subject | `id`, `user_id`, `name`, `color` |
+| Subject | `id`, `user_id`, `name`, `field_of_study`, `field_colors` |
 | Task | `id`, `user_id`, `subject_id`, `title`, `deadline`, `estimated_minutes`, `status`, `postpone_count` |
 | StudyBlock | `id`, `task_id`, `start_time`, `end_time`, `status`, `rescheduled_from` |
 | ReviewItem | `id`, `subject_id`, `topic`, `last_reviewed_at`, `next_review_at` |
@@ -133,13 +133,14 @@ erDiagram
 - Subject deletion cascades through its related tables; Task deletion cascades blocks and clears Material.task_id.
 - `rescheduled_from` references the original block; a unique partial index permits one direct replacement for each original.
 - Initialization adds `rescheduled_from` for older databases, converts legacy `planned` status to `scheduled`, installs the postponement trigger, and backfills counts without reducing existing demo/coaching values.
+- Subject migration adds the two field columns, copies legacy `color` into `field_colors`, assigns existing subjects to `General`, then drops `color` in the initialization transaction. IDs, ownership and dependent records are preserved. A `(user_id, field_of_study, id)` index supports field access.
 - Material has schema support only; there is no material-management UI/service yet.
 
 ## Service entry points
 
 | Module | Public functions / values |
 | --- | --- |
-| SubjectService | `createSubject(userId, {name, color?})`, `getSubjectsForUser(userId)` |
+| SubjectService | `createSubject(userId, {name, field_of_study?, field_colors?})`, `getSubjectsForUser(userId)` |
 | TaskService | `createTask(userId, {subject_id, title, deadline?, estimated_minutes?})`, `getTasksForUser(userId, {date?, hasDeadline?})`, `getTasksWithDeadlines`, `getTasksForDate` |
 | StudyBlockService | `createStudyBlock`, `getStudyBlocksForUser`, `getMissedBlocksForUser`, `markExpiredStudyBlocks`, `updateStudyBlockStatus`, `rescheduleStudyBlock` |
 | StudyLoadService | `DAILY_STUDY_LIMIT = 240`, `StudyLoadWarning`, `getDailyStudyMinutes`, `checkStudyLoad` |
@@ -207,7 +208,7 @@ The seed returns `{ subjects: 3, tasks: 6, studyBlocks: 4, reviewItems: 3, total
 
 ## Study data export/import
 
-Settings > Data Management is available with both authentication adapters. `exportBackup(userId)` reads all five owned collections in one exclusive transaction, writes formatted version-1 JSON with SDK 57's `File`/`Paths` APIs, and opens the native share sheet. Successful exports remain in cache for receiving applications; the user must save/share a copy through that sheet.
+Settings > Data Management is available with both authentication adapters. `exportBackup(userId)` reads all five owned collections in one exclusive transaction, writes formatted version-2 JSON with SDK 57's `File`/`Paths` APIs, and opens the native share sheet. Subjects contain `field_of_study` and `field_colors`. Version-1 imports remain supported: legacy colors become single-color fields under General. Successful exports remain in cache for receiving applications; the user must save/share a copy through that sheet.
 
 `importBackup(userId)` opens a single-file JSON picker with `copyToCacheDirectory: true`. Cancel returns null. Format/version, collections, field types, dates, unique IDs, foreign references, time ranges, and rescheduling history/counts are validated before any deletion. A 20 MB file limit bounds parsing on mobile.
 
@@ -224,10 +225,10 @@ The JSON contains study records only: no passwords, sessions, theme preference, 
 - Retain the four Ionicons tabs, subtle tab top border, cards, visible input backgrounds/borders, and full-width primary actions.
 - Shared screen horizontal padding is 20px. Standard cards use 20px internal padding, 16px radius, a 1px border, and 24px separation. Section/action/form spacing increased by roughly 8–12px in the UX pass.
 - Dark: `#0C1117` background, `#151D27` cards, `#293442` borders, purple accent.
-- Light: `#F5F5F5` background, `#FFFFFF` cards, `#E0E0E0` borders, black text/accent and white primary-button text. Do not introduce purple into light mode.
-- Library shows subjects in a wrapping bookshelf grid on a themed recessed shelf. Spines have shaded grooves, double horizontal binding rules, a lined paper edge, and a beveled shelf lip. Titles wrap in full instead of being cut to four lines; book/row heights grow with long names and larger text. Tap a book to filter tasks; tap it again or Show all to reset. Demo/import revision resets still clear selection.
-- Dark-mode subject creation offers ten colors: Iris, Violet, Blue, Cyan, Teal, Lime, Amber, Orange, Rose, and Pink. Dark books use stored colors with contrasting black/white ink. Light books use white faces, gray outlines/page edges, and black text/icons; subject markers elsewhere remain monochrome through ThemeContext. The color chooser is hidden in light mode. Stored colors remain intact, and subjects created in light mode receive the Iris default for later dark-mode display.
-- Theme defaults to dark on a new launch; the preference is currently in memory, not persisted.
+- Light: `#F5F5F5` background, `#FFFFFF` cards, `#E0E0E0` borders, black text/accent and white primary-button text. Bookshelf spines and explicit field-color swatches are the scoped color exceptions; task/review markers and selectors stay monochrome.
+- Library groups subjects by normalized field name (case-insensitive) into horizontally scrolling shelves. Each book has a one/two-color LinearGradient, shaded grooves, double binding rules, lined page edges, and a full black title on a light paper label. Natural content height avoids clipping long/scaled titles. Tap to filter tasks; tap again or Show all to reset. Demo/import revisions clear selection.
+- Add Subject requires a name and Field of Study, including combined labels like `Biology, Chemistry`. Choose one or two distinct colors from ten swatches in either theme. `utils/subjectFields.js` trims comma-separated labels, validates lengths/hex colors, and supplies a subtle single-color highlight. Services default omitted fields to General / Iris; UI requires explicit field text. Task/block/review results retain `subject_color` as the first stored color for existing marker consumers.
+- Theme is stored under AsyncStorage key `yotei.theme` as `dark` or `light`, device-wide and independent of sign-out. The provider waits for restoration before mounting screens, defaults to dark for missing/invalid/unreadable values, serializes rapid writes, and logs storage failures without blocking the current UI. Theme preferences are excluded from study backups.
 - General instructional paragraphs across screen headings, auth/study forms, and cards are behind small information icons. `FieldLabel` accepts `help`; `InfoButton` opens a brief native Alert with the selected theme. Errors, workload totals/confirmation, import-overwrite warning, demo replacement notice, decision prompts, and the permanent Settings motto remain directly visible.
 - Keep inputs within keyboard-aware layouts. AuthScreen and inline Review use KeyboardAvoidingView. The shared Sheet places KeyboardAvoidingView at the full native Modal viewport, with a shrinking scroll area, scrollable header, and safe-area handling. Shared Input reports focus to Sheet; after focus, keyboard-show, or layout changes, Sheet measures input and scroll viewport in window coordinates and scrolls the field into view. EntrySheet, ScheduleSheet, and CompletionReviewSheet all inherit this behavior.
 

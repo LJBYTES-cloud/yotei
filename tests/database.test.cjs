@@ -95,8 +95,9 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
   const reviews = await load('./db/ReviewService.js', parent);
   await reviews.evaluate();
   const database = modules.get(path.resolve('db/database.js')).namespace;
+  const subjectFields = modules.get(path.resolve('utils/subjectFields.js')).namespace;
   return {
-    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace, ...reviews.namespace,
+    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace, ...reviews.namespace, ...subjectFields,
     setNow: value => { now = value; },
     get opens() { return opens; },
     close: async () => { for (const connection of connections) await connection.closeAsync(); },
@@ -444,11 +445,36 @@ test('isolates accounts and rejects tasks linked to another user’s subject', a
   assert.equal((await services.getTasksForUser('user-b')).length, 1);
 });
 
+test('subject fields normalize, persist, and supply the first gradient color across linked services', async t => {
+  const s = await loadServices();
+  t.after(s.close);
+  const subject = await s.createSubject('user', { name: ' Biochemistry ', field_of_study: ' Biology , Chemistry ', field_colors: ' #2dd4bf , #60a5fa ' });
+  assert.equal(subject.name, 'Biochemistry');
+  assert.equal(subject.field_of_study, 'Biology, Chemistry');
+  assert.equal(subject.field_colors, '#2DD4BF,#60A5FA');
+  assert.deepEqual(plain(await s.getSubjectsForUser('user')), [plain(subject)]);
+  assert.equal((await s.getSubjectsForUser('other')).length, 0);
+  const task = await s.createTask('user', { subject_id: subject.id, title: 'Enzymes' });
+  assert.equal(task.subject_color, '#2DD4BF');
+  assert.equal((await s.getTasksForUser('user'))[0].subject_color, '#2DD4BF');
+  const review = await s.createReviewItem('user', { subject_id: subject.id, topic: 'Catalysis' });
+  assert.equal(review.subject_color, '#2DD4BF');
+  assert.equal((await s.getDueReviews('user'))[0].subject_color, '#2DD4BF');
+  const block = await s.createStudyBlock('user', { task_id: task.id, start_time: '2026-11-01T10:00:00Z', end_time: '2026-11-01T10:30:00Z' });
+  assert.equal(block.subject_color, '#2DD4BF');
+  assert.equal((await s.getStudyBlocksForUser('user'))[0].subject_color, '#2DD4BF');
+  assert.deepEqual(plain(s.fieldGradient(subject.field_colors)), ['#2DD4BF', '#60A5FA']);
+  const single = plain(s.fieldGradient('#123456'));
+  assert.equal(single[0], '#123456');
+  assert.notEqual(single[1], single[0]);
+  assert.match(single[1], /^#[0-9A-F]{6}$/);
+});
+
 test('binds SQL input safely and validates empty or invalid input', async t => {
   const services = await loadServices();
   t.after(services.close);
   const user = "user' OR 1=1 --";
-  const subject = await services.createSubject(user, { name: "Art'); DROP TABLE Subject; --", color: '#AA88FF' });
+  const subject = await services.createSubject(user, { name: "Art'); DROP TABLE Subject; --", field_colors: '#AA88FF' });
   const title = "Review O'Brien's notes";
   await services.createTask(user, { title, subject_id: subject.id, deadline: '2026-10-21T12:00:00Z', estimated_minutes: 45 });
   assert.equal((await services.getTasksForUser(user))[0].title, title);
@@ -459,7 +485,10 @@ test('binds SQL input safely and validates empty or invalid input', async t => {
     () => services.getTasksForUser(''),
     () => services.createSubject('', { name: 'Math' }),
     () => services.createSubject(user, { name: ' ' }),
-    () => services.createSubject(user, { name: 'Math', color: 'invalid' }),
+    () => services.createSubject(user, { name: 'Math', field_colors: 'invalid' }),
+    () => services.createSubject(user, { name: 'Math', field_of_study: ' , ' }),
+    () => services.createSubject(user, { name: 'Math', field_colors: '#AA88FF,#00FF00,#FF0000' }),
+    () => services.createSubject(user, { name: 'Math', field_colors: '#AA88FF,#aa88ff' }),
     () => services.createTask('', { title, subject_id: subject.id }),
     () => services.createTask(user, { title: ' ', subject_id: subject.id }),
     () => services.createTask(user, { title, subject_id: -1 }),
@@ -686,6 +715,10 @@ test('migrates legacy planned blocks without losing data and can reopen safely',
       CREATE TABLE Task (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, subject_id INTEGER NOT NULL, title TEXT NOT NULL, deadline TEXT, estimated_minutes INTEGER DEFAULT 30, status TEXT DEFAULT 'pending', postpone_count INTEGER DEFAULT 0);
       CREATE TABLE StudyBlock (id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL REFERENCES Task(id), start_time TEXT NOT NULL, end_time TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'planned');
       INSERT INTO Subject VALUES (1, 'user-a', 'Math', '#B8A0F5');
+      CREATE TABLE ReviewItem (id INTEGER PRIMARY KEY, subject_id INTEGER NOT NULL REFERENCES Subject(id), topic TEXT NOT NULL, last_reviewed_at TEXT, next_review_at TEXT);
+      CREATE TABLE Material (id INTEGER PRIMARY KEY, subject_id INTEGER NOT NULL REFERENCES Subject(id), task_id INTEGER REFERENCES Task(id), title TEXT NOT NULL, url_or_note TEXT, local_file_path TEXT);
+      INSERT INTO ReviewItem VALUES (1, 1, 'Algebra recall', NULL, NULL);
+      INSERT INTO Material VALUES (1, 1, NULL, 'Notes', NULL, NULL);
       INSERT INTO Task (id, user_id, subject_id, title) VALUES (1, 'user-a', 1, 'Algebra');
       INSERT INTO StudyBlock VALUES (1, 1, '2026-10-19T09:00:00Z', '2026-10-19T09:30:00Z', 'planned');
       INSERT INTO StudyBlock VALUES (2, 1, '2026-10-19T10:00:00Z', '2026-10-19T10:30:00Z', 'done');
@@ -694,6 +727,15 @@ test('migrates legacy planned blocks without losing data and can reopen safely',
   const first = await loadServices(filename);
   instances.push(first);
   const migrated = await first.getStudyBlocksForUser('user-a');
+  const migratedSubject = (await first.getSubjectsForUser('user-a'))[0];
+  assert.equal(migratedSubject.id, 1);
+  assert.equal(migratedSubject.field_of_study, 'General');
+  assert.equal(migratedSubject.field_colors, '#B8A0F5');
+  assert.equal(migrated[0].subject_color, '#B8A0F5');
+  assert.equal((await (await first.getDatabase()).getAllAsync('PRAGMA table_info(Subject)')).some(column => column.name === 'color'), false);
+  assert.equal((await first.getDueReviews('user-a'))[0].topic, 'Algebra recall');
+  assert.equal((await (await first.getDatabase()).getFirstAsync('SELECT subject_id FROM Material WHERE id = 1')).subject_id, 1);
+  assert.deepEqual(await (await first.getDatabase()).getAllAsync('PRAGMA foreign_key_check'), []);
   assert.deepEqual(migrated.map(block => block.status), ['scheduled', 'done']);
   assert.equal(migrated[0].rescheduled_from, null);
   await first.markExpiredStudyBlocks('user-a', '2026-10-20T09:00:00Z');
@@ -710,6 +752,7 @@ test('migrates legacy planned blocks without losing data and can reopen safely',
   assert.equal(reopened.find(block => block.id === 2).status, 'done');
   assert.equal((await second.getTasksForUser('user-a'))[0].postpone_count, 1);
   const database = await second.getDatabase();
+  assert.deepEqual(plain(await second.getSubjectsForUser('user-a')), [plain(migratedSubject)]);
   assert.equal((await database.getAllAsync('PRAGMA table_info(StudyBlock)')).filter(column => column.name === 'rescheduled_from').length, 1);
 });
 

@@ -24,8 +24,9 @@ There are four themed Ionicons tabs: Home, Library, Review, Settings.
 StudyWorkspace and useDashboardData share data/actions across them.
 Keep the current cards, borders, icons, 20px padding, and both themes.
 Dark defaults to #0C1117 with purple; light is monochrome #F5F5F5,
-white cards, gray borders, black text/actions. Theme selection is currently
-in memory. Use functional UI text only. Settings permanently includes
+white cards, gray borders, black text/actions. AsyncStorage saves theme selection
+under yotei.theme and restores it before screens mount (dark fallback).
+Use functional UI text only. Settings permanently includes
 "By students, for students."
 
 Auth uses AuthService with Mock and Appwrite adapters; public users are
@@ -45,11 +46,14 @@ Every service scopes ownership to user.id directly or through joins.
 Study data is local; Appwrite is not a cloud-sync layer.
 
 Latest UX: shared cards have 24px vertical separation and 20px internal
-padding. Library uses a selectable, wrapping SubjectBookshelf with stored
-book colors in dark mode, contrasting ink, counts, and Show all reset.
-Dark subject creation offers ten vibrant colors. Light books have white faces,
-gray outlines/page edges, and black text/icons; the color chooser is hidden.
-Stored colors are preserved; new light-mode subjects default to Iris for dark mode.
+padding. Library uses horizontal shelves grouped by field_of_study (case-insensitive).
+Subject replaces color with field_of_study and comma-separated field_colors.
+Migration preserves IDs and dependencies, maps legacy colors to General, and drops color.
+Add Subject takes field text and one/two choices from ten color swatches in both themes.
+LinearGradient spines retain page/binding details and black titles on light paper labels
+in both themes; bookshelf/swatch colors are exceptions to light-mode monochrome chrome.
+One-color spines get a subtle shade; two-color spines blend the selected pair.
+Task/block/review subject_color results derive the first field color; light markers stay black.
 Task cards no longer display non-editable estimated_minutes.
 Shared Sheet has full-modal keyboard avoidance, a shrinkable scroll area,
 scrollable header, and focused-input reveal using viewport measurements;
@@ -100,7 +104,8 @@ Elapsed seeded blocks are done so missed detection preserves the total.
 Data backup: Settings > Data Management exports/imports the five study
 collections with db/BackupService.js. expo-file-system uses SDK 57 File/Paths;
 expo-sharing and expo-document-picker provide native share/pick UI.
-JSON format is yotei.study-backup, version 1, with a 20 MB limit.
+JSON format is yotei.study-backup, exports version 2 (subject field metadata),
+imports versions 1 and 2, with a 20 MB limit. Version 1 colors migrate to General.
 Validate before deletion; replace only the signed-in account atomically;
 allocate fresh IDs and remap every relation. Set rescheduled_from by UPDATE
 after block insertion so historical postponements are not counted again.
@@ -119,6 +124,10 @@ skip. New York database suite: all 43 pass, including that DST case.
 The subsequent native-picker/info/bookshelf refinement passes lint/typecheck,
 SDK compatibility and Android/iOS exports. Combined Singapore suites now
 have 90 cases (89 pass, one NY-only skip); all 44 NY database tests pass.
+The latest fields/gradients/theme-persistence pass passes lint/typecheck,
+SDK compatibility and Android/iOS exports (.expo/fields-verification).
+Combined auth/DB/backup/theme suites: 96 cases, 95 pass, one NY-only skip;
+all 45 New York DB cases pass. npm run test:theme runs the new provider tests.
 Native picker/alert gestures and styling still need a phone check; rebuild an
 existing custom development client for the newly added native picker module.
 Earlier DB tests also passed in America/New_York.

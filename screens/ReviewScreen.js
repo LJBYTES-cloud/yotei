@@ -7,6 +7,7 @@ import { EmptyState, Feedback, ScreenHeader } from '../components/StudyCards';
 import { useStudy } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
 import { Button, FieldLabel, Input, Message, Pill } from '../components/ui';
+import { firstFieldColor } from '../utils/subjectFields';
 
 /** @type {import('../db/ReviewService').ReviewDifficulty[]} */
 const difficulties = ['Hard', 'Good', 'Easy'];
@@ -72,7 +73,7 @@ export default function ReviewScreen() {
             {data.subjects.length > 0 ? <>
               <FieldLabel label="Subject" help="Each review topic belongs to the selected subject." />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={r.subjects}>
-                {data.subjects.map(subject => <Pill key={subject.id} label={subject.name} color={subject.color} selected={selectedSubject?.id === subject.id} disabled={disabled} onPress={() => setSubjectId(subject.id)} />)}
+                {data.subjects.map(subject => <Pill key={subject.id} label={subject.name} color={firstFieldColor(subject.field_colors)} selected={selectedSubject?.id === subject.id} disabled={disabled} onPress={() => setSubjectId(subject.id)} />)}
               </ScrollView>
               <Input label="Topic" help="Add a concept you want to recall later. New topics are immediately due." placeholder="e.g. Cell division" value={topic} onChangeText={setTopic} maxLength={256} editable={!disabled} returnKeyType="done" onSubmitEditing={() => void submit()} />
               <Message text={error} />

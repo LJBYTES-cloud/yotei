@@ -21,12 +21,12 @@ The native scheduler now includes `@react-native-community/datetimepicker` 9.1.0
 2. Use **Sign in to demo**, or enter `student@yotei.demo` / `study12345`. Leave Remember me off unless testing restoration.
 3. In Settings, select **Load Demo Data**. The in-app hint identifies that this replaces the current demo account's study data.
 4. Home shows 4 hours of planned/completed study and coaching for two postponed tasks. Elapsed seeded blocks are done; remaining blocks are scheduled.
-5. Library shows Mathematics, Biology, History as colored book spines and six tasks. Tap a book to filter; tap it again or Show all to reset. Verify the selection indicator and task counts.
+5. Library shows Mathematics, Biology, History as gradient book spines grouped under Mathematics, Biology/Chemistry, and Humanities, plus six tasks. Tap a book to filter; tap it again or Show all to reset. Verify titles, binding/page lines, selection indicators, task counts, and horizontal browsing.
 6. Select Schedule on a task. Use Start's native calendar and clock to select a future time today, then choose an End date/time five minutes later. Today's demo already has 240 minutes, so the workload warning appears. Adjust or explicitly choose Schedule anyway. Overnight sessions select a later End date; workload is checked for each affected calendar day.
 7. Once the session's start time arrives, select Mark Done on Home. The completed block opens the optional review-topic prompt.
 8. Choose Yes, add a topic. Enter a topic and save it. Its subject comes from the completed block, not a new manual subject selection.
 9. Open Review: the three seeded due topics and the new topic are listed. Verify the Hard/Good/Easy buttons have no interval labels, popup guidance, or screen-reader interval announcements. Rate a topic: it leaves the due list and shows "Review saved." The underlying review intervals are unchanged.
-10. In Dark mode, open Add subject and verify ten named color choices. Toggle Light mode in Settings: books must have white faces, gray outlines/page edges, and black text/icons, with no color chooser in Add subject. Toggle back to Dark and confirm stored book colors return. Confirm the motto remains visible below scrolling Settings content.
+10. Open Add subject: enter a Field of Study and choose one or two colors from ten swatches. A third choice is disabled until one is removed. In Light mode, books must retain gradients, paper title labels, and binding/page details; task subject selectors remain monochrome. Add another subject under the same field and verify both share a horizontally scrolling shelf. Toggle Light, cold restart, and confirm Light is restored; repeat for Dark. Confirm the motto remains visible below scrolling Settings content.
 11. In Settings > Data Management, export a backup and save the JSON using the native share sheet. Add a temporary subject in Library, then import the saved JSON. Confirm the temporary subject disappears and Home/Library/Review refresh. See [DATA_BACKUP.md](DATA_BACKUP.md) for cancellation, rollback, and account-isolation checks.
 12. Schedule another block for a date next week, including a morning time earlier on the clock than now. Confirm the saved-date notice and exported record show the chosen date. Home remains Today's Focus, so future blocks appear there when that date arrives.
 13. Tap the small info icons next to labels/titles. Check that guidance appears in a brief native popup and dismisses cleanly without changing a draft. Inspect the bookshelf's page lines/binding details and a long subject name in both themes.
@@ -40,14 +40,16 @@ The demo seed is day-relative. Reload it on a new date to obtain today's four-ho
 | Authentication | Required fields, password visibility, loading/errors, sign-out, account-scoped data |
 | Remember me off | Session works in the current launch; a real cold restart requires login |
 | Remember me on | Public session restores; sign-out clears it; test custom mock-account limitations described in PROJECT_CONTEXT |
-| Subject/task creation | Forms retain drafts on failure; new rows appear across tabs after success |
+| Subject/task creation | Field text required; choose one/two distinct colors, no third or empty selection; forms retain drafts on failure; linked task/review markers still work |
+| Theme persistence | Light and Dark each restore after a cold restart, including before sign-in; rapid toggles retain the last choice; sign-out/import leave the preference intact |
+| Subject migration | Upgrade an existing database: subject names/IDs/colors and linked tasks/reviews/materials survive under General; no reset required |
 | Native schedule | Pick today, tomorrow, next week, and a year-boundary date; verify chosen local start/end dates and stored instants |
 | Passed-time validation | At 4 PM today, 5 PM today is valid; earlier today is rejected; tomorrow morning is valid; an end at/before the start is rejected |
 | Picker cancellation | Cancel an Android calendar/clock dialog and verify dates/draft stay unchanged; dismiss iOS picker popovers and verify normal native behavior |
 | Overnight scheduling | Select a later End calendar date; verify each local day's 240-minute check uses only that day's portion |
 | Info popups | Label/title icons show guidance; background fields retain drafts. Errors and import/workload warnings remain visible without opening a popup |
 | Task estimates | New and existing task cards omit non-editable estimated-minute text; postponement counts remain visible |
-| Subject bookshelf | Verify themed shelf/paper/binding detail, long full titles and enlarged text, task filtering/counts, and reset after demo/import |
+| Subject bookshelf | Verify grouped horizontal shelves, one-color shading/two-color gradients in both themes, visible paper titles/binding/page detail, long/scaled text, filtering/counts, and reset after demo/import |
 | Workload | Exactly 240 minutes is permitted; adding more warns; Cancel/Adjust inserts nothing; explicit confirmation inserts once |
 | Completion prompt | Yes creates a due topic under the correct subject; No/Skip creates none; block remains done in either case |
 | Missed blocks | A scheduled block ending in the past becomes missed on load/refresh/foreground/timer detection |
@@ -66,7 +68,7 @@ For a short live missed-block demonstration, use the native clock to choose the 
 ```powershell
 npx.cmd expo lint
 npx.cmd tsc --noEmit
-node --experimental-vm-modules --test tests/database.test.cjs tests/auth.test.cjs tests/backup.test.cjs
+node --experimental-vm-modules --test tests/database.test.cjs tests/auth.test.cjs tests/backup.test.cjs tests/theme.test.cjs
 ```
 
 Date-sensitive database coverage can run in separate PowerShell processes with:

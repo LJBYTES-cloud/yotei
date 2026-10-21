@@ -1,11 +1,13 @@
 import { getDatabase, requireUserId } from './database';
+import { firstFieldColor } from '../utils/subjectFields';
 
 export const REVIEW_INTERVAL_DAYS = { Hard: 1, Good: 3, Easy: 7 };
 /** @typedef {keyof typeof REVIEW_INTERVAL_DAYS} ReviewDifficulty */
 /** @typedef {{id: number, subject_id: number, topic: string, last_reviewed_at: string | null, next_review_at: string | null, subject_name: string, subject_color: string}} ReviewItem */
 
 const REVIEW_SELECT = `
-  SELECT review.*, subject.name AS subject_name, subject.color AS subject_color
+  SELECT review.*, subject.name AS subject_name,
+    substr(subject.field_colors, 1, instr(subject.field_colors || ',', ',') - 1) AS subject_color
   FROM ReviewItem AS review INNER JOIN Subject AS subject ON subject.id = review.subject_id
 `;
 
@@ -27,7 +29,7 @@ export async function createReviewItem(userId, { subject_id, topic }) {
   if (!trimmedTopic || trimmedTopic.length > 256) throw new Error('Enter a topic between 1 and 256 characters.');
   const database = await getDatabase();
   const subject = /** @type {import('./SubjectService').Subject | null} */ (await database.getFirstAsync(
-    'SELECT id, user_id, name, color FROM Subject WHERE id = ? AND user_id = ?', subject_id, userId,
+    'SELECT id, user_id, name, field_of_study, field_colors FROM Subject WHERE id = ? AND user_id = ?', subject_id, userId,
   ));
   if (!subject) throw new Error('Select a subject belonging to your account.');
   // Bind ownership to the insert itself so another account's subject cannot be used.
@@ -40,7 +42,7 @@ export async function createReviewItem(userId, { subject_id, topic }) {
   // report an existing topic as unsaved and invite a duplicate on retry.
   return {
     id: result.lastInsertRowId, subject_id: subject.id, topic: trimmedTopic,
-    last_reviewed_at: null, next_review_at: null, subject_name: subject.name, subject_color: subject.color,
+    last_reviewed_at: null, next_review_at: null, subject_name: subject.name, subject_color: firstFieldColor(subject.field_colors),
   };
 }
 

@@ -19,7 +19,7 @@ export default function SettingsScreen() {
         <View style={[s.card, t.profile]}><View style={t.avatar}><Text style={t.initial}>{user.name.charAt(0).toUpperCase() || 'Y'}</Text></View><View style={s.flex}><Text style={t.name}>{user.name}</Text><Text style={s.hint}>{user.email}</Text></View></View>
         <Text style={t.label}>01 / APPEARANCE</Text>
         <View style={s.card}>
-          <View style={t.row}><View style={s.flex}><FieldLabel label="Light mode" textStyle={t.title} help="Switch all screens and dialogs between dark purple and monochrome light themes. Subject colors appear only in dark mode." /></View>
+          <View style={t.row}><View style={s.flex}><FieldLabel label="Light mode" textStyle={t.title} help="Your theme is remembered on this device. Books keep their field colors in both themes; other light-mode screens use monochrome colors." /></View>
             <Switch accessibilityLabel="Light mode" accessibilityHint="Switch between dark purple and monochrome light themes" value={!isDark} onValueChange={toggleTheme} trackColor={{ false: p.line, true: p.accent }} thumbColor={isDark ? p.muted : p.surface} ios_backgroundColor={p.line} />
           </View>
           <View style={t.themePreview}><View style={t.previewPage}><View style={t.previewLine} /><View style={[t.previewLine, t.shortLine]} /><View style={t.previewButton} /></View><View style={s.flex}><Text style={s.eyebrow}>{isDark ? 'DARK / VIOLET' : 'LIGHT / MONOCHROME'}</Text></View></View>

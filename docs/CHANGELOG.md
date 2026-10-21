@@ -180,6 +180,47 @@ File-by-file changes (one new component, no files deleted):
 | `docs/VALIDATION.md` | Record this pass's checks and device-verification limits. |
 | `docs/CHANGELOG.md` | Record this feature and every changed file. |
 
+### Fields of study, gradient shelves, and saved themes (2026-10-22)
+
+- Installed AsyncStorage 2.2.0 and Expo LinearGradient ~57.0.2 with Expo's SDK-compatible installer.
+- ThemeProvider restores `yotei.theme` before mounting screens, uses dark as a safe fallback, and saves toggles in order. Preferences are device-wide and independent of authentication or study-data import.
+- Replaced Subject's `color` column with `field_of_study` and comma-separated `field_colors`. The initialization transaction preserves IDs, ownership, legacy colors, and all linked records, placing legacy subjects under General. No data reset is required.
+- Add Subject now accepts Field of Study text and one/two distinct choices from ten color swatches. Both themes support explicit color selection; task/review selectors and markers remain monochrome in light mode.
+- Library groups subjects by field into horizontal shelves. Both themes retain colored gradient spines, full titles on contrasting paper labels, binding/page lines, task counts, and selection/filtering. Removing the old flex sizing lets titles determine content height instead of being clipped. One-color fields get subtle shading; two-color fields blend their selected pair.
+- Updated all subject-linked queries and demo seeds. Backup version 2 preserves field metadata; version-1 files still import with their original colors under General. Invalid fields/colors are rejected before replacing data.
+- Verification: lint/typecheck, Expo dependency compatibility, Android/iOS exports, 95 passing combined tests (one timezone-specific skip), and 45 passing New York database tests. Physical-device shelf appearance/gestures and cold-launch appearance still need manual checking.
+
+File-by-file changes (two new files, no files deleted):
+
+| File | Change |
+| --- | --- |
+| `package.json` | Added SDK-compatible storage/gradient dependencies and `test:theme`. |
+| `package-lock.json` | Locked the installed dependencies. |
+| `ThemeContext.js` | Saved/restored preference, startup hydration, ordered writes, safe storage-failure handling, uniform monochrome light-mode markers. |
+| `utils/subjectFields.js` | New shared field/color normalization, validation, first-color selection, and gradient shading helper. |
+| `db/database.js` | New Subject columns/index and atomic legacy color migration without replacing IDs. |
+| `db/SubjectService.js` | New field metadata contract and validated, owned inserts/reads. |
+| `db/TaskService.js` | Read new Subject fields and derive the existing task marker color. |
+| `db/StudyBlockService.js` | Derive study-block marker colors from field metadata in both joined queries. |
+| `db/ReviewService.js` | Use field metadata for review subject lookups and marker colors. |
+| `db/seedData.js` | Seed three fields with one/two-color examples; preserve existing demo workload/review counts. |
+| `db/BackupService.js` | Version-2 export/import validation, field persistence, and backward-compatible version-1 conversion. |
+| `components/EntrySheet.js` | Field text input, one/two-color swatches, validation, and updated task subject selector. |
+| `components/SubjectBookshelf.js` | Field-grouped horizontal gradient shelves, natural-height spines, full readable paper labels and binding/page details in both themes. |
+| `screens/LibraryScreen.js` | Updated bookshelf browsing/grouping guidance. |
+| `screens/ReviewScreen.js` | Derive subject selector dots from the first field color. |
+| `screens/SettingsScreen.js` | Explain saved themes and the bookshelf color exception. |
+| `tests/database.test.cjs` | Field normalization/linked-service coverage, gradient checks, legacy migration/reopen/foreign-key preservation, and invalid metadata rejection. |
+| `tests/backup.test.cjs` | Version-2 round trips, version-1 conversion, invalid field/color preservation, and updated export-version assertions. |
+| `tests/theme.test.cjs` | New provider tests for hydration, defaults/read failures, ordered rapid toggles, remount restoration, and write-error recovery. |
+| `README.md` | Updated Library, migration, theme persistence, and backup overview. |
+| `docs/PROJECT_CONTEXT.md` | Updated schema, service contracts, persistence, and bookshelf/theme rules. |
+| `docs/NEXT_SESSION_PROMPT.md` | Updated continuation context for fields, saved themes, and backup versions. |
+| `docs/DATA_BACKUP.md` | Documented version-2 subject metadata and version-1 compatibility. |
+| `docs/DEMO_AND_TESTING.md` | Added field creation, horizontal shelves, cold-start theme, migration, and theme-test checks. |
+| `docs/VALIDATION.md` | Recorded this pass's checks and physical-device limits. |
+| `docs/CHANGELOG.md` | Recorded implementation decisions and this complete file summary. |
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |
@@ -195,9 +236,11 @@ File-by-file changes (one new component, no files deleted):
 | User-entered duration and Now/custom start form | Native Start/End dates and times; background workload calculation |
 | Typed clocks with Today/Tomorrow toggles | Native calendar/time pickers for any upcoming date |
 | Long inline instructional paragraphs | Small info icons with native guidance popups; errors/warnings stay visible |
-| Horizontal subject pills in Library | Selectable book-spine grid; pill selectors remain in forms |
+| Horizontal subject pills / wrapping book grid in Library | Horizontal gradient shelves grouped by field of study; pill selectors remain in forms |
 | Non-editable estimated minutes on task cards | Removed from UI; SQLite/backup field retained |
-| Colorful bookshelf spines in both themes | Ten color choices in dark mode; monochrome books/markers and no color chooser in light mode |
+| Monochrome books / hidden light-mode color chooser | Colored gradient books in both themes; explicit one/two-color field swatches; monochrome light chrome and task/review markers |
+| Subject.color | Subject.field_of_study and comma-separated field_colors; legacy colors preserved under General |
+| Theme preference only in memory | AsyncStorage restoration before screens mount and ordered preference saves |
 
 ## Git checkpoints present at handoff
 

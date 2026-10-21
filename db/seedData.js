@@ -33,15 +33,15 @@ export async function seedDemoData(userId) {
     await transaction.runAsync('DELETE FROM Subject WHERE user_id = ?', userId);
 
     const subjects = [
-      { name: 'Mathematics', color: '#C2ACF3' },
-      { name: 'Biology', color: '#B0CDBD' },
-      { name: 'History', color: '#EAC68D' },
+      { name: 'Mathematics', field_of_study: 'Mathematics', field_colors: '#C2ACF3' },
+      { name: 'Biology', field_of_study: 'Biology, Chemistry', field_colors: '#2DD4BF,#60A5FA' },
+      { name: 'History', field_of_study: 'Humanities', field_colors: '#FBBF24,#FB7185' },
     ];
     /** @type {number[]} */
     const subjectIds = [];
     for (const subject of subjects) {
       const result = await transaction.runAsync(
-        'INSERT INTO Subject (user_id, name, color) VALUES (?, ?, ?)', userId, subject.name, subject.color,
+        'INSERT INTO Subject (user_id, name, field_of_study, field_colors) VALUES (?, ?, ?, ?)', userId, subject.name, subject.field_of_study, subject.field_colors,
       );
       subjectIds.push(result.lastInsertRowId);
     }

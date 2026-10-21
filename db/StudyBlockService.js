@@ -20,7 +20,8 @@ function scheduleMutation(action) {
 
 const BLOCK_SELECT = `
   SELECT block.*, task.title AS task_title, task.subject_id,
-    subject.name AS subject_name, subject.color AS subject_color,
+    subject.name AS subject_name,
+    substr(subject.field_colors, 1, instr(subject.field_colors || ',', ',') - 1) AS subject_color,
     replacement.id AS rescheduled_to
   FROM StudyBlock AS block
   INNER JOIN Task AS task ON task.id = block.task_id
@@ -74,7 +75,8 @@ async function createBlock(userId, { task_id, start_time, end_time }, allowHeavy
   const database = await getDatabase();
   const task = /** @type {{ title: string, subject_id: number, subject_name: string, subject_color: string } | null} */ (
     await database.getFirstAsync(`
-      SELECT task.title, task.subject_id, subject.name AS subject_name, subject.color AS subject_color
+      SELECT task.title, task.subject_id, subject.name AS subject_name,
+        substr(subject.field_colors, 1, instr(subject.field_colors || ',', ',') - 1) AS subject_color
       FROM Task AS task
       INNER JOIN Subject AS subject ON subject.id = task.subject_id AND subject.user_id = task.user_id
       WHERE task.id = ? AND task.user_id = ?

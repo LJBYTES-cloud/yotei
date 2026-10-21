@@ -1,5 +1,6 @@
 import { getDatabase, requireUserId } from './database';
 import { getLocalDayRange } from './dateUtils';
+import { firstFieldColor } from '../utils/subjectFields';
 
 /**
  * @typedef {{ id: number, user_id: string, subject_id: number, title: string,
@@ -29,7 +30,7 @@ export async function createTask(userId, { title, subject_id, deadline = null, e
   }
   const database = await getDatabase();
   const subject = /** @type {import('./SubjectService').Subject | null} */ (
-    await database.getFirstAsync('SELECT id, user_id, name, color FROM Subject WHERE id = ? AND user_id = ?', subject_id, userId)
+    await database.getFirstAsync('SELECT id, user_id, name, field_of_study, field_colors FROM Subject WHERE id = ? AND user_id = ?', subject_id, userId)
   );
   if (!subject) {
     throw new Error('Choose a subject belonging to your account.');
@@ -43,7 +44,7 @@ export async function createTask(userId, { title, subject_id, deadline = null, e
   return {
     id: result.lastInsertRowId, user_id: userId, subject_id, title: trimmedTitle,
     deadline, estimated_minutes, status: 'pending', postpone_count: 0,
-    subject_name: subject.name, subject_color: subject.color,
+    subject_name: subject.name, subject_color: firstFieldColor(subject.field_colors),
   };
 }
 
@@ -77,7 +78,8 @@ export async function getTasksForUser(userId, { date, hasDeadline = false } = {}
   }
   const database = await getDatabase();
   return database.getAllAsync(`
-    SELECT task.*, subject.name AS subject_name, subject.color AS subject_color
+    SELECT task.*, subject.name AS subject_name,
+      substr(subject.field_colors, 1, instr(subject.field_colors || ',', ',') - 1) AS subject_color
     FROM Task AS task
     INNER JOIN Subject AS subject ON subject.id = task.subject_id AND subject.user_id = task.user_id
     WHERE ${conditions.join(' AND ')}

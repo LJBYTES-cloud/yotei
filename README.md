@@ -30,13 +30,15 @@ Sign in, open Settings, and select **Load Demo Data**. It replaces only the curr
 | Tab | Features |
 | --- | --- |
 | Home | Today's Focus, daily workload, task coaching, Mark Done, missed-session rescheduling |
-| Library | Subject/task creation, tactile subject bookshelf, task list, native calendar/time scheduling |
+| Library | Subject/task creation, fields of study, grouped horizontal gradient bookshelves, task list, native calendar/time scheduling |
 | Review | Topic creation by subject; due queue; Hard / Good / Easy ratings |
 | Settings | Dark/light toggle, JSON data export/import, mock-only demo loader, Sign Out, fixed student motto |
 
 Completing a study block prompts the user to add a review topic under the same subject. Rescheduling a missed block increments the task's postponement count once. Coaching appears at a count of 2 or more.
 
 Schedule sessions with native Start/End calendar and clock pickers, including dates next week or later. Validation compares the selected timestamps with now, and SQLite calculates the elapsed study minutes. General instructions are available through small info icons; errors and overwrite/workload warnings remain visible. Subject book spines have page/binding details and fully wrapping titles on a themed shelf.
+
+Subjects have a Field of Study and one or two colors. Each field gets a horizontal shelf; gradient books retain titles and binding/page details in both themes. Light-mode chrome and task/review subject markers stay monochrome. Theme choice is saved on this device with AsyncStorage and restored before screens mount. Existing subject colors migrate automatically into the General field; backup exports now use version 2 and still import version 1.
 
 ## Entry point and routes
 
@@ -62,6 +64,7 @@ npx tsc --noEmit
 npm run test:auth
 npm run test:db
 npm run test:backup
+npm run test:theme
 npx expo export --platform android --platform ios --output-dir .expo/verification
 ```
 

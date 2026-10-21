@@ -1,6 +1,11 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Appearance, Platform } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const THEME_KEY = 'yotei.theme';
+// Keep rapid toggles (and provider remounts) in order on persistent storage.
+let themeWrites = Promise.resolve();
 
 export const darkPalette = {
   background: '#0C1117', surface: '#151D27', raised: '#202A36', input: '#0E151E',
@@ -27,19 +32,47 @@ const ThemeContext = createContext(/** @type {ThemeValue | null} */ (null));
 /** @param {{children: import('react').ReactNode}} props */
 export function ThemeProvider({ children }) {
   const [isDark, setIsDark] = useState(true);
+  const [ready, setReady] = useState(false);
+  const currentTheme = useRef(true);
   useEffect(() => {
-    if (Platform.OS !== 'web') {
+    let active = true;
+    async function restore() {
+      try {
+        await themeWrites;
+        const saved = await AsyncStorage.getItem(THEME_KEY);
+        if (active) {
+          currentTheme.current = saved !== 'light';
+          setIsDark(currentTheme.current);
+        }
+      } catch (error) {
+        console.warn('[ThemeContext] Could not restore theme preference.', error);
+      } finally { if (active) setReady(true); }
+    }
+    void restore();
+    return () => { active = false; };
+  }, []);
+  const toggleTheme = useCallback(() => {
+    const next = !currentTheme.current;
+    currentTheme.current = next;
+    setIsDark(next);
+    themeWrites = themeWrites.then(() => AsyncStorage.setItem(THEME_KEY, next ? 'dark' : 'light'))
+      .catch(error => { console.warn('[ThemeContext] Could not save theme preference.', error); });
+  }, []);
+  useEffect(() => {
+    if (ready && Platform.OS !== 'web') {
       Appearance.setColorScheme(isDark ? 'dark' : 'light');
       void SystemUI.setBackgroundColorAsync(isDark ? darkPalette.background : lightPalette.background).catch(() => {});
     }
-  }, [isDark]);
+  }, [isDark, ready]);
   const value = useMemo(() => ({
     colors: isDark ? darkPalette : lightPalette,
     isDark,
-    toggleTheme: () => setIsDark(current => !current),
+    toggleTheme,
     // Keep stored subject colors intact while presenting light mode in B&W.
-    subjectColor: (/** @type {string} */ storedColor) => isDark || /^#([0-9a-f]{2})\1\1$/i.test(storedColor) ? storedColor : lightPalette.text,
-  }), [isDark]);
+    subjectColor: (/** @type {string} */ storedColor) => isDark ? storedColor : lightPalette.text,
+  }), [isDark, toggleTheme]);
+  // Mount screens only once the preference is read, avoiding a wrong-theme flash.
+  if (!ready) return null;
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 

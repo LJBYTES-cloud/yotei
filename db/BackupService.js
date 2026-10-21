@@ -3,9 +3,10 @@ import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { Platform } from 'react-native';
 import { getDatabase, requireUserId } from './database';
+import { DEFAULT_FIELD, normalizeFieldColors, normalizeFieldOfStudy } from '../utils/subjectFields';
 
 /**
- * @typedef {{id: number, name: string, color: string}} BackupSubject
+ * @typedef {{id: number, name: string, field_of_study: string, field_colors: string}} BackupSubject
  * @typedef {{id: number, subject_id: number, title: string, deadline: string | null, estimated_minutes: number, status: string, postpone_count: number}} BackupTask
  * @typedef {{id: number, task_id: number, start_time: string, end_time: string, status: string, rescheduled_from: number | null}} BackupBlock
  * @typedef {{id: number, subject_id: number, topic: string, last_reviewed_at: string | null, next_review_at: string | null}} BackupReview
@@ -15,7 +16,7 @@ import { getDatabase, requireUserId } from './database';
  */
 
 const FORMAT = 'yotei.study-backup';
-const VERSION = 1;
+const VERSION = 2;
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 /** @param {unknown} value */
@@ -30,10 +31,18 @@ const nullableText = value => value === null || typeof value === 'string';
 const timestamp = value => typeof value === 'string' && value.trim().length > 0 && Number.isFinite(Date.parse(value));
 /** @param {unknown} value */
 const nullableTimestamp = value => value === null || timestamp(value);
+/** @param {unknown} value */
+const fieldColors = value => {
+  try { normalizeFieldColors(value); return true; } catch { return false; }
+};
+/** @param {unknown} value */
+const fieldOfStudy = value => {
+  try { normalizeFieldOfStudy(value); return true; } catch { return false; }
+};
 
 /** @type {Record<keyof BackupData, Record<string, (value: unknown) => boolean>>} */
 const fields = {
-  subjects: { id: positiveId, name: text, color: value => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) },
+  subjects: { id: positiveId, name: value => text(value) && /** @type {string} */ (value).trim().length <= 128, field_of_study: fieldOfStudy, field_colors: fieldColors },
   tasks: { id: positiveId, subject_id: positiveId, title: text, deadline: nullableTimestamp,
     estimated_minutes: positiveId, status: text,
     postpone_count: value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 },
@@ -49,11 +58,20 @@ const fields = {
 function validateBackup(input) {
   if (!record(input)) throw new Error('Choose a valid Yotei JSON backup.');
   const backup = /** @type {Backup} */ (input);
-  if (backup.format !== FORMAT || backup.version !== VERSION) {
-    throw new Error('This file is not a supported Yotei backup (version 1).');
+  if (backup.format !== FORMAT || (backup.version !== 1 && backup.version !== VERSION)) {
+    throw new Error('This file is not a supported Yotei backup (version 1 or 2).');
   }
   if (!timestamp(backup.exported_at) || !record(backup.data)) throw new Error('The backup header is invalid.');
-  const data = backup.data;
+  const data = { ...backup.data };
+  if (backup.version === 1 && Array.isArray(data.subjects)) {
+    data.subjects = data.subjects.map(row => {
+      const legacy = /** @type {{id: number, name: string, color?: unknown}} */ (/** @type {unknown} */ (row));
+      if (!record(legacy) || typeof legacy.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(legacy.color)) {
+        throw new Error('The backup has an invalid subjects.color value.');
+      }
+      return { id: legacy.id, name: legacy.name, field_of_study: DEFAULT_FIELD, field_colors: legacy.color };
+    });
+  }
   for (const name of /** @type {(keyof BackupData)[]} */ (Object.keys(fields))) {
     const rows = data[name];
     if (!Array.isArray(rows)) throw new Error(`The backup must contain a ${name} list.`);
@@ -111,7 +129,9 @@ function validateBackup(input) {
   for (const material of data.materials) {
     if (material.task_id !== null && !tasks.has(material.task_id)) throw new Error('A material references a task missing from the backup.');
   }
-  return data;
+  return { ...data, subjects: data.subjects.map(row => ({ ...row,
+    field_of_study: normalizeFieldOfStudy(row.field_of_study), field_colors: normalizeFieldColors(row.field_colors),
+  })) };
 }
 
 function requireNativeBackup() {
@@ -127,7 +147,7 @@ export async function exportBackup(userId) {
   /** @type {BackupData} */
   const data = { subjects: [], tasks: [], studyBlocks: [], reviewItems: [], materials: [] };
   await database.withExclusiveTransactionAsync(async transaction => {
-    data.subjects = await transaction.getAllAsync('SELECT id, name, color FROM Subject WHERE user_id = ? ORDER BY id', userId);
+    data.subjects = await transaction.getAllAsync('SELECT id, name, field_of_study, field_colors FROM Subject WHERE user_id = ? ORDER BY id', userId);
     data.tasks = await transaction.getAllAsync(`SELECT id, subject_id, title, deadline, estimated_minutes, status, postpone_count
       FROM Task WHERE user_id = ? ORDER BY id`, userId);
     data.studyBlocks = await transaction.getAllAsync(`SELECT b.id, b.task_id, b.start_time, b.end_time, b.status, b.rescheduled_from
@@ -190,7 +210,7 @@ export async function importBackup(userId) {
     const tasks = new Map();
     const blocks = new Map();
     for (const row of data.subjects) {
-      const inserted = await transaction.runAsync('INSERT INTO Subject (user_id, name, color) VALUES (?, ?, ?)', userId, row.name, row.color);
+      const inserted = await transaction.runAsync('INSERT INTO Subject (user_id, name, field_of_study, field_colors) VALUES (?, ?, ?, ?)', userId, row.name, row.field_of_study, row.field_colors);
       subjects.set(row.id, inserted.lastInsertRowId);
     }
     for (const row of data.tasks) {
