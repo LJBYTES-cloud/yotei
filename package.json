@@ -47,6 +47,11 @@
     "eslint-config-expo": "~57.0.2",
     "typescript": "~6.0.3"
   },
+  "overrides": {
+    "react-native-appwrite": {
+      "expo-file-system": "57.0.7"
+    }
+  },
   "expo": {
     "doctor": {
       "reactNativeDirectoryCheck": {
