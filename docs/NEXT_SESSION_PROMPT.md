@@ -50,6 +50,11 @@ padding. Library uses horizontal shelves grouped by field_of_study (case-insensi
 Subject replaces color with field_of_study and comma-separated field_colors.
 Migration preserves IDs and dependencies, maps legacy colors to General, and drops color.
 Add Subject takes field text and one/two choices from ten color swatches in both themes.
+Each book has an accessible pencil action that opens the same EntrySheet pre-filled.
+updateSubject(userId, subjectId, {name, field_of_study, field_colors}) validates metadata
+and updates only the owned row in place. Save refreshes all shared tabs without changing
+subject IDs or filter selection. Imported/legacy swatches remain available in the editor.
+The filter-reset button is labeled Show All Tasks.
 LinearGradient spines retain page/binding details and black titles on light paper labels
 in both themes; bookshelf/swatch colors are exceptions to light-mode monochrome chrome.
 One-color spines get a subtle shade; two-color spines blend the selected pair.

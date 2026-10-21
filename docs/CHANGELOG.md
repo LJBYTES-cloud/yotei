@@ -221,6 +221,27 @@ File-by-file changes (two new files, no files deleted):
 | `docs/VALIDATION.md` | Recorded this pass's checks and physical-device limits. |
 | `docs/CHANGELOG.md` | Recorded implementation decisions and this complete file summary. |
 
+### Subject editing and explicit task-filter reset (2026-10-22)
+
+- Renamed Library's filter-reset button to **Show All Tasks** and updated its accessibility label/help text.
+- Added a separate pencil action on every book. It opens the shared, keyboard-aware EntrySheet with the current name, field, and selected colors. Imported/legacy colors outside the standard palette remain visible and selectable. Save changes updates the row and refreshes the shared workspace; cancel does not write, and failures retain the draft.
+- Added `updateSubject(userId, subjectId, {name, field_of_study, field_colors})` with validation, parameter binding, an ownership-scoped UPDATE, and explicit failure for missing/unowned IDs. Updates preserve subject IDs and all linked data; field edits regroup the shelf without clearing the task filter.
+- Lint/typecheck and 46 database tests passed, with one timezone-specific skip. No dependencies, schema changes, new files, or deletions.
+
+| File changed | Summary |
+| --- | --- |
+| `db/SubjectService.js` | Added validated, account-scoped in-place subject updates. |
+| `components/EntrySheet.js` | Reused the form for pre-filled editing, retained legacy color choices, and added Save changes. |
+| `components/SubjectBookshelf.js` | Renamed Show All Tasks and added accessible pencil buttons separate from book filtering. |
+| `components/StudyWorkspace.js` | Added guarded edit-sheet state/actions, update confirmation, and shared refresh after save. |
+| `screens/LibraryScreen.js` | Connected pencil actions and updated shelf guidance. |
+| `tests/database.test.cjs` | Added linked-record preservation, metadata validation, SQL binding, and account-isolation update coverage. |
+| `docs/PROJECT_CONTEXT.md` | Updated the service contract and subject-editing behavior. |
+| `docs/NEXT_SESSION_PROMPT.md` | Added editing and reset-label continuation context. |
+| `docs/DEMO_AND_TESTING.md` | Added device checks for prefill, save/cancel, shelf movement, and legacy colors. |
+| `docs/VALIDATION.md` | Recorded this pass's checks and remaining native verification. |
+| `docs/CHANGELOG.md` | Recorded this implementation and every changed file. |
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |

@@ -21,7 +21,7 @@ The native scheduler now includes `@react-native-community/datetimepicker` 9.1.0
 2. Use **Sign in to demo**, or enter `student@yotei.demo` / `study12345`. Leave Remember me off unless testing restoration.
 3. In Settings, select **Load Demo Data**. The in-app hint identifies that this replaces the current demo account's study data.
 4. Home shows 4 hours of planned/completed study and coaching for two postponed tasks. Elapsed seeded blocks are done; remaining blocks are scheduled.
-5. Library shows Mathematics, Biology, History as gradient book spines grouped under Mathematics, Biology/Chemistry, and Humanities, plus six tasks. Tap a book to filter; tap it again or Show all to reset. Verify titles, binding/page lines, selection indicators, task counts, and horizontal browsing.
+5. Library shows Mathematics, Biology, History as gradient book spines grouped under Mathematics, Biology/Chemistry, and Humanities, plus six tasks. Tap a book to filter; tap it again or **Show All Tasks** to reset. Use its pencil to edit: confirm pre-filled name/field/colors, change them, and save. Verify the book moves to its updated field, the active filter still works, and linked task/review names/colors refresh. Verify titles, binding/page lines, selection indicators, task counts, and horizontal browsing.
 6. Select Schedule on a task. Use Start's native calendar and clock to select a future time today, then choose an End date/time five minutes later. Today's demo already has 240 minutes, so the workload warning appears. Adjust or explicitly choose Schedule anyway. Overnight sessions select a later End date; workload is checked for each affected calendar day.
 7. Once the session's start time arrives, select Mark Done on Home. The completed block opens the optional review-topic prompt.
 8. Choose Yes, add a topic. Enter a topic and save it. Its subject comes from the completed block, not a new manual subject selection.
@@ -41,6 +41,7 @@ The demo seed is day-relative. Reload it on a new date to obtain today's four-ho
 | Remember me off | Session works in the current launch; a real cold restart requires login |
 | Remember me on | Public session restores; sign-out clears it; test custom mock-account limitations described in PROJECT_CONTEXT |
 | Subject/task creation | Field text required; choose one/two distinct colors, no third or empty selection; forms retain drafts on failure; linked task/review markers still work |
+| Subject editing | Pencil opens a pre-filled sheet in both themes without filtering the task list; Save changes updates the same row and shared tabs; Cancel changes nothing; invalid input retains the draft; imported colors remain selectable; Add subject starts a fresh form after closing the editor |
 | Theme persistence | Light and Dark each restore after a cold restart, including before sign-in; rapid toggles retain the last choice; sign-out/import leave the preference intact |
 | Subject migration | Upgrade an existing database: subject names/IDs/colors and linked tasks/reviews/materials survive under General; no reset required |
 | Native schedule | Pick today, tomorrow, next week, and a year-boundary date; verify chosen local start/end dates and stored instants |

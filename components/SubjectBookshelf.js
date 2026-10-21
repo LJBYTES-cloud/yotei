@@ -7,9 +7,9 @@ import { fieldGradient } from '../utils/subjectFields';
 
 /**
  * Horizontal shelves grouped by field inside Library's task list header.
- * @param {{subjects: import('../db/SubjectService').Subject[], taskCounts: Map<number, number>, selectedId: number | null, disabled?: boolean, onSelect: (id: number | null) => void}} props
+ * @param {{subjects: import('../db/SubjectService').Subject[], taskCounts: Map<number, number>, selectedId: number | null, disabled?: boolean, onSelect: (id: number | null) => void, onEdit: (subject: import('../db/SubjectService').Subject) => void}} props
  */
-export default function SubjectBookshelf({ subjects, taskCounts, selectedId, disabled = false, onSelect }) {
+export default function SubjectBookshelf({ subjects, taskCounts, selectedId, disabled = false, onSelect, onEdit }) {
   const s = useThemedStyles(createStyles);
   const groups = useMemo(() => {
     const fields = new Map(/** @type {[string, {name: string, subjects: import('../db/SubjectService').Subject[]}][]} */ ([]));
@@ -24,10 +24,10 @@ export default function SubjectBookshelf({ subjects, taskCounts, selectedId, dis
   return (
     <View style={s.shelves}>
       <View style={s.toolbar}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Show tasks from all subjects"
+        <Pressable accessibilityRole="button" accessibilityLabel="Show All Tasks"
           accessibilityState={{ selected: selectedId === null, disabled }} disabled={disabled} onPress={() => onSelect(null)}
           style={({ pressed }) => [s.allButton, selectedId === null && s.allSelected, pressed && s.pressed]}>
-          <Text style={[s.allText, selectedId === null && s.allSelectedText]}>Show all</Text>
+          <Text style={[s.allText, selectedId === null && s.allSelectedText]}>Show All Tasks</Text>
         </Pressable>
       </View>
       {groups.map(group => <View key={group.key} style={s.shelf}>
@@ -38,12 +38,13 @@ export default function SubjectBookshelf({ subjects, taskCounts, selectedId, dis
           const count = taskCounts.get(subject.id) ?? 0;
           const rule = 'rgba(0,0,0,0.3)';
           return (
-            <Pressable key={subject.id} accessibilityRole="button"
+            <View key={subject.id} style={[s.bookFrame, selected && s.selected, disabled && s.disabled]}>
+            <Pressable accessibilityRole="button"
               accessibilityLabel={`${subject.name}, ${count} ${count === 1 ? 'task' : 'tasks'}`}
               accessibilityHint={selected ? 'Show all subjects' : 'Filter tasks by this subject'}
               accessibilityState={{ selected, disabled }} disabled={disabled}
               onPress={() => onSelect(selected ? null : subject.id)}
-              style={({ pressed }) => [s.bookFrame, selected && s.selected, pressed && s.pressed, disabled && s.disabled]}>
+              style={({ pressed }) => pressed && s.pressed}>
               <LinearGradient colors={fieldGradient(subject.field_colors)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.spine}>
                 <View style={[s.binding, { backgroundColor: rule }]} />
                 <View pointerEvents="none" style={s.coverShade} />
@@ -68,6 +69,12 @@ export default function SubjectBookshelf({ subjects, taskCounts, selectedId, dis
                 </View>
               </LinearGradient>
             </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${subject.name}`} accessibilityHint="Edit subject name, field of study, and colors"
+              disabled={disabled} accessibilityState={{ disabled }} onPress={() => onEdit(subject)} hitSlop={4}
+              style={({ pressed }) => [s.editButton, pressed && s.pressed]}>
+              <Ionicons name="pencil-outline" size={18} color="#111111" />
+            </Pressable>
+            </View>
           );
         })}
       </ScrollView>
@@ -88,7 +95,8 @@ const createStyles = p => StyleSheet.create({
   books: { alignItems: 'flex-end', gap: 12, paddingBottom: 8 },
   bookFrame: { width: 156, flexShrink: 0, borderWidth: 2, borderColor: 'transparent', borderRadius: 10, padding: 3 }, selected: { borderColor: p.text },
   // Natural content height keeps long titles and scaled text out of flex clipping.
-  spine: { minHeight: 248, borderTopLeftRadius: 4, borderBottomLeftRadius: 4, borderTopRightRadius: 10, borderBottomRightRadius: 10, paddingTop: 24, paddingBottom: 24, paddingLeft: 16, paddingRight: 14, overflow: 'hidden', borderBottomWidth: 4, borderBottomColor: 'rgba(0,0,0,0.18)' },
+  spine: { minHeight: 248, borderTopLeftRadius: 4, borderBottomLeftRadius: 4, borderTopRightRadius: 10, borderBottomRightRadius: 10, paddingTop: 48, paddingBottom: 24, paddingLeft: 16, paddingRight: 14, overflow: 'hidden', borderBottomWidth: 4, borderBottomColor: 'rgba(0,0,0,0.18)' },
+  editButton: { position: 'absolute', top: 9, right: 10, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAF7F0', borderWidth: 1, borderColor: 'rgba(0,0,0,0.2)' },
   bookLabel: { backgroundColor: '#FAF7F0', borderRadius: 3, padding: 10, borderWidth: 1, borderColor: 'rgba(0,0,0,0.15)' },
   binding: { position: 'absolute', left: 5, top: 0, bottom: 0, width: 2 },
   coverShade: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, backgroundColor: 'rgba(0,0,0,0.12)' },

@@ -470,6 +470,54 @@ test('subject fields normalize, persist, and supply the first gradient color acr
   assert.match(single[1], /^#[0-9A-F]{6}$/);
 });
 
+test('editing a subject preserves its ID and linked records while refreshing joined names and colors', async t => {
+  const s = await loadServices();
+  t.after(s.close);
+  const subject = await s.createSubject('user', { name: 'Biology' });
+  const task = await s.createTask('user', { subject_id: subject.id, title: 'Study enzymes' });
+  const review = await s.createReviewItem('user', { subject_id: subject.id, topic: 'Catalysis' });
+  const block = await s.createStudyBlock('user', { task_id: task.id, start_time: '2026-11-01T10:00:00Z', end_time: '2026-11-01T10:30:00Z' });
+  const db = await s.getDatabase();
+  await db.runAsync('INSERT INTO Material (subject_id, task_id, title) VALUES (?, ?, ?)', subject.id, task.id, 'Class notes');
+  const updated = await s.updateSubject('user', subject.id, { name: "  Biochemistry O'Brien  ", field_of_study: ' Biology , Chemistry ', field_colors: ' #123abc, #def456 ' });
+  assert.equal(updated.id, subject.id);
+  assert.equal(updated.name, "Biochemistry O'Brien");
+  assert.equal(updated.field_of_study, 'Biology, Chemistry');
+  assert.equal(updated.field_colors, '#123ABC,#DEF456');
+  assert.deepEqual(plain(await s.getSubjectsForUser('user')), [plain(updated)]);
+  assert.equal((await s.getTasksForUser('user'))[0].id, task.id);
+  assert.equal((await s.getTasksForUser('user'))[0].subject_name, updated.name);
+  assert.equal((await s.getTasksForUser('user'))[0].subject_color, '#123ABC');
+  assert.equal((await s.getDueReviews('user'))[0].id, review.id);
+  assert.equal((await s.getDueReviews('user'))[0].subject_name, updated.name);
+  assert.equal((await s.getStudyBlocksForUser('user'))[0].id, block.id);
+  assert.equal((await s.getStudyBlocksForUser('user'))[0].subject_color, '#123ABC');
+  assert.equal((await db.getFirstAsync('SELECT subject_id FROM Material WHERE task_id = ?', task.id)).subject_id, subject.id);
+  assert.deepEqual(await db.getAllAsync('PRAGMA foreign_key_check'), []);
+  await s.updateSubject('user', subject.id, updated);
+  assert.equal((await s.getSubjectsForUser('user')).length, 1, 'saving unchanged values does not duplicate a subject');
+});
+
+test('subject edits reject invalid IDs, metadata, and other accounts without changing stored records', async t => {
+  const s = await loadServices();
+  t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Keep me' });
+  const input = { name: "Art'); DROP TABLE Subject; --", field_of_study: 'Arts', field_colors: '#ABCDEF' };
+  for (const action of [
+    () => s.updateSubject('', subject.id, input),
+    () => s.updateSubject('other-user', subject.id, input),
+    () => s.updateSubject('owner', 99999, input),
+    ...[0, -1, 1.5, '1'].map(id => () => s.updateSubject('owner', id, input)),
+    ...[{ name: ' ' }, { name: 'x'.repeat(129) }, { field_of_study: ', ' }, { field_of_study: null }, { field_colors: '#nope' }, { field_colors: '#ABCDEF,#abcdef' }, { field_colors: '#ABCDEF,#123456,#654321' }].map(change => () => s.updateSubject('owner', subject.id, { ...input, ...change })),
+  ]) {
+    await assert.rejects(action);
+    assert.deepEqual(plain(await s.getSubjectsForUser('owner')), [plain(subject)]);
+  }
+  const updated = await s.updateSubject('owner', subject.id, input);
+  assert.equal(updated.name, input.name, 'SQL-like text is bound as data');
+  assert.equal((await s.getSubjectsForUser('other-user')).length, 0);
+});
+
 test('binds SQL input safely and validates empty or invalid input', async t => {
   const services = await loadServices();
   t.after(services.close);

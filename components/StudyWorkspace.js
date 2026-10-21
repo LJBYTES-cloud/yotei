@@ -27,6 +27,7 @@ function useWorkspaceState(user) {
   const { blocks, refresh } = data;
   const [entry, setEntry] = useState(/** @type {'task' | 'subject' | null} */ (null));
   const [initialSubject, setInitialSubject] = useState(/** @type {number | null} */ (null));
+  const [editingSubject, setEditingSubject] = useState(/** @type {import('../db/SubjectService').Subject | null} */ (null));
   const [schedule, setSchedule] = useState(/** @type {Schedule | null} */ (null));
   const [reviewPrompt, setReviewPrompt] = useState(/** @type {StudyBlock | null} */ (null));
   const [workingBlock, setWorkingBlock] = useState(/** @type {number | null} */ (null));
@@ -202,15 +203,20 @@ function useWorkspaceState(user) {
   /** @param {'subject' | 'task'} kind @param {number | null} [subjectId] */
   function openEntry(kind, subjectId = null) {
     if (disabled || busyRef.current) return;
-    busyRef.current = true; setInitialSubject(subjectId); setEntry(kind); setActionError('');
+    busyRef.current = true; setEditingSubject(null); setInitialSubject(subjectId); setEntry(kind); setActionError('');
+  }
+  /** @param {import('../db/SubjectService').Subject} subject */
+  function openEditSubject(subject) {
+    if (disabled || busyRef.current || subject.user_id !== user.id) return;
+    busyRef.current = true; setEditingSubject(subject); setInitialSubject(null); setEntry('subject'); setActionError('');
   }
   return {
     user, data, clock, today, disabled, blocked, workingBlock, seeding, demoRevision, addingReview, workingReview, addReview, review,
     notice, dismissNotice: () => setNotice(''), error: data.error || actionError,
     refresh: refreshData, refreshInBackground,
-    complete, loadDemoData, backupAction, manageBackup, openEntry, openSchedule, openReschedule,
+    complete, loadDemoData, backupAction, manageBackup, openEntry, openEditSubject, openSchedule, openReschedule,
     signingOut, signOutError, signOut: () => { if (!busyRef.current) void signOut(); },
-    entry, initialSubject, schedule, setEntry, setSchedule, setNotice, savedSession,
+    entry, initialSubject, editingSubject, schedule, setEntry, setSchedule, setNotice, savedSession,
     reviewPrompt, addCompletedReview, dismissReviewPrompt,
   };
 }
@@ -228,10 +234,10 @@ function WorkspaceContent({ user, children }) {
   return (
     <StudyContext.Provider value={study}>
       {children}
-      {study.entry && <EntrySheet key={study.entry} kind={study.entry} userId={study.user.id} subjects={study.data.subjects} initialSubject={study.initialSubject}
+      {study.entry && <EntrySheet key={study.editingSubject ? `edit-${study.editingSubject.id}` : study.entry} kind={study.entry} userId={study.user.id} subjects={study.data.subjects} initialSubject={study.initialSubject} editingSubject={study.editingSubject}
         onClose={() => study.setEntry(null)} onSaved={() => {
           study.setEntry(null);
-          study.setNotice(study.entry === 'subject' ? 'Subject created.' : 'Task created.');
+          study.setNotice(study.editingSubject ? 'Subject updated.' : study.entry === 'subject' ? 'Subject created.' : 'Task created.');
           void study.data.refresh();
         }} />}
       {study.schedule && <ScheduleSheet userId={study.user.id} {...study.schedule} onClose={() => study.setSchedule(null)} onSaved={study.savedSession} />}

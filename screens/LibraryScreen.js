@@ -10,7 +10,7 @@ import { Button, FieldLabel } from '../components/ui';
 import SubjectBookshelf from '../components/SubjectBookshelf';
 
 export default function LibraryScreen() {
-  const { data, disabled, openEntry, refresh, demoRevision } = useStudy();
+  const { data, disabled, openEntry, openEditSubject, refresh, demoRevision } = useStudy();
   const [subjectId, setSubjectId] = useState(/** @type {number | null} */ (null));
   const list = useRef(/** @type {FlatList<import('../db/TaskService').Task> | null} */ (null));
   useScrollToTop(list);
@@ -36,9 +36,9 @@ export default function LibraryScreen() {
           </View>
           <Feedback />
           <View style={s.card}>
-            <View style={s.section}><FieldLabel label="Subject bookshelf" textStyle={s.sectionTitle} help="Subjects are grouped by field of study. Swipe each shelf to browse. Tap a book to filter tasks; tap it again or Show all to reset." /><Text style={s.sectionCount}>{String(data.subjects.length).padStart(2, '0')}</Text></View>
+            <View style={s.section}><FieldLabel label="Subject bookshelf" textStyle={s.sectionTitle} help="Subjects are grouped by field of study. Swipe to browse, tap a book to filter tasks, or use its pencil to edit. Tap the book again or Show All Tasks to reset." /><Text style={s.sectionCount}>{String(data.subjects.length).padStart(2, '0')}</Text></View>
             {data.subjects.length ? <SubjectBookshelf subjects={data.subjects} taskCounts={taskCounts} selectedId={subjectId}
-              disabled={disabled} onSelect={setSubjectId} /> : <Text style={s.hint}>No subjects added.</Text>}
+              disabled={disabled} onSelect={setSubjectId} onEdit={openEditSubject} /> : <Text style={s.hint}>No subjects added.</Text>}
           </View>
           <View style={s.card}><View style={s.section}><FieldLabel label="Your tasks" textStyle={s.sectionTitle} help="Select Schedule on a task to choose its start and end dates/times." /><Text style={s.sectionCount}>{String(tasks.length).padStart(2, '0')}</Text></View></View>
         </>}

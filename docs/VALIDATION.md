@@ -1,5 +1,13 @@
 # Validation snapshot
 
+## Subject editing and Show All Tasks (2026-10-22)
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.
+- `node --experimental-vm-modules --test tests/database.test.cjs`: 47 tests total, 46 passed, 0 failed, 1 timezone-specific DST case skipped in Asia/Singapore.
+- New production-SQL tests verify metadata normalization, in-place updates, unchanged-save behavior, joined Task/Review/StudyBlock names/colors, retained Material relationships, bound SQL-like text, invalid input rejection, and ownership isolation without modifying existing rows on failure.
+- `git diff --check`: passed. No schema or dependency changes were required. Earlier full-suite/native-export results below are historical; they were not rerun for this pass.
+- Native pencil tapping, sheet prefill/cancel/save, legacy swatches, keyboard behavior, and post-save shelf movement still require the updated device checks in `DEMO_AND_TESTING.md`.
+
 ## Fields of study, gradient shelves, and theme persistence (2026-10-22)
 
 | Check | Result |
