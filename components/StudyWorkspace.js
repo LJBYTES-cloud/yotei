@@ -106,9 +106,9 @@ function useWorkspaceState(user) {
     if (mutation.current || disabled || busyRef.current) return;
     mutation.current = true; busyRef.current = true; setWorkingReview({ id, difficulty }); setActionError(''); setNotice('');
     try {
-      const item = await markReviewed(user.id, id, difficulty);
+      await markReviewed(user.id, id, difficulty);
       if (!mounted.current) return;
-      setNotice(`Review saved. Next review: ${new Date(/** @type {string} */ (item.next_review_at)).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`);
+      setNotice('Review saved.');
       await data.refresh();
     } catch {
       if (mounted.current) setActionError('Could not save the review. Refresh the queue and try again.');

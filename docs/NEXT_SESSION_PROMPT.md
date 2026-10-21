@@ -46,9 +46,11 @@ Study data is local; Appwrite is not a cloud-sync layer.
 
 Latest UX: shared cards have 24px vertical separation and 20px internal
 padding. Library uses a selectable, wrapping SubjectBookshelf with stored
-book colors in both themes, contrasting ink, counts, and Show all reset.
-Colorful spines are an explicit exception to otherwise monochrome light
-chrome. Task cards no longer display non-editable estimated_minutes.
+book colors in dark mode, contrasting ink, counts, and Show all reset.
+Dark subject creation offers ten vibrant colors. Light books have white faces,
+gray outlines/page edges, and black text/icons; the color chooser is hidden.
+Stored colors are preserved; new light-mode subjects default to Iris for dark mode.
+Task cards no longer display non-editable estimated_minutes.
 Shared Sheet has full-modal keyboard avoidance, a shrinkable scroll area,
 scrollable header, and focused-input reveal using viewport measurements;
 all Entry/Schedule/Completion sheets inherit it.
@@ -87,6 +89,8 @@ returns a composed created item to avoid a fallible post-insert read.
 Review Queue: new/null-timestamp topics are due immediately; due means
 next_review_at <= now. Hard/Good/Easy schedule 1/3/7 local calendar days.
 Rating is guarded against duplicate taps. These are fixed intervals.
+The UI shows only Hard/Good/Easy buttons without interval labels, popup hints,
+or interval announcements; successful rating reports "Review saved."
 
 Mock-only Load Demo Data resets only that user's records in a transaction:
 3 subjects, 6 tasks with today/tomorrow/overdue deadlines, 2 coaching tasks,

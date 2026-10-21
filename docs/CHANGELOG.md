@@ -161,6 +161,25 @@ File-by-file changes (one new component, no files deleted):
 | `docs/VALIDATION.md` | Added dated test/build/compatibility evidence and native interaction limits. |
 | `docs/CHANGELOG.md` | Recorded this feature and updated the accepted scheduling decisions below. |
 
+### Subject palette and Review UI tuning (2026-10-22)
+
+- Expanded dark-mode subject creation to ten named vibrant colors. Light mode hides the color chooser and uses white books, gray outlines/page edges, and black text/icons. Stored subject colors are preserved; subjects created in light mode retain an Iris default for dark mode.
+- Removed review interval captions, the interval guidance popup, and interval wording from accessibility labels. Rating feedback now says "Review saved." Database scheduling intervals and rating guards are unchanged.
+- No dependencies, database logic, or files were added or deleted.
+
+| File changed | Summary |
+| --- | --- |
+| `components/EntrySheet.js` | Ten dark-mode subject colors; hide the light-mode color chooser; stable stored default. |
+| `components/SubjectBookshelf.js` | Theme-aware monochrome light-mode book faces, outlines, ink, and paper edges. |
+| `screens/ReviewScreen.js` | Keep Hard/Good/Easy buttons; remove interval captions, popup, and accessibility reminders. |
+| `components/StudyWorkspace.js` | Simplify successful rating feedback to "Review saved." |
+| `screens/SettingsScreen.js` | Correct theme guidance to describe dark-only subject colors. |
+| `docs/PROJECT_CONTEXT.md` | Update current palette, light-mode presentation, and Review UI contracts. |
+| `docs/NEXT_SESSION_PROMPT.md` | Update continuation context for this tuning pass. |
+| `docs/DEMO_AND_TESTING.md` | Update palette/theme and review-rating manual checks. |
+| `docs/VALIDATION.md` | Record this pass's checks and device-verification limits. |
+| `docs/CHANGELOG.md` | Record this feature and every changed file. |
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |
@@ -178,7 +197,7 @@ File-by-file changes (one new component, no files deleted):
 | Long inline instructional paragraphs | Small info icons with native guidance popups; errors/warnings stay visible |
 | Horizontal subject pills in Library | Selectable book-spine grid; pill selectors remain in forms |
 | Non-editable estimated minutes on task cards | Removed from UI; SQLite/backup field retained |
-| Uniformly monochrome subject presentation in light mode | Colorful bookshelf spines in both themes; surrounding light chrome remains monochrome |
+| Colorful bookshelf spines in both themes | Ten color choices in dark mode; monochrome books/markers and no color chooser in light mode |
 
 ## Git checkpoints present at handoff
 

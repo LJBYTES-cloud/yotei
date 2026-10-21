@@ -3,7 +3,6 @@ import { FlatList, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSh
 import { useFocusEffect, useScrollToTop } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, useThemedStyles } from '../ThemeContext';
-import { REVIEW_INTERVAL_DAYS } from '../db/ReviewService';
 import { EmptyState, Feedback, ScreenHeader } from '../components/StudyCards';
 import { useStudy } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
@@ -23,11 +22,10 @@ function DueReviewCard({ item }) {
     <Text style={s.title}>{item.topic}</Text>
     <Text style={r.dueDate}>{item.next_review_at ? `Due: ${new Date(item.next_review_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Not reviewed yet'}</Text>
     <View style={r.ratings}>{difficulties.map(difficulty => <View key={difficulty} style={s.flex}>
-      <Button label={difficulty} accessibilityLabel={`Rate ${item.topic} ${difficulty}; review in ${REVIEW_INTERVAL_DAYS[difficulty]} ${REVIEW_INTERVAL_DAYS[difficulty] === 1 ? 'day' : 'days'}`}
+      <Button label={difficulty} accessibilityLabel={`Rate ${item.topic} ${difficulty}`}
         compact tone="quiet" disabled={disabled}
         busy={workingReview?.id === item.id && workingReview.difficulty === difficulty}
         onPress={() => void review(item.id, difficulty)} />
-      <Text style={r.interval}>{REVIEW_INTERVAL_DAYS[difficulty]} {REVIEW_INTERVAL_DAYS[difficulty] === 1 ? 'day' : 'days'}</Text>
     </View>)}</View>
   </View>;
 }
@@ -82,7 +80,7 @@ export default function ReviewScreen() {
             </> : <View style={r.noSubjects}><Text style={s.hint}>{data.ready ? 'Create a subject before adding topics to the queue.' : 'Loading subjects…'}</Text><Button label="Create subject" disabled={disabled} onPress={() => openEntry('subject')} /></View>}
           </View>
           <Feedback />
-          <View style={s.card}><View style={s.section}><FieldLabel label="Due Reviews" textStyle={s.sectionTitle} help="Rate your recall: Hard schedules the next review in 1 day, Good in 3 days, and Easy in 7 days." /><Text style={s.sectionCount}>{data.reviews.length}</Text></View></View>
+          <View style={s.card}><View style={s.section}><Text style={s.sectionTitle}>Due Reviews</Text><Text style={s.sectionCount}>{data.reviews.length}</Text></View></View>
         </>}
         renderItem={({ item }) => <DueReviewCard item={item} />}
         ListEmptyComponent={<EmptyState title="You're all caught up on reviews." text="New topics appear here immediately. Reviewed topics return at their scheduled time." />} />
@@ -97,5 +95,4 @@ const createStyles = p => StyleSheet.create({
   subjects: { gap: 12, paddingBottom: 16 }, noSubjects: { gap: 12 },
   dueDate: { color: p.muted, fontSize: 12, lineHeight: 20, marginTop: 12 },
   ratings: { flexDirection: 'row', gap: 8, marginTop: 16 },
-  interval: { color: p.muted, fontSize: 11, textAlign: 'center', marginTop: 8 },
 });

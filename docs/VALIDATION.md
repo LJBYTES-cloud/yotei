@@ -1,5 +1,16 @@
 # Validation snapshot
 
+## Subject palette and Review UI tuning (2026-10-22)
+
+- `npx.cmd expo lint`: passed.
+- `npx.cmd tsc --noEmit`: passed.
+- `git diff --check`: passed (only Git's LF/CRLF normalization notices).
+- Source inspection confirms ten distinct named dark-mode choices, a hidden light-mode color chooser, and monochrome light-mode book faces, outlines, text/icons, and paper edges. Existing markers/pills use ThemeContext's monochrome mapping.
+- Source search confirms no review interval constants, interval guidance, or next-review confirmation strings remain in screens/components. ReviewService and its scheduling rules were not changed; successful ratings still refresh the queue.
+- Native appearance and screen-reader behavior still require the updated manual checks in `DEMO_AND_TESTING.md` on a device. Database tests and native bundle exports were not rerun for this presentation-only pass; earlier results below remain historical.
+
+## Original handoff baseline
+
 Date: **2026-10-21, Asia/Singapore**. Baseline application commit: `edfb6ab`. The original source-handoff checks are recorded below, followed by the Data Backup implementation checks against the updated working tree.
 
 ## Checks run
