@@ -25,7 +25,7 @@ All study data remains in local SQLite. Appwrite is an authentication adapter; i
 
 ## Stack and package policy
 
-- Expo `~57.0.30`, React Native `0.86.3`, React `19.2.3`.
+- Expo `~57.0.31`, React Native `0.86.3`, React `19.2.3`.
 - JavaScript implementation with JSDoc types and `checkJs`; thin Expo Router routes use TSX.
 - npm and `package-lock.json`; no Bun lockfile at this snapshot.
 - Expo Router supplies the root stack and JavaScript bottom tabs. Ionicons come from `@expo/vector-icons`.
@@ -69,13 +69,14 @@ References: [Expo custom entry setup](https://docs.expo.dev/router/installation/
 | `components/ui.js` | Themed buttons, pills, inputs, messages, and keyboard-aware Sheet |
 | `components/studyStyles.js` | Shared screen/card/typography styles |
 | `components/StudyCards.js` | Screen header, task/focus/coaching cards, feedback and empty states |
-| `components/ScheduleSheet.js` | Duration/start-time input, workload confirmation, schedule/reschedule calls |
+| `components/ScheduleSheet.js` | Typed start/end clocks and days, workload confirmation, schedule/reschedule calls |
+| `components/SubjectBookshelf.js` | Responsive book-spine subject grid, task counts, selection/reset, contrasting ink |
 | `components/EntrySheet.js` | Subject and task forms |
 | `components/CompletionReviewSheet.js` | Yes/no prompt and quick topic form after marking a block done |
 | `components/theme.js` | Time and minute formatting helpers; palettes now live in ThemeContext |
 | `db/` | SQLite schema, services, workload/date helpers, demo seed |
 | `db/BackupService.js` | Versioned JSON export, native file picker/share sheet, validated transactional account restore |
-| `utils/scheduling.js` | Positive-integer duration and local HH:mm validation |
+| `utils/scheduling.js` | Start/end HH:mm/day validation and editable default study windows |
 | `tests/database.test.cjs` | Production service SQL exercised against real Node SQLite |
 | `tests/auth.test.cjs` | Both adapters exercised with isolated storage/SDK substitutes |
 | `tests/backup.test.cjs` | Real SQLite restore, ID mapping, account isolation, validation, rollback, native transport substitutes |
@@ -144,14 +145,15 @@ erDiagram
 | ReviewService | `REVIEW_INTERVAL_DAYS`, `createReviewItem`, `getDueReviews`, `markReviewed` |
 | seedData | `seedDemoData(userId)` |
 | dateUtils | `getLocalDateKey`, `getLocalDayRange` |
-| utils/scheduling | `buildStudyTimes({duration, mode, time}, now)` |
+| utils/scheduling | `buildStudyTimes({startTime, endTime, startDay, endDay}, now)`, `getInitialStudyWindow(now, initialDuration)` |
 
 These services provide the requested creation/query/status operations, not a complete edit/delete CRUD interface.
 
 ## Scheduling, workload, and recommitment
 
-- The scheduling sheet accepts a custom positive whole-number duration in minutes. Invalid text, signs, or decimal edits are rejected without turning them into a different valid duration. The underlying helper also rejects zero, negatives, decimals, text, unsafe integers, and invalid end dates.
-- Start time is **Now** or a custom local `HH:mm` later today. Past/malformed times and invalid daylight-saving clock times are rejected.
+- The scheduling sheet accepts two editable local 24-hour clocks, **Start time** and **End time**, plus explicit Today/Tomorrow selections. There is no duration TextInput. SQLite workload calculation derives elapsed minutes from the saved instants.
+- The initial window begins at the next whole minute and uses the existing suggested length (normally 30 minutes, 5 minutes for coaching, or the missed block's length). Both endpoints are editable; this is distinct from the task's non-editable `estimated_minutes` field, which is no longer displayed on task cards.
+- Past starts, malformed `HH:mm`, same/reversed endpoint instants, invalid day choices, and nonexistent daylight-saving local times are rejected. An overnight end requires explicitly choosing Tomorrow; past clock values are never silently rolled forward.
 - Store instants as ISO timestamps; calendar/date-only task deadlines remain date keys where appropriate.
 - Task date queries can include tasks due on a date or with a block overlapping that local date.
 - Workload includes `scheduled` and `done` minutes; missed history is excluded. Cross-midnight blocks contribute only their overlap with each local day.
@@ -161,7 +163,7 @@ These services provide the requested creation/query/status operations, not a com
 - Older unresolved misses remain visible so they can be rescheduled after midnight.
 - Rescheduling preserves the missed record and creates a replacement with `rescheduled_from = original.id`. Repeated submissions return the existing replacement.
 - The database trigger `count_study_block_postponement` increments Task.postpone_count on replacement insertion. **Do not add a second increment in the UI or service.** A retry must not increase the count again.
-- The service's no-options reschedule default is one hour from the supplied reference time. The current UI supplies the user's selected Now/custom times instead.
+- The service's no-options reschedule default is one hour from the supplied reference time. The current UI supplies the user's selected start/end instants instead.
 - The shared data refresh after saving exposes the new task count immediately. Coaching appears when `postpone_count >= 2`, with an action to schedule 5 minutes.
 
 ## Completion-to-review flow
@@ -217,12 +219,13 @@ The JSON contains study records only: no passwords, sessions, theme preference, 
 - Keep functional text; the early marketing/editorial slogans were removed.
 - Settings permanently displays **By students, for students.** in a small footer beneath its scrolling content.
 - Retain the four Ionicons tabs, subtle tab top border, cards, visible input backgrounds/borders, and full-width primary actions.
-- Shared screen padding is 20px. Standard cards use 16px padding/radius, a 1px border, and 12px separation.
+- Shared screen horizontal padding is 20px. Standard cards use 20px internal padding, 16px radius, a 1px border, and 24px separation. Section/action/form spacing increased by roughly 8–12px in the UX pass.
 - Dark: `#0C1117` background, `#151D27` cards, `#293442` borders, purple accent.
 - Light: `#F5F5F5` background, `#FFFFFF` cards, `#E0E0E0` borders, black text/accent and white primary-button text. Do not introduce purple into light mode.
-- Stored subject colors remain intact; ThemeContext presents non-monochrome markers as black in light mode.
+- Library shows subjects in a wrapping bookshelf grid with book-spine bindings, names, task counts, and selected-state icons. Tap a book to filter tasks; tap it again or Show all to reset. Demo/import revision resets still clear subject selection.
+- Book spines use stored subject colors in both themes, following the latest request for colorful subjects; black/white ink is chosen for contrast. This is a scoped exception to monochrome light-mode chrome. Existing ThemeContext markers elsewhere still map colored dots to black in light mode.
 - Theme defaults to dark on a new launch; the preference is currently in memory, not persisted.
-- Keep inputs within keyboard-aware layouts. AuthScreen and inline Review use KeyboardAvoidingView; EntrySheet, ScheduleSheet, and CompletionReviewSheet inherit it from Sheet.
+- Keep inputs within keyboard-aware layouts. AuthScreen and inline Review use KeyboardAvoidingView. The shared Sheet places KeyboardAvoidingView at the full native Modal viewport, with a shrinking scroll area, scrollable header, and safe-area handling. Shared Input reports focus to Sheet; after focus, keyboard-show, or layout changes, Sheet measures input and scroll viewport in window coordinates and scrolls the field into view. EntrySheet, ScheduleSheet, and CompletionReviewSheet all inherit this behavior.
 
 ## Known boundaries and next-session checks
 

@@ -51,11 +51,11 @@ export default function HomeScreen() {
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
-  summary: { backgroundColor: p.hero, borderWidth: 1, borderColor: p.heroLine, borderRadius: 16, padding: 16, marginBottom: 12 },
+  summary: { backgroundColor: p.hero, borderWidth: 1, borderColor: p.heroLine, borderRadius: 16, padding: 20, marginBottom: 24 },
   kicker: { color: p.accent, fontSize: 9, fontWeight: '600', letterSpacing: 1.8 },
   numbers: { flexDirection: 'row', alignItems: 'center', gap: 18, marginTop: 22, marginBottom: 24 },
   minutes: { color: p.text, fontSize: 42, letterSpacing: -1.5, fontWeight: '700' }, caption: { color: p.muted, fontSize: 12, lineHeight: 20 },
   meter: { height: 3, borderRadius: 2, backgroundColor: p.line, overflow: 'hidden' }, fill: { height: '100%', borderRadius: 2 },
-  summaryNote: { color: p.muted, fontSize: 12, lineHeight: 19, marginTop: 16 },
-  stats: { flexDirection: 'row', gap: 24, borderTopWidth: 1, borderTopColor: p.heroLine, paddingTop: 18, marginTop: 22 }, statNumber: { color: p.text, fontWeight: '600' },
+  summaryNote: { color: p.muted, fontSize: 12, lineHeight: 19, marginTop: 24 },
+  stats: { flexDirection: 'row', gap: 24, borderTopWidth: 1, borderTopColor: p.heroLine, paddingTop: 26, marginTop: 30 }, statNumber: { color: p.text, fontWeight: '600' },
 });

@@ -11,7 +11,7 @@ docs/PROJECT_CONTEXT.md, and docs/VALIDATION.md. Inspect git status and
 current files; preserve my uncommitted work. The handoff snapshot is dated
 2026-10-21 (Asia/Singapore), baseline commit edfb6ab.
 
-Current stack: Expo ~57.0.30, React Native 0.86.3, React 19.2.3, npm.
+Current stack: Expo ~57.0.31, React Native 0.86.3, React 19.2.3, npm.
 JavaScript uses JSDoc/checkJs; Expo Router wrappers use TSX.
 main=index.js imports the URL polyfill first, then expo-router/entry.
 Active routes are src/app/. src/app/_layout.tsx re-exports App.js, which
@@ -44,7 +44,23 @@ SQLite yotei.db has Subject, Task, StudyBlock, ReviewItem, Material.
 Every service scopes ownership to user.id directly or through joins.
 Study data is local; Appwrite is not a cloud-sync layer.
 
-Scheduler: custom positive whole minutes and Now/future local HH:mm.
+Latest UX: shared cards have 24px vertical separation and 20px internal
+padding. Library uses a selectable, wrapping SubjectBookshelf with stored
+book colors in both themes, contrasting ink, counts, and Show all reset.
+Colorful spines are an explicit exception to otherwise monochrome light
+chrome. Task cards no longer display non-editable estimated_minutes.
+Shared Sheet has full-modal keyboard avoidance, a shrinkable scroll area,
+scrollable header, and focused-input reveal using viewport measurements;
+all Entry/Schedule/Completion sheets inherit it.
+
+Scheduler: editable Start Time and End Time in local HH:mm, with explicit
+Today/Tomorrow choices for both ends. No duration input or Now mode.
+Default start is the next whole minute; end is prefilled from the existing
+30m suggestion, 5m coaching action, or original missed-block duration.
+buildStudyTimes({startTime,endTime,startDay,endDay}, now) rejects past starts,
+malformed/nonexistent clocks, invalid days, and nonpositive windows.
+Overnight work requires explicit end-day selection. Minutes are derived
+from actual elapsed instants for the existing SQLite guardrail.
 Warn only when a local day's scheduled+done study time would exceed
 240 minutes; explicit confirmation can override. Missed history is
 excluded; cross-midnight workload is split by local day.
@@ -83,6 +99,9 @@ Backup verification: lint/typecheck, 79 combined auth/DB/backup tests,
 SDK dependency check, and Android/iOS exports passed. The subsequent auth
 diagnostics pass adds five tests: lint/typecheck pass and all 84 combined
 tests pass (24 auth, 38 database, 22 backup). See VALIDATION.md for evidence.
+The 2026-10-22 UX pass passes lint/typecheck and native bundle exports.
+Combined suites in Singapore: 89 cases, 88 passed and one New York DST-only
+skip. New York database suite: all 43 pass, including that DST case.
 Earlier DB tests also passed in America/New_York.
 The full SQLite schedule->done->review->miss->reschedule/count loop is
 tested. Native UI gestures, keyboard/modal appearance, live Appwrite,

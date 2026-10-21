@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useScrollToTop } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemedStyles } from '../ThemeContext';
 import { EmptyState, Feedback, ScreenHeader, TaskCard } from '../components/StudyCards';
 import { useStudy } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
-import { Button, Pill } from '../components/ui';
+import { Button } from '../components/ui';
+import SubjectBookshelf from '../components/SubjectBookshelf';
 
 export default function LibraryScreen() {
   const { data, disabled, openEntry, refresh, demoRevision } = useStudy();
@@ -17,6 +18,11 @@ export default function LibraryScreen() {
   const l = useThemedStyles(createStyles);
   useEffect(() => { setSubjectId(null); list.current?.scrollToOffset({ offset: 0, animated: false }); }, [demoRevision]);
   const tasks = useMemo(() => data.tasks.filter(task => subjectId === null || task.subject_id === subjectId), [data.tasks, subjectId]);
+  const taskCounts = useMemo(() => {
+    const counts = new Map();
+    for (const task of data.tasks) counts.set(task.subject_id, (counts.get(task.subject_id) ?? 0) + 1);
+    return counts;
+  }, [data.tasks]);
   return (
     <SafeAreaView style={s.screen} edges={['top', 'left', 'right']}>
       <FlatList ref={list} data={tasks} keyExtractor={task => String(task.id)} contentContainerStyle={s.content}
@@ -31,11 +37,9 @@ export default function LibraryScreen() {
           </View>
           <Feedback />
           <View style={s.card}>
-            <View style={s.section}><Text style={s.sectionTitle}>Your subjects</Text><Text style={s.sectionCount}>{String(data.subjects.length).padStart(2, '0')}</Text></View>
-            {data.subjects.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={l.subjects}>
-              <Pill label="All subjects" selected={subjectId === null} onPress={() => setSubjectId(null)} />
-              {data.subjects.map(subject => <Pill key={subject.id} label={`${subject.name} · ${data.tasks.filter(task => task.subject_id === subject.id).length}`} color={subject.color} selected={subjectId === subject.id} onPress={() => setSubjectId(subject.id)} />)}
-            </ScrollView> : <Text style={s.hint}>No subjects added.</Text>}
+            <View style={s.section}><Text style={s.sectionTitle}>Subject bookshelf</Text><Text style={s.sectionCount}>{String(data.subjects.length).padStart(2, '0')}</Text></View>
+            {data.subjects.length ? <SubjectBookshelf subjects={data.subjects} taskCounts={taskCounts} selectedId={subjectId}
+              disabled={disabled} onSelect={setSubjectId} /> : <Text style={s.hint}>No subjects added.</Text>}
           </View>
           <View style={s.card}><View style={s.section}><Text style={s.sectionTitle}>Your tasks</Text><Text style={s.sectionCount}>{String(tasks.length).padStart(2, '0')}</Text></View><Text style={s.hint}>Select Schedule on a task to create a study session.</Text></View>
         </>}
@@ -46,5 +50,5 @@ export default function LibraryScreen() {
 }
 
 const createStyles = () => StyleSheet.create({
-  actions: { gap: 12 }, subjects: { gap: 12, paddingBottom: 4 },
+  actions: { gap: 24 },
 });

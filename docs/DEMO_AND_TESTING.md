@@ -19,9 +19,9 @@ In environments where normal shims work, the standard commands are `npm ci` and 
 2. Use **Sign in to demo**, or enter `student@yotei.demo` / `study12345`. Leave Remember me off unless testing restoration.
 3. In Settings, select **Load Demo Data**. The in-app hint identifies that this replaces the current demo account's study data.
 4. Home shows 4 hours of planned/completed study and coaching for two postponed tasks. Elapsed seeded blocks are done; remaining blocks are scheduled.
-5. Library shows Mathematics, Biology, History and six tasks. Use the subject pills to filter.
-6. Select Schedule on a task, enter 5 minutes, and choose Now. Because the demo already has 240 minutes, the workload warning appears. Adjust or explicitly select Schedule anyway.
-7. On Home, select Mark Done on that active block. The completed block opens the optional review-topic prompt.
+5. Library shows Mathematics, Biology, History as colored book spines and six tasks. Tap a book to filter; tap it again or Show all to reset. Verify the selection indicator and task counts.
+6. Select Schedule on a task, enter a short future window today using Start Time and End Time (for example 18:00 to 18:05 if those times are still ahead). Because today's demo already has 240 minutes, the workload warning appears. Adjust or explicitly select Schedule anyway. For an overnight session, explicitly choose End tomorrow; the guardrail checks the minutes falling on each day.
+7. Once the session's start time arrives, select Mark Done on Home. The completed block opens the optional review-topic prompt.
 8. Choose Yes, add a topic. Enter a topic and save it. Its subject comes from the completed block, not a new manual subject selection.
 9. Open Review: the three seeded due topics and the new topic are listed. Rate one Hard, one Good, and one Easy. Each leaves the due list, with a 1/3/7-day next-review confirmation.
 10. In Settings, toggle Light mode. Verify monochrome cards/text/buttons; toggle back to Dark. Confirm the motto remains visible below scrolling Settings content.
@@ -37,27 +37,30 @@ The demo seed is day-relative. Reload it on a new date to obtain today's four-ho
 | Remember me off | Session works in the current launch; a real cold restart requires login |
 | Remember me on | Public session restores; sign-out clears it; test custom mock-account limitations described in PROJECT_CONTEXT |
 | Subject/task creation | Forms retain drafts on failure; new rows appear across tabs after success |
-| Custom schedule | Positive integer duration; Now or future HH:mm; block visible in Home |
-| Invalid duration | Reject `-5`, `1.5`, `abc`, zero and blank; do not turn pasted invalid text into a different valid number |
+| Custom schedule | Manually type Start Time and End Time as HH:mm, select Today/Tomorrow, and verify elapsed minutes and saved times |
+| Invalid time window | Reject blank/text/24:00/18:60, past starts, equal endpoints, reversed same-day endpoints, and nonexistent DST times; preserve the input for correction |
+| Overnight scheduling | Choose End tomorrow explicitly; verify the session overlaps the correct dates and each day's 240-minute check uses only its portion |
+| Task estimates | New and existing task cards omit non-editable estimated-minute text; postponement counts remain visible |
+| Subject bookshelf | Books wrap into columns on small phones/tablets, retain subject colors in both themes, show readable names/task counts, filter tasks, and reset after demo/import |
 | Workload | Exactly 240 minutes is permitted; adding more warns; Cancel/Adjust inserts nothing; explicit confirmation inserts once |
 | Completion prompt | Yes creates a due topic under the correct subject; No/Skip creates none; block remains done in either case |
 | Missed blocks | A scheduled block ending in the past becomes missed on load/refresh/foreground/timer detection |
 | Recommitment | Reschedule preserves the original; a replacement is linked; task count rises once per replacement, including rapid retries |
 | Coaching | After two actual replacement events, the task's coaching action is visible |
 | Review | New topics are immediately due; rating hides them until their next due time; another account cannot view or rate them |
-| Keyboard | Auth, inline Review, subject/task sheets, schedule sheet, and completion topic sheet remain usable with keyboard open |
+| Keyboard | On a small iOS/Android screen, focus Subject/Task name, both scheduler fields, and completion topic; the field and text stay visible above the keyboard, the sheet scrolls to actions, and typed drafts survive keyboard dismissal |
 | Empty states | Home: No study blocks scheduled for today. Review: You're all caught up on reviews. |
 | Demo reset | Repeated loading produces 3 subjects/6 tasks/4 blocks/3 reviews without affecting another account |
 | Data backup | Export/save JSON; import replaces only the signed-in account; picker cancel/invalid files preserve current data; verify both themes and loading/error feedback |
 
-For a short live missed-block demonstration, create a 1-minute session and leave the sheet closed. Wait for its end plus the next detection tick (up to about 30 seconds while active), or pull to refresh. Reschedule it and repeat to demonstrate a count of 2. Automated tests exercise the same data flow without waiting or changing the device clock.
+For a short live missed-block demonstration, choose the next whole minute as Start Time and one minute later as End Time, then leave the sheet closed. Wait for its end plus the next detection tick (up to about 30 seconds while active), or pull to refresh. Reschedule it and repeat to demonstrate a count of 2. Automated tests exercise the same data flow without waiting or changing the device clock.
 
 ## Automated commands
 
 ```powershell
 npx.cmd expo lint
 npx.cmd tsc --noEmit
-node --experimental-vm-modules --test tests/database.test.cjs tests/auth.test.cjs
+node --experimental-vm-modules --test tests/database.test.cjs tests/auth.test.cjs tests/backup.test.cjs
 ```
 
 Date-sensitive database coverage can run in separate PowerShell processes with:

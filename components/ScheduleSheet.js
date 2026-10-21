@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Keyboard, StyleSheet, Text, View } from 'react-native';
 import { createStudyBlock, rescheduleStudyBlock } from '../db/StudyBlockService';
 import { StudyLoadWarning } from '../db/StudyLoadService';
-import { buildStudyTimes } from '../utils/scheduling';
+import { buildStudyTimes, getInitialStudyWindow } from '../utils/scheduling';
 import { Button, Input, Message, Pill, Sheet } from './ui';
 import { formatMinutes } from './theme';
 import { useThemedStyles } from '../ThemeContext';
@@ -10,30 +10,21 @@ import { useThemedStyles } from '../ThemeContext';
 /** @param {{ userId: string, task: { id: number, title: string, subject_name: string }, sourceBlock?: import('../db/StudyBlockService').StudyBlock, initialDuration?: number, onClose: () => void, onSaved: (block: import('../db/StudyBlockService').StudyBlock) => void }} props */
 export default function ScheduleSheet({ userId, task, sourceBlock, initialDuration = 30, onClose, onSaved }) {
   const s = useThemedStyles(createStyles);
-  const [duration, setDuration] = useState(String(initialDuration));
-  const [durationError, setDurationError] = useState('');
-  const [mode, setMode] = useState(/** @type {'now' | 'custom'} */ ('now'));
-  const [time, setTime] = useState('');
+  const [window, setWindow] = useState(() => getInitialStudyWindow(new Date(), initialDuration));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState(/** @type {{ days: import('../db/StudyLoadService').StudyLoad[], times: {start_time: string, end_time: string} } | null} */ (null));
   const submitting = useRef(false);
 
-  /** @param {string} value */
-  function changeDuration(value) {
-    // Reject the whole edit: stripping characters would turn -5 into 5 or 1.5 into 15.
-    if (!/^\d*$/.test(value)) {
-      setDurationError('Enter a positive whole number of minutes using digits only.');
-      return;
-    }
-    setDuration(value);
-    setDurationError('');
+  /** @param {Partial<import('../utils/scheduling').StudyWindow>} change */
+  function changeWindow(change) {
+    setWindow(current => ({ ...current, ...change }));
     setError('');
   }
 
   /** @param {boolean} [proceed] */
   async function submit(proceed = false) {
-    if (submitting.current || durationError) return;
+    if (submitting.current) return;
     submitting.current = true;
     setBusy(true);
     setError('');
@@ -41,7 +32,7 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
     /** @type {{start_time: string, end_time: string} | null} */
     let proposedTimes = null;
     try {
-      const times = proceed && warning ? warning.times : buildStudyTimes({ duration, mode, time }, new Date());
+      const times = proceed && warning ? warning.times : buildStudyTimes(window, new Date());
       proposedTimes = times;
       const block = sourceBlock
         ? await rescheduleStudyBlock(userId, sourceBlock.id, new Date().toISOString(), { ...times, allowHeavyDay: proceed })
@@ -67,20 +58,28 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
           <Text style={s.warningTitle}>Daily study time exceeds 4 hours</Text>
           <Text style={s.warningBody}>This session would put your planned and completed study time above 4 hours.</Text>
           {warning.days.map(day => <Text key={day.date} style={s.warningDetail}>{day.date} · {formatMinutes(day.current_minutes)} already planned + {formatMinutes(day.added_minutes)} = {formatMinutes(day.total_minutes)}</Text>)}
-          <Text style={s.warningBody}>Adjust the session duration or start time, or continue scheduling.</Text>
+          <Text style={s.warningBody}>Adjust the start or end time, or continue scheduling.</Text>
           <Message text={error} />
           <Button label="Schedule anyway" busy={busy} onPress={() => void submit(true)} />
           <View style={s.gap} /><Button label="Adjust session" tone="quiet" disabled={busy} onPress={() => { setWarning(null); setError(''); }} />
         </View>
       ) : (
         <>
-          <Input label="Duration (minutes)" value={duration} onChangeText={changeDuration} keyboardType="number-pad" placeholder="e.g. 25" editable={!busy} maxLength={6} returnKeyType="done" />
-          <Text style={s.help}>Enter a positive whole number of minutes.</Text>
-          <Text style={s.label}>Start time</Text>
-          <View style={s.choices}><Pill label="Now" selected={mode === 'now'} disabled={busy} onPress={() => setMode('now')} /><Pill label="Pick a time" selected={mode === 'custom'} disabled={busy} onPress={() => setMode('custom')} /></View>
-          {mode === 'custom' && <><Input label="Start time today · 24-hour clock" value={time} onChangeText={setTime} placeholder="14:30" keyboardType="numbers-and-punctuation" maxLength={5} editable={!busy} autoCorrect={false} /><Text style={s.help}>Your local time. Choose a time later today.</Text></>}
-          <Message text={durationError || error} />
-          <Button label={sourceBlock ? 'Reschedule session ↗' : 'Save session'} busy={busy} disabled={Boolean(durationError)} onPress={() => void submit()} />
+          <Input label={`Start time · ${window.startDay}`} value={window.startTime} onChangeText={startTime => changeWindow({ startTime })}
+            placeholder="18:00" keyboardType="numbers-and-punctuation" editable={!busy} autoCorrect={false} autoCapitalize="none" autoComplete="off" maxLength={16} />
+          <View style={s.choices}>
+            <Pill label="Start today" selected={window.startDay === 'today'} disabled={busy} onPress={() => changeWindow({ startDay: 'today' })} />
+            <Pill label="Start tomorrow" selected={window.startDay === 'tomorrow'} disabled={busy} onPress={() => changeWindow({ startDay: 'tomorrow', endDay: 'tomorrow' })} />
+          </View>
+          <Input label={`End time · ${window.endDay}`} value={window.endTime} onChangeText={endTime => changeWindow({ endTime })}
+            placeholder="19:00" keyboardType="numbers-and-punctuation" editable={!busy} autoCorrect={false} autoCapitalize="none" autoComplete="off" maxLength={16} returnKeyType="done" onSubmitEditing={() => void submit()} />
+          <View style={s.choices}>
+            <Pill label="End today" selected={window.endDay === 'today'} disabled={busy} onPress={() => changeWindow({ endDay: 'today' })} />
+            <Pill label="End tomorrow" selected={window.endDay === 'tomorrow'} disabled={busy} onPress={() => changeWindow({ endDay: 'tomorrow' })} />
+          </View>
+          <Text style={s.help}>Use your local 24-hour clock (HH:mm). Choose a future start and a later end. For an overnight session, select End tomorrow.</Text>
+          <Message text={error} />
+          <Button label={sourceBlock ? 'Reschedule session ↗' : 'Save session'} busy={busy} onPress={() => void submit()} />
           <Text style={s.footnote}>Scheduled sessions appear in Home.</Text>
         </>
       )}
@@ -90,9 +89,9 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
-  task: { borderLeftWidth: 2, borderLeftColor: p.accent, paddingLeft: 16, marginBottom: 28 }, subject: { color: p.muted, fontSize: 12, marginBottom: 7 }, taskTitle: { color: p.text, fontSize: 20, lineHeight: 28, fontWeight: '500' },
-  label: { color: p.muted, fontSize: 12, fontWeight: '600', marginBottom: 12 }, help: { color: p.muted, fontSize: 12, lineHeight: 19, marginTop: -9, marginBottom: 24 },
-  choices: { flexDirection: 'row', gap: 10, marginBottom: 24 }, footnote: { color: p.muted, fontSize: 11, textAlign: 'center', lineHeight: 18, marginTop: 18 },
-  warning: { padding: 18, borderRadius: 20, backgroundColor: p.warmSoft, borderWidth: 1, borderColor: p.line }, warningKicker: { color: p.warm, fontSize: 9, letterSpacing: 1.5, fontWeight: '700', marginBottom: 12 },
-  warningTitle: { color: p.text, fontSize: 25, lineHeight: 31, letterSpacing: -0.6, marginBottom: 12 }, warningBody: { color: p.text, fontSize: 14, lineHeight: 22, marginBottom: 16 }, warningDetail: { color: p.warm, fontSize: 12, lineHeight: 21, marginBottom: 12 }, gap: { height: 12 },
+  task: { borderLeftWidth: 2, borderLeftColor: p.accent, paddingLeft: 16, marginBottom: 36 }, subject: { color: p.muted, fontSize: 12, marginBottom: 7 }, taskTitle: { color: p.text, fontSize: 20, lineHeight: 28, fontWeight: '500' },
+  help: { color: p.muted, fontSize: 12, lineHeight: 20, marginBottom: 28 },
+  choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 28 }, footnote: { color: p.muted, fontSize: 11, textAlign: 'center', lineHeight: 18, marginTop: 26 },
+  warning: { padding: 20, borderRadius: 20, backgroundColor: p.warmSoft, borderWidth: 1, borderColor: p.line }, warningKicker: { color: p.warm, fontSize: 9, letterSpacing: 1.5, fontWeight: '700', marginBottom: 20 },
+  warningTitle: { color: p.text, fontSize: 25, lineHeight: 31, letterSpacing: -0.6, marginBottom: 20 }, warningBody: { color: p.text, fontSize: 14, lineHeight: 22, marginBottom: 24 }, warningDetail: { color: p.warm, fontSize: 12, lineHeight: 21, marginBottom: 20 }, gap: { height: 20 },
 });

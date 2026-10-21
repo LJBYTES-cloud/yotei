@@ -61,3 +61,21 @@ On 2026-10-21, enabled the real adapter after finding `USE_REAL_AUTH = false`, a
 - Read-only live `GET https://sgp.cloud.appwrite.io/v1/account`, with configured project ID `6ad4b5890028097c1d28`: **401**, `general_unauthorized_scope`, `User (role: guests) missing scopes (["account"])`. No credentials, API key, creation request, or session write were sent.
 
 The guest probe establishes reachability and that the request reached an account permission check. It does not establish that the user inspected the same Console project, that native platforms are registered there, or that a real email/password login succeeds. Fully reload the app and capture the new signIn/signUp error entries for any remaining live failure. No fresh native bundle export or device interaction was performed in this diagnostics pass.
+
+## UX polish checks (2026-10-22, Asia/Singapore)
+
+Validated the keyboard, spacing, manual start/end scheduler, and bookshelf changes against the current Expo `~57.0.31` / React Native `0.86.3` workspace:
+
+| Check | Result |
+| --- | --- |
+| `npx.cmd expo lint` | Passed |
+| `npx.cmd tsc --noEmit` | Passed |
+| Combined auth/database/backup tests with `TZ=Asia/Singapore` | 89 cases: 88 passed, 0 failed, 1 New York DST-only test skipped |
+| Database tests with `TZ=America/New_York` | All 43 passed, including DST-specific case |
+| Android/iOS Expo export to `.expo/ux-verification` | Both platforms passed; active route root is `src/app/` |
+
+The new time-window coverage verifies strict HH:mm/day validation, past/equal/reversed rejection, 5/30/original-duration defaults, midnight/year-boundary initialization, exactly 240 elapsed minutes, above-threshold interception/override, per-day overnight workload, exactly-once reschedule counts, nonexistent/repeated local clock behavior, and actual elapsed minutes through DST.
+
+Read-only UI review found and resolved two layout issues: sheet scrolling must compare the input with the actual native scroll viewport (including header placement), and book titles need intrinsic height for larger text. The bundle imports only the existing Ionicons family for bookshelf icons. No packages or database schema/services changed.
+
+Node tests and bundles do not exercise a real keyboard. On small iOS/Android devices, check every sheet with the keyboard open, scroll to its action buttons, test large text, dismiss/reopen without losing drafts, and verify all bookshelf columns/filter states in both themes. Follow the updated [manual checks](DEMO_AND_TESTING.md#manual-acceptance-checks).

@@ -94,6 +94,36 @@ This consolidates the feature requests and reworks through the 2026-10-21 handof
 - Confirmed the platform matches app.json's Android/iOS identifiers. A read-only `/account` request with the configured project ID returned a guest `401 general_unauthorized_scope`; no credentials or account creation were sent. Dashboard project selection, native registration, and successful live login still require checking with the reported device error.
 - Added five auth tests for normalization/client wiring, duplicate signup, login rejection, failure after registration, and invalid config. Lint/typecheck and all 84 combined tests pass. Updated mode/troubleshooting context in README, PROJECT_CONTEXT, DEMO_AND_TESTING, NEXT_SESSION_PROMPT, and validation evidence.
 
+### Keyboard, spacing, time-window scheduler, and bookshelf (2026-10-22)
+
+- Corrected shared sheet keyboard behavior with a full-modal KeyboardAvoidingView, shrinkable viewport, scrollable header, and focused-input scrolling based on actual window coordinates. Subject/Task, Schedule, and completion-to-review sheets inherit the fix.
+- Increased card separation from 12px to 24px, internal card padding from 16px to 20px, and section/form/action spacing by roughly 8–12px. Kept existing typefaces, borders, icons, dark/light screen colors, and auth behavior.
+- Removed the non-editable estimated-minute fallback from task cards. `estimated_minutes` stays in SQLite and backups for compatibility; postponed task counts still display.
+- Replaced the duration/Now form with manually typed Start Time and End Time, explicit Today/Tomorrow choices, and strict local HH:mm validation. The existing SQLite service derives workload from elapsed instants, including midnight/DST. Its 240-minute warning and exactly-once rescheduling rules are unchanged.
+- Added a responsive bookshelf of subject spines with binding details, stored colors, task counts, selection icons, and Show all reset. Stored book colors appear in both themes as a scoped exception to light-mode monochrome chrome. Long/scaled names contribute to spine height. Imported/reset data still clears stale filters.
+- No dependency, schema, or authentication changes were needed.
+
+File-by-file changes in this UX pass (no files deleted):
+
+| File | Change |
+| --- | --- |
+| `components/ui.js` | Full-modal keyboard avoidance, shrinking/scrollable sheet content, focused-input measurements, and increased shared input spacing. |
+| `components/EntrySheet.js` | Added spacing around subject/color choices and form actions. |
+| `components/ScheduleSheet.js` | Editable start/end clock fields and day choices; preserved workload confirmation and original/coaching duration suggestions. |
+| `components/SubjectBookshelf.js` | Created responsive selectable book-spine grid with contrasting ink, counts, readable titles, and all-subject reset. |
+| `components/StudyCards.js` | Removed default estimate display; increased coaching spacing; changed recovery copy to start/end times. |
+| `components/studyStyles.js` | Shared card/section/list/coaching spacing and padding increases. |
+| `screens/HomeScreen.js` | Increased workload card and summary spacing. |
+| `screens/LibraryScreen.js` | Integrated bookshelf/task filters, memoized subject counts, and roomier creation actions. |
+| `utils/scheduling.js` | New time-window/default helper contract, strict clocks/days, future starts, explicit overnight behavior, DST-safe instants. |
+| `tests/database.test.cjs` | Replaced old duration-input checks and added window/default/threshold/overnight/reschedule/DST coverage. |
+| `README.md` | Updated Library/scheduler overview and current UX summary. |
+| `docs/PROJECT_CONTEXT.md` | Updated service/helper contracts, current SDK version, keyboard strategy, spacing, and bookshelf theme exception. |
+| `docs/DEMO_AND_TESTING.md` | Revised demo steps, manual keyboard/bookshelf/time checks, and combined test command. |
+| `docs/NEXT_SESSION_PROMPT.md` | Updated continuation context and current UX contracts. |
+| `docs/VALIDATION.md` | Added dated verification results and physical-device limitations. |
+| `docs/CHANGELOG.md` | Recorded this implementation and full per-file summary. |
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |
@@ -106,6 +136,10 @@ This consolidates the feature requests and reworks through the 2026-10-21 handof
 | Now / In 1 hour only | UI supports Now / custom local HH:mm; service still has a no-options 1-hour reschedule default |
 | Temporary Review recovery screen | Real due-topic spaced-repetition queue; missed blocks remain in Home |
 | Editorial/marketing slogans | Functional app copy plus the explicitly requested Settings motto |
+| User-entered duration and Now/custom start form | Typed Start Time/End Time with explicit Today/Tomorrow choices; background workload calculation |
+| Horizontal subject pills in Library | Selectable book-spine grid; pill selectors remain in forms |
+| Non-editable estimated minutes on task cards | Removed from UI; SQLite/backup field retained |
+| Uniformly monochrome subject presentation in light mode | Colorful bookshelf spines in both themes; surrounding light chrome remains monochrome |
 
 ## Git checkpoints present at handoff
 

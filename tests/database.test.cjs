@@ -800,18 +800,133 @@ test('increments postponement counts once per replacement and applies guardrails
   assert.equal((await services.getTasksForUser('user-b')).length, 0);
 });
 
-test('validates custom duration and local HH:mm inputs without silently moving past times', async t => {
+test('validates manual start/end clocks and explicit days without silently moving past or reversed times', async t => {
   const services = await loadServices();
   t.after(services.close);
   const now = new Date('2026-10-20T12:00:00');
-  const nowTimes = services.buildStudyTimes({ duration: '7', mode: 'now', time: '' }, now);
-  assert.equal(nowTimes.start_time, now.toISOString());
-  assert.equal(Date.parse(nowTimes.end_time) - Date.parse(nowTimes.start_time), 7 * 60000);
-  const custom = services.buildStudyTimes({ duration: '83', mode: 'custom', time: '14:30' }, now);
-  assert.equal(custom.start_time, new Date('2026-10-20T14:30:00').toISOString());
-  assert.equal(Date.parse(custom.end_time) - Date.parse(custom.start_time), 83 * 60000);
-  for (const duration of ['0', '-5', '1.5', 'abc', '', '1e2']) assert.throws(() => services.buildStudyTimes({ duration, mode: 'now', time: '' }, now));
-  for (const time of ['24:00', '14:60', '2:30', '12:00', '09:00', 'tomorrow']) assert.throws(() => services.buildStudyTimes({ duration: '25', mode: 'custom', time }, now));
-  const overnight = services.buildStudyTimes({ duration: '30', mode: 'custom', time: '23:50' }, now);
+  const input = { startTime: '18:00', endTime: '19:00', startDay: 'today', endDay: 'today' };
+  const times = services.buildStudyTimes(input, now);
+  assert.equal(times.start_time, new Date('2026-10-20T18:00:00').toISOString());
+  assert.equal(Date.parse(times.end_time) - Date.parse(times.start_time), 60 * 60000);
+  assert.deepEqual(plain(services.buildStudyTimes({ ...input, startTime: ' 18:00 ', endTime: '19:00 ' }, now)), plain(times));
+  for (const badTime of ['24:00', '18:60', '6:00', '18:0', 'abc', '', '-5', '18.5', '18:00abc', null]) {
+    assert.throws(() => services.buildStudyTimes({ ...input, startTime: badTime }, now), /valid start time/);
+    assert.throws(() => services.buildStudyTimes({ ...input, endTime: badTime }, now), /valid end time/);
+  }
+  for (const startTime of ['12:00', '09:00']) assert.throws(() => services.buildStudyTimes({ ...input, startTime }, now), /future/);
+  for (const endTime of ['18:00', '17:59']) assert.throws(() => services.buildStudyTimes({ ...input, endTime }, now), /end time after/);
+  assert.throws(() => services.buildStudyTimes({ ...input, startDay: 'tomorrow' }, now), /end time after/);
+  assert.throws(() => services.buildStudyTimes({ ...input, startDay: 'yesterday' }, now), /starts today or tomorrow/);
+  assert.throws(() => services.buildStudyTimes({ ...input, endDay: 'later' }, now), /ends today or tomorrow/);
+  assert.throws(() => services.buildStudyTimes(input, new Date(NaN)), /current date/);
+  const overnight = services.buildStudyTimes({ ...input, startTime: '23:50', endTime: '00:20', endDay: 'tomorrow' }, now);
   assert.equal(services.getLocalDateKey(new Date(overnight.end_time)), '2026-10-21');
+  assert.equal(Date.parse(overnight.end_time) - Date.parse(overnight.start_time), 30 * 60000);
+  const tomorrow = services.buildStudyTimes({ ...input, startDay: 'tomorrow', endDay: 'tomorrow' }, now);
+  assert.equal(services.getLocalDateKey(new Date(tomorrow.start_time)), '2026-10-21');
+});
+
+test('prefills editable time windows for coaching and reschedules, including the next date at midnight', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const now = new Date('2026-10-20T12:00:43');
+  for (const duration of [5, 30, 83]) {
+    const input = services.getInitialStudyWindow(now, duration);
+    assert.equal(input.startTime, '12:01');
+    const times = services.buildStudyTimes(input, now);
+    assert.equal(Date.parse(times.end_time) - Date.parse(times.start_time), duration * 60000);
+  }
+  const yearEnd = new Date('2026-12-31T23:59:42');
+  const initial = services.getInitialStudyWindow(yearEnd, 5);
+  assert.deepEqual(plain(initial), { startTime: '00:00', endTime: '00:05', startDay: 'tomorrow', endDay: 'tomorrow' });
+  const times = services.buildStudyTimes(initial, yearEnd);
+  assert.equal(times.start_time, new Date('2027-01-01T00:00:00').toISOString());
+  assert.equal(Date.parse(times.end_time) - Date.parse(times.start_time), 5 * 60000);
+  assert.throws(() => services.getInitialStudyWindow(new Date(NaN)), /current date/);
+  // Older, very long durations still produce valid, visibly editable clocks.
+  assert.doesNotThrow(() => services.buildStudyTimes(services.getInitialStudyWindow(now, Number.MAX_VALUE), now));
+});
+
+test('manual start/end intervals allow exactly 240 minutes and require confirmation above the SQLite daily total', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Mathematics' });
+  const task = await services.createTask('user-a', { title: 'Practice algebra', subject_id: subject.id });
+  const now = new Date('2026-10-20T06:00:00');
+  const input = (startTime, endTime) => ({ startTime, endTime, startDay: 'today', endDay: 'today' });
+  for (const window of [input('08:00', '11:00'), input('18:00', '19:00')]) {
+    await services.createStudyBlock('user-a', { task_id: task.id, ...services.buildStudyTimes(window, now) });
+  }
+  assert.equal(await services.getDailyStudyMinutes('user-a', '2026-10-20'), 240);
+  const extra = services.buildStudyTimes(input('19:00', '19:01'), now);
+  await assert.rejects(services.createStudyBlock('user-a', { task_id: task.id, ...extra }), error => {
+    assert.equal(error.name, 'StudyLoadWarning');
+    assert.deepEqual(plain(error.days), [{ date: '2026-10-20', current_minutes: 240, added_minutes: 1, total_minutes: 241 }]);
+    return true;
+  });
+  assert.equal((await services.getStudyBlocksForUser('user-a')).length, 2, 'warning inserts nothing');
+  await services.createStudyBlock('user-a', { task_id: task.id, ...extra }, { allowHeavyDay: true });
+  assert.equal(await services.getDailyStudyMinutes('user-a', '2026-10-20'), 241);
+  assert.equal(await services.getDailyStudyMinutes('user-b', '2026-10-20'), 0);
+});
+
+test('manual overnight clocks split the SQLite workload warning across the chosen local dates', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'Biology' });
+  const task = await services.createTask('user-a', { title: 'Read genetics', subject_id: subject.id });
+  const now = new Date('2026-10-20T12:00:00');
+  const base = services.buildStudyTimes({ startTime: '08:00', endTime: '12:00', startDay: 'tomorrow', endDay: 'tomorrow' }, now);
+  await services.createStudyBlock('user-a', { task_id: task.id, ...base });
+  const overnight = services.buildStudyTimes({ startTime: '23:50', endTime: '00:20', startDay: 'today', endDay: 'tomorrow' }, now);
+  await assert.rejects(services.createStudyBlock('user-a', { task_id: task.id, ...overnight }), error => {
+    assert.deepEqual(plain(error.days), [{ date: '2026-10-21', current_minutes: 240, added_minutes: 20, total_minutes: 260 }]);
+    return true;
+  });
+  await services.createStudyBlock('user-a', { task_id: task.id, ...overnight }, { allowHeavyDay: true });
+  assert.equal(await services.getDailyStudyMinutes('user-a', '2026-10-20'), 10);
+  assert.equal(await services.getDailyStudyMinutes('user-a', '2026-10-21'), 260);
+});
+
+test('manual time-window rescheduling preserves the selected interval and increments postponement exactly once', async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const subject = await services.createSubject('user-a', { name: 'History' });
+  const task = await services.createTask('user-a', { title: 'Make notes', subject_id: subject.id });
+  const original = await services.createStudyBlock('user-a', {
+    task_id: task.id, start_time: new Date('2026-10-19T18:00:00').toISOString(), end_time: new Date('2026-10-19T18:30:00').toISOString(),
+  });
+  await services.updateStudyBlockStatus('user-a', original.id, 'missed');
+  const now = new Date('2026-10-20T12:00:00');
+  const chosen = services.buildStudyTimes({ startTime: '18:00', endTime: '19:00', startDay: 'today', endDay: 'today' }, now);
+  const replacement = await services.rescheduleStudyBlock('user-a', original.id, now.toISOString(), chosen);
+  assert.equal(replacement.start_time, chosen.start_time);
+  assert.equal(replacement.end_time, chosen.end_time);
+  assert.equal(replacement.rescheduled_from, original.id);
+  const retry = await services.rescheduleStudyBlock('user-a', original.id, now.toISOString(), chosen);
+  assert.equal(retry.id, replacement.id);
+  assert.equal((await services.getTasksForUser('user-a'))[0].postpone_count, 1);
+  await assert.rejects(services.rescheduleStudyBlock('user-b', original.id, now.toISOString(), chosen), /belonging to your account/);
+});
+
+test('manual time windows reject daylight-saving gaps and calculate actual elapsed minutes across clock changes', { skip: process.env.TZ !== 'America/New_York' }, async t => {
+  const services = await loadServices();
+  t.after(services.close);
+  const input = { startTime: '01:30', endTime: '03:30', startDay: 'today', endDay: 'today' };
+  const springNow = new Date('2026-03-08T00:00:00');
+  for (const invalid of [{ ...input, startTime: '02:30' }, { ...input, endTime: '02:30' }]) {
+    assert.throws(() => services.buildStudyTimes(invalid, springNow), /unavailable/);
+  }
+  assert.throws(() => services.buildStudyTimes({ ...input, startTime: '02:30', startDay: 'tomorrow', endDay: 'tomorrow' }, new Date('2026-03-07T12:00:00')), /unavailable/);
+  const spring = services.buildStudyTimes(input, springNow);
+  assert.equal(Date.parse(spring.end_time) - Date.parse(spring.start_time), 60 * 60000);
+  const autumn = services.buildStudyTimes({ ...input, endTime: '02:30' }, new Date('2026-11-01T00:00:00'));
+  assert.equal(Date.parse(autumn.end_time) - Date.parse(autumn.start_time), 120 * 60000);
+  for (const timestamp of ['2026-11-01T01:50:00-04:00', '2026-11-01T01:50:00-05:00']) {
+    const now = new Date(timestamp);
+    const initial = services.getInitialStudyWindow(now, 30);
+    const times = services.buildStudyTimes(initial, now);
+    assert.ok(Date.parse(times.start_time) > now.getTime(), 'default cannot resolve to a repeated time already in the past');
+    assert.equal(Date.parse(times.end_time) - Date.parse(times.start_time), 30 * 60000, 'initial duration stays intact across the repeated hour');
+  }
 });

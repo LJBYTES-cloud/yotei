@@ -43,6 +43,6 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, onC
 }
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
-  label: { color: p.muted, fontSize: 12, fontWeight: '600', marginBottom: 12 }, colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 }, subjects: { gap: 12, paddingBottom: 24 },
-  note: { color: p.muted, fontSize: 12, lineHeight: 19, marginTop: 18, textAlign: 'center' },
+  label: { color: p.muted, fontSize: 12, fontWeight: '600', marginBottom: 16 }, colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 20, marginBottom: 32 }, subjects: { gap: 20, paddingBottom: 32 },
+  note: { color: p.muted, fontSize: 12, lineHeight: 19, marginTop: 26, textAlign: 'center' },
 });
