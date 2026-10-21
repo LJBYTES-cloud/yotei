@@ -86,6 +86,14 @@ This consolidates the feature requests and reworks through the 2026-10-21 handof
 - Added 22 backup tests and `npm run test:backup`; all 79 combined tests, lint, typecheck, dependency compatibility, and both native bundle exports pass.
 - Updated the context/runbook/validation documents. [DATA_BACKUP.md](DATA_BACKUP.md#file-by-file-changelog) lists every file changed or created in this feature; no project files were deleted. Native picker/share interaction still requires a device check.
 
+### Real Appwrite authentication diagnostics (2026-10-21)
+
+- Found the active adapter flag was still false, so login/signup used in-memory Mock accounts independently of Appwrite. Enabled the real adapter for the requested investigation.
+- Added exact `code`, `message`, and `type` console logs in signUp/signIn catch blocks. Both rethrow the original error to the existing UI. Signup now awaits automatic login so failures in that step are caught/logged too.
+- Preserved email trim/lowercase normalization and name trimming. Validated nonempty config, normalized surrounding whitespace/trailing endpoint slashes, retained the Client endpoint/project/platform setters, and logged only public target configuration.
+- Confirmed the platform matches app.json's Android/iOS identifiers. A read-only `/account` request with the configured project ID returned a guest `401 general_unauthorized_scope`; no credentials or account creation were sent. Dashboard project selection, native registration, and successful live login still require checking with the reported device error.
+- Added five auth tests for normalization/client wiring, duplicate signup, login rejection, failure after registration, and invalid config. Lint/typecheck and all 84 combined tests pass. Updated mode/troubleshooting context in README, PROJECT_CONTEXT, DEMO_AND_TESTING, NEXT_SESSION_PROMPT, and validation evidence.
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |

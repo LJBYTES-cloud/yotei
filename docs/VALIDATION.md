@@ -50,3 +50,14 @@ Run after adding native data backup and its Settings integration:
 Backup tests exercise production SQL against real SQLite, with native FileSystem/Sharing/DocumentPicker substitutes. They cover all five collections, ownership, bound values, ID/reference remapping, material metadata, preserved review dates, arbitrary history row order, exact postponement counts, new rescheduling after import, round trips, picker cancellation, empty backups, BOM handling, invalid files, size limits, write/share errors, and rollback after a late insert failure.
 
 The native picker, provider-specific MIME handling, share/save completion, and visual layout still require a phone check. A successful share-sheet call does not prove the user saved a copy. JSON preserves file paths rather than attachment bytes. No cloud sync or release build was added. See [DATA_BACKUP.md](DATA_BACKUP.md) for manual steps and the full change list.
+
+## Real authentication diagnostics checks
+
+On 2026-10-21, enabled the real adapter after finding `USE_REAL_AUTH = false`, added error/configuration logs, preserved email normalization, and added config validation. `appwriteConfig.js` values were inspected and retained; `com.yotei.app` matches both app.json platform identifiers.
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.
+- Combined auth/database/backup suites: **84 passed, 0 failed** (24 auth, 38 database, 22 backup).
+- Five new auth tests cover the configured client target, email/name trimming, original duplicate-email/login error details and propagation, signup's automatic-login rejection, and invalid config. Tests substitute the Appwrite SDK and capture console logs; they do not use real account credentials.
+- Read-only live `GET https://sgp.cloud.appwrite.io/v1/account`, with configured project ID `6ad4b5890028097c1d28`: **401**, `general_unauthorized_scope`, `User (role: guests) missing scopes (["account"])`. No credentials, API key, creation request, or session write were sent.
+
+The guest probe establishes reachability and that the request reached an account permission check. It does not establish that the user inspected the same Console project, that native platforms are registered there, or that a real email/password login succeeds. Fully reload the app and capture the new signIn/signUp error entries for any remaining live failure. No fresh native bundle export or device interaction was performed in this diagnostics pass.

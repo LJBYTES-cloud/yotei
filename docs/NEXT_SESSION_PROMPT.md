@@ -29,10 +29,16 @@ in memory. Use functional UI text only. Settings permanently includes
 "By students, for students."
 
 Auth uses AuthService with Mock and Appwrite adapters; public users are
-{id,name,email}. USE_REAL_AUTH is currently false. Demo login is
+{id,name,email}. USE_REAL_AUTH is currently true for real login diagnostics.
+Set it false and fully reload for Mock mode. Mock demo login is
 student@yotei.demo / study12345. Remember me defaults off and controls
 cleanup on cold boot. Custom mock credentials are not persisted.
 Appwrite public config is populated; live auth needs separate validation.
+The Appwrite adapter logs its public endpoint/project/platform and exact
+signIn/signUp failure code/message/type, trims email, and propagates the
+original error to the UI. Signup awaits automatic login. A read-only guest
+GET /account probe returned 401 general_unauthorized_scope with the configured
+project, establishing API reachability rather than a successful login.
 
 SQLite yotei.db has Subject, Task, StudyBlock, ReviewItem, Material.
 Every service scopes ownership to user.id directly or through joins.
@@ -73,8 +79,10 @@ clear stale subject selections/drafts. Authentication and attached file
 bytes are excluded (material paths/notes are included). Native only; see
 docs/DATA_BACKUP.md for the complete format and file-by-file changelog.
 
-Latest verification: lint and typecheck pass; 79 combined auth/DB/backup
-tests pass; SDK dependency check and Android/iOS exports pass.
+Backup verification: lint/typecheck, 79 combined auth/DB/backup tests,
+SDK dependency check, and Android/iOS exports passed. The subsequent auth
+diagnostics pass adds five tests: lint/typecheck pass and all 84 combined
+tests pass (24 auth, 38 database, 22 backup). See VALIDATION.md for evidence.
 Earlier DB tests also passed in America/New_York.
 The full SQLite schedule->done->review->miss->reschedule/count loop is
 tested. Native UI gestures, keyboard/modal appearance, live Appwrite,

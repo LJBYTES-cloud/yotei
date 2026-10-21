@@ -100,7 +100,16 @@ Export success confirms bundling and asset resolution. It does not install the a
 
 ## Real Appwrite setup boundary
 
-`appwriteConfig.js` contains public client values and `auth/index.js` selects the adapter. To use the real adapter, validate endpoint/project/platform registration for `com.yotei.app`, set `USE_REAL_AUTH = true`, and fully reload. Keep server API keys outside the mobile app.
+`appwriteConfig.js` contains public client values and `auth/index.js` selects the adapter. Real authentication is currently enabled (`USE_REAL_AUTH = true`). For a Mock demo, set the flag to false and fully reload; Mock registrations cannot create accounts in Appwrite. Keep server API keys outside the mobile app.
+
+For real login diagnostics:
+
+1. Restart with `npx.cmd expo start --clear` and fully reload the native app. Check for `[AppwriteAuthService] Client initialized` in the development console. It reports the public endpoint, projectId, and platform actually passed to the SDK.
+2. Compare those values with the same Appwrite Console project's endpoint/ID and registered Android/iOS platform (`com.yotei.app`). A local config check cannot establish that the Console account being inspected is in that project.
+3. Attempt Sign In with an existing project's user account. The adapter trims email and preserves the password. If it fails, capture the `[AppwriteAuthService] signIn failed` entry's exact `code`, `message`, and `type`.
+4. Signup failures log `[AppwriteAuthService] signUp failed` with the same details and propagate to the visible error. If creation succeeds but automatic login fails, both operation labels appear; the account may already exist even though signup as a whole failed.
+
+A read-only guest request to the current endpoint/project returned `401 general_unauthorized_scope` on 2026-10-21. No credentials or creation request were sent. This establishes reachability and the guest account permission check, not successful login or platform registration. Appwrite documents [client configuration](https://appwrite.io/docs/quick-starts/react-native) and [error codes/types](https://appwrite.io/docs/apis/response-codes); use the actual error type to distinguish invalid credentials, duplicate email, or project/platform configuration failures.
 
 The mock-only demo loader then disappears. Local study services remain SQLite-backed and still scope data to the normalized `user.id`; enabling Appwrite authentication does not enable cloud study-data synchronization.
 

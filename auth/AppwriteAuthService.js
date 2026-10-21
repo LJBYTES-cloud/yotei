@@ -15,49 +15,72 @@ export default class AppwriteAuthService extends AuthService {
   getAccount() {
     // Lazy setup keeps placeholder configuration harmless in mock mode.
     if (!this.account) {
-      if (APPWRITE_ENDPOINT.includes('YOUR_') || APPWRITE_PROJECT_ID === 'YOUR_PROJECT_ID' ||
-          APPWRITE_PLATFORM === 'com.yourcompany.yotei') {
+      const endpoint = APPWRITE_ENDPOINT.trim().replace(/\/+$/, '');
+      const projectId = APPWRITE_PROJECT_ID.trim();
+      const platform = APPWRITE_PLATFORM.trim();
+      if (!endpoint || !projectId || !platform || endpoint.includes('YOUR_') || projectId === 'YOUR_PROJECT_ID' ||
+          platform === 'com.yourcompany.yotei') {
         throw new Error('Fill in appwriteConfig.js before enabling real authentication.');
       }
+      let endpointUrl;
+      try { endpointUrl = new URL(endpoint); }
+      catch { throw new Error('APPWRITE_ENDPOINT must be a valid Appwrite API URL ending in /v1.'); }
+      if (!['https:', 'http:'].includes(endpointUrl.protocol) || !endpointUrl.pathname.endsWith('/v1') || endpointUrl.search || endpointUrl.hash) {
+        throw new Error('APPWRITE_ENDPOINT must be an HTTP(S) Appwrite API URL ending in /v1, without query parameters or a fragment.');
+      }
       const client = new Client()
-        .setEndpoint(APPWRITE_ENDPOINT)
-        .setProject(APPWRITE_PROJECT_ID)
-        .setPlatform(APPWRITE_PLATFORM);
+        .setEndpoint(endpoint)
+        .setProject(projectId)
+        .setPlatform(platform);
       this.account = new Account(client);
+      console.log('[AppwriteAuthService] Client initialized', { endpoint, projectId, platform });
     }
     return this.account;
   }
 
   /** @param {import('./AuthService').SignUpCredentials} credentials */
   async signUp({ name, email, password, rememberMe = false }) {
-    await this.initializeSession();
-    await this.getAccount().create({
-      userId: ID.unique(),
-      email: email.trim().toLowerCase(),
-      password,
-      name: name.trim(),
-    });
-    // Both adapters sign the user in immediately after account creation.
-    return this.signIn({ email, password, rememberMe });
+    try {
+      await this.initializeSession();
+      const normalizedEmail = email.trim().toLowerCase();
+      await this.getAccount().create({
+        userId: ID.unique(),
+        email: normalizedEmail,
+        password,
+        name: name.trim(),
+      });
+      // Await so post-registration login failures are also logged and reach the UI.
+      return await this.signIn({ email: normalizedEmail, password, rememberMe });
+    } catch (error) {
+      const cause = /** @type {Partial<AppwriteException> | null | undefined} */ (error);
+      console.log('[AppwriteAuthService] signUp failed', { code: cause?.code, message: cause?.message, type: cause?.type });
+      throw error;
+    }
   }
 
   /** @param {import('./AuthService').SignInCredentials} credentials */
   async signIn({ email, password, rememberMe = false }) {
-    await this.initializeSession();
-    const account = this.getAccount();
-    await this.saveRememberMe(false);
+    let sessionAttempted = false;
     try {
+      await this.initializeSession();
+      const account = this.getAccount();
+      await this.saveRememberMe(false);
+      sessionAttempted = true;
       await account.createEmailPasswordSession({ email: email.trim().toLowerCase(), password });
       const user = normalizeUser(await account.get());
       await this.saveRememberMe(rememberMe);
       this.sessionEstablished = true;
       return user;
     } catch (error) {
+      const cause = /** @type {Partial<AppwriteException> | null | undefined} */ (error);
+      console.log('[AppwriteAuthService] signIn failed', { code: cause?.code, message: cause?.message, type: cause?.type });
       // A failed preference write or account fetch must not leave a new login
       // active behind the error screen. The stored false flag also protects
       // the next startup if a network failure prevents this cleanup.
-      await this.clearRemoteSession().catch(() => {});
-      this.sessionEstablished = false;
+      if (sessionAttempted) {
+        await this.clearRemoteSession().catch(() => {});
+        this.sessionEstablished = false;
+      }
       throw error;
     }
   }

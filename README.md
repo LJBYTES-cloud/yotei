@@ -15,7 +15,7 @@ The project currently uses Expo SDK 57, React Native 0.86, React 19.2.3, and npm
 
 ## Demo
 
-Mock authentication is enabled by `USE_REAL_AUTH = false` in [auth/index.js](auth/index.js).
+Real Appwrite authentication is currently enabled in [auth/index.js](auth/index.js). For the local demo below, set `USE_REAL_AUTH = false` and fully reload; Mock accounts are separate from Appwrite accounts.
 
 | Field | Value |
 | --- | --- |

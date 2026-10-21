@@ -91,7 +91,7 @@ signOut()
 getCurrentUser()
 ```
 
-- `USE_REAL_AUTH` is currently `false`; the demo loader is available only in this mode.
+- `USE_REAL_AUTH` is currently `true` for real Appwrite login diagnostics. Set it to `false` and fully reload for Mock auth and the demo loader; those accounts are independent of Appwrite.
 - Demo credentials: `student@yotei.demo` / `study12345`; stable demo user ID: `demo-student`.
 - Mock passwords/accounts are in memory. SecureStore stores the public mock session and a provider-specific remember-me flag.
 - Remember me defaults to false. A session remains usable during that launch; a false/missing/invalid flag causes cleanup on the next cold boot.
@@ -100,6 +100,8 @@ getCurrentUser()
 - New mock credentials disappear on restart. A remembered public session can restore without reconstructing the mock password map; after signing out, a custom mock account may need to be created again. The built-in demo credentials remain available.
 - Appwrite setup is lazy so Mock mode does not contact Appwrite. `appwriteConfig.js` now contains populated public client configuration; this differs from the initial placeholder request. No server API key belongs in that file.
 - Real Appwrite behavior is covered by adapter tests with an SDK substitute; live backend/platform configuration is not revalidated by this handoff.
+- The real adapter trims/normalizes email in both auth methods and validates/cleans the configured endpoint/project/platform before initializing one lazy Client. It logs the public target configuration and exact failure `{code, message, type}` for signIn/signUp, then rethrows the original error to the UI. Registration awaits its automatic login so a later login failure is also logged. Passwords/session payloads are not logged.
+- A read-only request to the configured Singapore `/v1/account` endpoint using the configured project ID returned `401 general_unauthorized_scope` for a guest on 2026-10-21. This verifies API reachability and that the request reached the guest account permission check; it does not verify a user's credentials, dashboard project selection, or native platform registration.
 
 ## SQLite schema and ownership
 
@@ -226,7 +228,7 @@ The JSON contains study records only: no passwords, sessions, theme preference, 
 
 - Physical-device keyboard/modal/tab appearance and accessibility interaction are not covered by Node tests or bundle export.
 - The local root `app/index.tsx` experiment is not part of the active route tree or current TypeScript include set. Preserve it until a specific routing change is authorized.
-- Appwrite client configuration is populated, but Mock auth is active. Tests do not prove live Appwrite account/session behavior.
+- Appwrite client configuration is populated and real auth is active. Tests use an SDK substitute; the guest API probe does not prove live account/session behavior.
 - `deadline` and `estimated_minutes` are service/schema fields; the current task creation form primarily exposes title and subject.
 - Review topics have no edit/delete screen; Material has no user flow; study data has no cloud sync or scheduled background notifications.
 - There is no `eas.json` in this snapshot, and no store-release validation has been performed.
