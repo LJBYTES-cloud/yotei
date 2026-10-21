@@ -20,12 +20,11 @@ function bookInk(color) {
 export default function SubjectBookshelf({ subjects, taskCounts, selectedId, disabled = false, onSelect }) {
   const s = useThemedStyles(createStyles);
   const [width, setWidth] = useState(0);
-  const columns = Math.max(1, Math.floor((width + 16) / 116));
-  const bookWidth = width ? (width - (columns - 1) * 16) / columns : '100%';
+  const columns = Math.max(1, Math.floor((width + 12) / 112));
+  const bookWidth = width ? (width - (columns - 1) * 12) / columns : '100%';
   return (
-    <View>
+    <View style={s.shelf}>
       <View style={s.toolbar}>
-        <Text style={s.help}>Tap a subject to show its tasks.</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Show tasks from all subjects"
           accessibilityState={{ selected: selectedId === null, disabled }} disabled={disabled} onPress={() => onSelect(null)}
           style={({ pressed }) => [s.allButton, selectedId === null && s.allSelected, pressed && s.pressed]}>
@@ -48,38 +47,53 @@ export default function SubjectBookshelf({ subjects, taskCounts, selectedId, dis
               {/* Stored colors are intentional here, including in light mode. */}
               <View style={[s.spine, { backgroundColor: subject.color }]}>
                 <View style={[s.binding, { backgroundColor: rule }]} />
+                <View pointerEvents="none" style={s.coverShade} />
+                <View pointerEvents="none" style={s.pages}>
+                  {Array.from({ length: 7 }, (_, line) => <View key={line} style={s.pageLine} />)}
+                </View>
+                <View pointerEvents="none" style={[s.bindingBand, { top: 8 }]}>
+                  {[0, 1].map(line => <View key={line} style={[s.bindingRule, { backgroundColor: rule }]} />)}
+                </View>
                 <View style={[s.bookTop, { borderBottomColor: rule }]}>
                   <Text style={[s.number, { color: ink }]}>{String(index + 1).padStart(2, '0')}</Text>
                   <Ionicons name={selected ? 'checkmark-circle' : 'book-outline'} size={18} color={ink} />
                 </View>
-                <Text numberOfLines={4} style={[s.name, { color: ink }]}>{subject.name}</Text>
+                <Text style={[s.name, { color: ink }]}>{subject.name}</Text>
                 <View style={[s.bookBottom, { borderTopColor: rule }]}>
                   <Text style={[s.count, { color: ink }]}>{count} {count === 1 ? 'task' : 'tasks'}</Text>
+                </View>
+                <View pointerEvents="none" style={[s.bindingBand, { bottom: 7 }]}>
+                  {[0, 1].map(line => <View key={line} style={[s.bindingRule, { backgroundColor: rule }]} />)}
                 </View>
               </View>
             </Pressable>
           );
         })}
       </View>
-      <View style={s.shelfEdge} />
+      <View style={s.shelfEdge}><View style={s.shelfHighlight} /></View>
     </View>
   );
 }
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
-  toolbar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 24 },
-  help: { flex: 1, minWidth: 130, color: p.muted, fontSize: 12, lineHeight: 20 },
+  shelf: { backgroundColor: p.input, borderWidth: 1, borderColor: p.line, borderRadius: 14, padding: 12 },
+  toolbar: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 20 },
   allButton: { minHeight: 44, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: p.line, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   allSelected: { backgroundColor: p.accent, borderColor: p.accent }, allText: { color: p.text, fontSize: 12, fontWeight: '600' }, allSelectedText: { color: p.onAccent },
-  books: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 16 },
-  bookFrame: { borderWidth: 2, borderColor: 'transparent', borderRadius: 12, padding: 4 }, selected: { borderColor: p.text },
-  spine: { flex: 1, minHeight: 192, borderTopLeftRadius: 4, borderBottomLeftRadius: 4, borderTopRightRadius: 10, borderBottomRightRadius: 10, paddingTop: 16, paddingBottom: 14, paddingLeft: 20, paddingRight: 12, overflow: 'hidden' },
-  binding: { position: 'absolute', left: 7, top: 0, bottom: 0, width: 2 },
+  books: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 12 },
+  bookFrame: { borderWidth: 2, borderColor: 'transparent', borderRadius: 10, padding: 3 }, selected: { borderColor: p.text },
+  spine: { flex: 1, minHeight: 212, borderTopLeftRadius: 4, borderBottomLeftRadius: 4, borderTopRightRadius: 10, borderBottomRightRadius: 10, paddingTop: 24, paddingBottom: 22, paddingLeft: 16, paddingRight: 14, overflow: 'hidden', borderBottomWidth: 4, borderBottomColor: 'rgba(0,0,0,0.18)' },
+  binding: { position: 'absolute', left: 5, top: 0, bottom: 0, width: 2 },
+  coverShade: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, backgroundColor: 'rgba(0,0,0,0.12)' },
+  bindingBand: { position: 'absolute', left: 12, right: 12, gap: 3 }, bindingRule: { height: 1 },
+  pages: { position: 'absolute', right: 0, top: 10, bottom: 10, width: 6, borderLeftWidth: 1, borderLeftColor: 'rgba(0,0,0,0.12)', backgroundColor: '#E8E3DA', justifyContent: 'space-evenly' },
+  pageLine: { height: 1, backgroundColor: 'rgba(0,0,0,0.2)', width: '100%' },
   bookTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottomWidth: 1, paddingBottom: 12 },
   number: { fontSize: 10, fontWeight: '700', letterSpacing: 1.5, fontVariant: ['tabular-nums'] },
-  name: { flexGrow: 1, fontSize: 17, lineHeight: 24, fontWeight: '700', letterSpacing: -0.3, marginTop: 24, marginBottom: 24 },
+  name: { flexGrow: 1, fontSize: 16, lineHeight: 24, fontWeight: '700', letterSpacing: -0.2, marginTop: 20, marginBottom: 24 },
   bookBottom: { borderTopWidth: 1, paddingTop: 12 }, count: { fontSize: 11, lineHeight: 18, fontWeight: '600' },
-  shelfEdge: { height: 6, marginTop: 12, borderRadius: 3, backgroundColor: p.line },
+  shelfEdge: { height: 10, marginTop: 16, borderRadius: 3, backgroundColor: p.raised, borderBottomWidth: 3, borderBottomColor: p.line },
+  shelfHighlight: { height: 1, backgroundColor: p.muted, opacity: 0.25 },
   pressed: { opacity: 0.78 }, disabled: { opacity: 0.5 },
 });

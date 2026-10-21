@@ -7,7 +7,7 @@ import { REVIEW_INTERVAL_DAYS } from '../db/ReviewService';
 import { EmptyState, Feedback, ScreenHeader } from '../components/StudyCards';
 import { useStudy } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
-import { Button, Input, Message, Pill } from '../components/ui';
+import { Button, FieldLabel, Input, Message, Pill } from '../components/ui';
 
 /** @type {import('../db/ReviewService').ReviewDifficulty[]} */
 const difficulties = ['Hard', 'Good', 'Easy'];
@@ -72,17 +72,17 @@ export default function ReviewScreen() {
           <View style={s.card}>
             <View style={s.section}><Text style={s.sectionTitle}>Add a review topic</Text></View>
             {data.subjects.length > 0 ? <>
-              <Text style={r.label}>Subject</Text>
+              <FieldLabel label="Subject" help="Each review topic belongs to the selected subject." />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={r.subjects}>
                 {data.subjects.map(subject => <Pill key={subject.id} label={subject.name} color={subject.color} selected={selectedSubject?.id === subject.id} disabled={disabled} onPress={() => setSubjectId(subject.id)} />)}
               </ScrollView>
-              <Input label="Topic" placeholder="e.g. Cell division" value={topic} onChangeText={setTopic} maxLength={256} editable={!disabled} returnKeyType="done" onSubmitEditing={() => void submit()} />
+              <Input label="Topic" help="Add a concept you want to recall later. New topics are immediately due." placeholder="e.g. Cell division" value={topic} onChangeText={setTopic} maxLength={256} editable={!disabled} returnKeyType="done" onSubmitEditing={() => void submit()} />
               <Message text={error} />
               <Button label="Add to Queue" busy={addingReview} disabled={disabled} onPress={() => void submit()} />
             </> : <View style={r.noSubjects}><Text style={s.hint}>{data.ready ? 'Create a subject before adding topics to the queue.' : 'Loading subjects…'}</Text><Button label="Create subject" disabled={disabled} onPress={() => openEntry('subject')} /></View>}
           </View>
           <Feedback />
-          <View style={s.card}><View style={s.section}><Text style={s.sectionTitle}>Due Reviews</Text><Text style={s.sectionCount}>{data.reviews.length}</Text></View><Text style={s.hint}>Hard: 1 day · Good: 3 days · Easy: 7 days</Text></View>
+          <View style={s.card}><View style={s.section}><FieldLabel label="Due Reviews" textStyle={s.sectionTitle} help="Rate your recall: Hard schedules the next review in 1 day, Good in 3 days, and Easy in 7 days." /><Text style={s.sectionCount}>{data.reviews.length}</Text></View></View>
         </>}
         renderItem={({ item }) => <DueReviewCard item={item} />}
         ListEmptyComponent={<EmptyState title="You're all caught up on reviews." text="New topics appear here immediately. Reviewed topics return at their scheduled time." />} />
@@ -94,7 +94,6 @@ export default function ReviewScreen() {
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
   keyboard: { flex: 1 },
-  label: { color: p.text, fontSize: 12, fontWeight: '600', marginBottom: 8 },
   subjects: { gap: 12, paddingBottom: 16 }, noSubjects: { gap: 12 },
   dueDate: { color: p.muted, fontSize: 12, lineHeight: 20, marginTop: 12 },
   ratings: { flexDirection: 'row', gap: 8, marginTop: 16 },

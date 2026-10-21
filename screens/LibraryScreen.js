@@ -6,7 +6,7 @@ import { useThemedStyles } from '../ThemeContext';
 import { EmptyState, Feedback, ScreenHeader, TaskCard } from '../components/StudyCards';
 import { useStudy } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
-import { Button } from '../components/ui';
+import { Button, FieldLabel } from '../components/ui';
 import SubjectBookshelf from '../components/SubjectBookshelf';
 
 export default function LibraryScreen() {
@@ -30,18 +30,17 @@ export default function LibraryScreen() {
         ListHeaderComponent={<>
           <ScreenHeader title="Library" edition="SUBJECTS & TASKS" subtitle="Create subjects and tasks, then schedule study sessions." />
           <View style={[s.card, l.actions]}>
-            <Text style={s.sectionTitle}>Add study content</Text>
-            <Text style={s.hint}>Create a subject before adding tasks.</Text>
+            <FieldLabel label="Add study content" textStyle={s.sectionTitle} help="Create a subject before adding tasks. Tasks can then be scheduled from their cards." />
             <Button label="＋ New task" disabled={disabled} onPress={() => openEntry(data.subjects.length ? 'task' : 'subject', subjectId)} />
             <Button label="＋ Add subject" tone="outline" disabled={disabled} onPress={() => openEntry('subject')} />
           </View>
           <Feedback />
           <View style={s.card}>
-            <View style={s.section}><Text style={s.sectionTitle}>Subject bookshelf</Text><Text style={s.sectionCount}>{String(data.subjects.length).padStart(2, '0')}</Text></View>
+            <View style={s.section}><FieldLabel label="Subject bookshelf" textStyle={s.sectionTitle} help="Tap a book to filter tasks. Tap the selected book again, or Show all, to reset." /><Text style={s.sectionCount}>{String(data.subjects.length).padStart(2, '0')}</Text></View>
             {data.subjects.length ? <SubjectBookshelf subjects={data.subjects} taskCounts={taskCounts} selectedId={subjectId}
               disabled={disabled} onSelect={setSubjectId} /> : <Text style={s.hint}>No subjects added.</Text>}
           </View>
-          <View style={s.card}><View style={s.section}><Text style={s.sectionTitle}>Your tasks</Text><Text style={s.sectionCount}>{String(tasks.length).padStart(2, '0')}</Text></View><Text style={s.hint}>Select Schedule on a task to create a study session.</Text></View>
+          <View style={s.card}><View style={s.section}><FieldLabel label="Your tasks" textStyle={s.sectionTitle} help="Select Schedule on a task to choose its start and end dates/times." /><Text style={s.sectionCount}>{String(tasks.length).padStart(2, '0')}</Text></View></View>
         </>}
         renderItem={({ item }) => <TaskCard task={item} />}
         ListEmptyComponent={<EmptyState title={subjectId ? 'No tasks in this subject' : 'No tasks added'} text={subjectId ? 'Add a task to this subject.' : 'Create a subject and add a task to start scheduling.'} />} />

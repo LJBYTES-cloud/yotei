@@ -8,7 +8,7 @@ import { CoachingCard, EmptyState, Feedback, FocusCard, ScreenHeader } from '../
 import { useStudy } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
 import { formatMinutes } from '../components/theme';
-import { Button } from '../components/ui';
+import { Button, InfoButton } from '../components/ui';
 
 export default function HomeScreen() {
   const study = useStudy();
@@ -30,10 +30,10 @@ export default function HomeScreen() {
         ListHeaderComponent={<>
           <ScreenHeader title="Home" eyebrow={new Date(clock).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()} subtitle="View scheduled sessions and daily study time." />
           <View style={h.summary}>
-            <Text style={h.kicker}>DAILY STUDY TIME</Text>
+            <View style={h.summaryHeading}><Text style={h.kicker}>DAILY STUDY TIME</Text><InfoButton title="Daily study time" message="Scheduled and completed minutes count toward the 4-hour workload threshold. Missed sessions are excluded; overnight sessions are split by calendar day." /></View>
             <View style={h.numbers}><Text style={h.minutes}>{formatMinutes(data.minutes)}</Text><Text style={h.caption}>planned{ '\n' }& completed</Text></View>
             <View style={h.meter}><View style={[h.fill, { width: `${Math.min(data.minutes / 240 * 100, 100)}%`, backgroundColor: data.minutes > 240 ? p.warm : p.accent }]} /></View>
-            <Text style={h.summaryNote}>{data.minutes > 240 ? 'Daily study time exceeds 4 hours. Schedule breaks.' : 'Daily workload warning threshold: 4 hours.'}</Text>
+            {data.minutes > 240 && <Text style={h.summaryNote}>Over the 4-hour threshold</Text>}
             <View style={h.stats}><Text style={s.hint}><Text style={h.statNumber}>{planned}</Text> ahead</Text><Text style={s.hint}><Text style={h.statNumber}>{completed}</Text> done today</Text></View>
           </View>
           <Feedback />
@@ -53,6 +53,7 @@ export default function HomeScreen() {
 const createStyles = p => StyleSheet.create({
   summary: { backgroundColor: p.hero, borderWidth: 1, borderColor: p.heroLine, borderRadius: 16, padding: 20, marginBottom: 24 },
   kicker: { color: p.accent, fontSize: 9, fontWeight: '600', letterSpacing: 1.8 },
+  summaryHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   numbers: { flexDirection: 'row', alignItems: 'center', gap: 18, marginTop: 22, marginBottom: 24 },
   minutes: { color: p.text, fontSize: 42, letterSpacing: -1.5, fontWeight: '700' }, caption: { color: p.muted, fontSize: 12, lineHeight: 20 },
   meter: { height: 3, borderRadius: 2, backgroundColor: p.line, overflow: 'hidden' }, fill: { height: '100%', borderRadius: 2 },

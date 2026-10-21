@@ -30,13 +30,13 @@ Sign in, open Settings, and select **Load Demo Data**. It replaces only the curr
 | Tab | Features |
 | --- | --- |
 | Home | Today's Focus, daily workload, task coaching, Mark Done, missed-session rescheduling |
-| Library | Subject/task creation, selectable subject bookshelf, task list, start/end scheduling sheet |
+| Library | Subject/task creation, tactile subject bookshelf, task list, native calendar/time scheduling |
 | Review | Topic creation by subject; due queue; Hard / Good / Easy ratings |
 | Settings | Dark/light toggle, JSON data export/import, mock-only demo loader, Sign Out, fixed student motto |
 
 Completing a study block prompts the user to add a review topic under the same subject. Rescheduling a missed block increments the task's postponement count once. Coaching appears at a count of 2 or more.
 
-Schedule sessions by entering local Start Time and End Time (`HH:mm`), with explicit Today/Tomorrow choices for overnight work. The SQLite workload check calculates elapsed minutes from that window. Sheets use a keyboard-aware, scrollable layout; shared cards now have 24px separation. Subject book spines retain their stored colors in both themes.
+Schedule sessions with native Start/End calendar and clock pickers, including dates next week or later. Validation compares the selected timestamps with now, and SQLite calculates the elapsed study minutes. General instructions are available through small info icons; errors and overwrite/workload warnings remain visible. Subject book spines have page/binding details and fully wrapping titles on a themed shelf.
 
 ## Entry point and routes
 

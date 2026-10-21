@@ -124,6 +124,43 @@ File-by-file changes in this UX pass (no files deleted):
 | `docs/VALIDATION.md` | Added dated verification results and physical-device limitations. |
 | `docs/CHANGELOG.md` | Recorded this implementation and full per-file summary. |
 
+### Native calendar scheduling, info popups, and tactile books (2026-10-22)
+
+- Installed `@react-native-community/datetimepicker` 9.1.0 with `npx.cmd expo install`; Expo updated the lockfile and added its config plugin.
+- Replaced manual HH:mm and Today/Tomorrow controls with full native Start/End dates and times. Android uses native calendar/clock dialogs; iOS uses compact native pickers. Future dates have no two-day limit.
+- Scheduler state now keeps actual Date values. Validation compares full timestamps: today at 5 PM is valid at 4 PM; tomorrow morning and next week are valid; only already-passed starts and invalid/end-at-or-before-start windows are blocked. Moving Start preserves session duration, and date/time picks preserve the other component. Workload-warning confirmation revalidates its original selected instants before writing.
+- Added reusable FieldLabel/InfoButton guidance popups and moved general instructions out of auth/study forms, card headings, empty states, and Settings. Errors, workload totals/confirmation, the import overwrite warning, demo replacement notice, and decision prompts remain visible.
+- Refined books with double binding lines, shaded grooves, lined paper edges, a themed recessed shelf/lip, and full wrapping titles. Subject filtering/counts and both themes remain connected to the existing data.
+- Reworked scheduler regression tests for native full-date selections, today/tomorrow/next-week/year-boundary cases, clock/calendar edits, unchanged input dates, stale confirmation, DST instants, workload checks, overnight split, and exactly-once rescheduling. No SQLite schema/service or authentication behavior changes.
+
+File-by-file changes (one new component, no files deleted):
+
+| File | Change |
+| --- | --- |
+| `package.json` | Added SDK-compatible native date/time picker 9.1.0. |
+| `package-lock.json` | Locked the picker and its dependency metadata. |
+| `app.json` | Expo installation added the picker config plugin. |
+| `components/DateTimeField.js` | Created reusable iOS/Android native date/time controls with cancellation/error handling and date bounds. |
+| `components/ScheduleSheet.js` | Integrated native full-date state, duration-preserving edits, selected-date validation and confirmation revalidation; removed manual fields/toggles/helper paragraphs. |
+| `utils/scheduling.js` | Full-Date window contract, timestamp validation, calendar/clock merging, and unrestricted future-date defaults. |
+| `components/ui.js` | Added FieldLabel/InfoButton and native instructional alerts; Input accepts help while retaining keyboard behavior. |
+| `components/EntrySheet.js` | Moved subject/task instructions into field-label info popups. |
+| `components/StudyCards.js` | Moved heading/empty-state/recovery help into popups; retained short coaching guidance. |
+| `components/studyStyles.js` | Added compact screen-title/info layout. |
+| `components/SubjectBookshelf.js` | Added page/binding texture, cover shading, themed shelf, and unclipped long titles. |
+| `screens/AuthScreen.js` | Replaced intro/card instructional paragraphs with info icons; login logic unchanged. |
+| `screens/HomeScreen.js` | Moved workload explanation to an info icon; actual over-limit status remains visible. |
+| `screens/LibraryScreen.js` | Replaced content/shelf/task helper paragraphs with title info icons. |
+| `screens/ReviewScreen.js` | Added subject/topic/rating guidance popups and removed repeated inline guidance. |
+| `screens/SettingsScreen.js` | Moved explanatory descriptions into info icons while retaining overwrite/replacement warnings and motto. |
+| `tests/database.test.cjs` | Added full-date picker regressions and updated SQL integration tests for future selected days. |
+| `README.md` | Updated native scheduler and compact-help/bookshelf overview. |
+| `docs/PROJECT_CONTEXT.md` | Updated component map, Date-based helper contracts, native interaction, validation and popup rules. |
+| `docs/DEMO_AND_TESTING.md` | Updated picker demo, device/rebuild guidance, future-date/cancel/popup/title acceptance checks. |
+| `docs/NEXT_SESSION_PROMPT.md` | Updated continuation context with current native-picker/helper contracts and verification. |
+| `docs/VALIDATION.md` | Added dated test/build/compatibility evidence and native interaction limits. |
+| `docs/CHANGELOG.md` | Recorded this feature and updated the accepted scheduling decisions below. |
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |
@@ -131,12 +168,14 @@ File-by-file changes in this UX pass (no files deleted):
 | Root registerRootComponent(App) bootstrap | Polyfill first, then expo-router/entry; App.js is reached through src/app/_layout.tsx |
 | Single App.js dashboard | Shared workspace, separate screens, four bottom tabs |
 | Mint accent | Dark purple accents and monochrome light mode |
-| Schedule 30m | Schedule opens a custom-duration sheet |
-| 15/30/45/60 buttons | User-entered whole minutes |
-| Now / In 1 hour only | UI supports Now / custom local HH:mm; service still has a no-options 1-hour reschedule default |
+| Schedule 30m | Schedule opens native Start/End calendar and time pickers |
+| 15/30/45/60 buttons | Duration is calculated from the selected start/end instants |
+| Now / In 1 hour only | Native full-date selection; service retains its no-options 1-hour reschedule default |
 | Temporary Review recovery screen | Real due-topic spaced-repetition queue; missed blocks remain in Home |
 | Editorial/marketing slogans | Functional app copy plus the explicitly requested Settings motto |
-| User-entered duration and Now/custom start form | Typed Start Time/End Time with explicit Today/Tomorrow choices; background workload calculation |
+| User-entered duration and Now/custom start form | Native Start/End dates and times; background workload calculation |
+| Typed clocks with Today/Tomorrow toggles | Native calendar/time pickers for any upcoming date |
+| Long inline instructional paragraphs | Small info icons with native guidance popups; errors/warnings stay visible |
 | Horizontal subject pills in Library | Selectable book-spine grid; pill selectors remain in forms |
 | Non-editable estimated minutes on task cards | Removed from UI; SQLite/backup field retained |
 | Uniformly monochrome subject presentation in light mode | Colorful bookshelf spines in both themes; surrounding light chrome remains monochrome |

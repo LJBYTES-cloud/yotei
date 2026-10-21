@@ -4,14 +4,16 @@ import { getLocalDateKey } from '../db/dateUtils';
 import { useStudy } from './StudyWorkspace';
 import { createStudyStyles } from './studyStyles';
 import { formatMinutes, formatTime } from './theme';
-import { Button, Message } from './ui';
+import { Button, FieldLabel, InfoButton, Message } from './ui';
 
 /** @param {{title: string, edition?: string, eyebrow?: string, children?: import('react').ReactNode, subtitle: string}} props */
 export function ScreenHeader({ title, edition, eyebrow, children, subtitle }) {
   const s = useThemedStyles(createStudyStyles);
   return <>
     <View style={s.masthead}><Text style={s.wordmark}>yotei<Text style={s.accent}>.</Text></Text>{edition && <Text style={s.edition}>{edition}</Text>}</View>
-    {eyebrow && <Text style={s.eyebrow}>{eyebrow}</Text>}<Text accessibilityRole="header" style={s.heading}>{title}</Text>{children && <Text style={s.headerDeck}>{children}</Text>}<Text style={s.intro}>{subtitle}</Text>
+    {eyebrow && <Text style={s.eyebrow}>{eyebrow}</Text>}
+    <View style={s.screenTitleRow}><Text accessibilityRole="header" style={s.screenTitle}>{title}</Text><InfoButton title={title} message={subtitle} /></View>
+    {children && <Text style={s.headerDeck}>{children}</Text>}
   </>;
 }
 
@@ -29,8 +31,8 @@ export function CoachingCard({ task }) {
   const { disabled, openSchedule } = useStudy();
   const s = useThemedStyles(createStudyStyles);
   return <View style={s.coaching}>
-    <Text style={s.coachingLabel}>POSTPONED TASK</Text>
-    <Text style={s.coachingText}>This task has been postponed at least twice. Try a 5-minute session.</Text>
+    <FieldLabel label="POSTPONED TASK" textStyle={s.coachingLabel} help="This task has been postponed at least twice. A short five-minute session can help you start." />
+    <Text style={s.coachingText}>Try a 5-minute start.</Text>
     <Text style={[s.hint, { marginTop: 16 }]}>{task.title}</Text>
     <Pressable accessibilityRole="button" accessibilityLabel={`Schedule a 5-minute start for ${task.title}`} disabled={disabled} onPress={() => openSchedule(task, 5)} style={s.coachingAction}>
       <Text style={s.coachingActionText}>Schedule 5 minutes</Text>
@@ -67,7 +69,7 @@ export function FocusCard({ block }) {
     {getLocalDateKey(new Date(block.start_time)) !== today && <Text style={s.oldDate}>{new Date(block.start_time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>}
     <View style={s.focusBody}><View style={[s.timeline, { backgroundColor: subjectColor(block.subject_color) }]} /><View style={s.flex}><Text style={s.subject}>{block.subject_name}</Text><Text style={s.focusTitle}>{block.task_title}</Text><Text style={s.hint}>{formatMinutes((Date.parse(block.end_time) - Date.parse(block.start_time)) / 60000)} · until {formatTime(block.end_time)}</Text></View></View>
     {active && <Button label="Mark Done ✓" tone="quiet" busy={workingBlock === block.id} disabled={disabled} onPress={() => void complete(block.id)} />}
-    {missed && <View style={s.recovery}><Text style={s.coachingText}>This session was missed.</Text><Text style={s.hint}>Choose new start and end times to reschedule.</Text><Button label="Reschedule" tone="quiet" disabled={disabled} onPress={() => openReschedule(block)} /></View>}
+    {missed && <View style={s.recovery}><FieldLabel label="Missed session" textStyle={s.coachingText} help="Reschedule with new dates and times. Each reschedule increases this task's postponement count once." /><Button label="Reschedule" tone="quiet" disabled={disabled} onPress={() => openReschedule(block)} /></View>}
   </View>;
 }
 
@@ -78,5 +80,5 @@ export function EmptyState({ title, text, action, onPress }) {
   const s = useThemedStyles(createStudyStyles);
   if (!data.ready && data.refreshing) return <ActivityIndicator color={colors.accent} style={s.loader} />;
   if (data.error) return null;
-  return <View style={[s.card, s.empty]}><Text style={s.emptyTitle}>{title}</Text><Text style={s.emptyText}>{text}</Text>{action && onPress && <Button label={action} onPress={onPress} />}</View>;
+  return <View style={[s.card, s.empty]}><FieldLabel label={title} textStyle={s.emptyTitle} help={text} />{action && onPress && <Button label={action} onPress={onPress} />}</View>;
 }

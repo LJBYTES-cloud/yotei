@@ -53,14 +53,24 @@ Shared Sheet has full-modal keyboard avoidance, a shrinkable scroll area,
 scrollable header, and focused-input reveal using viewport measurements;
 all Entry/Schedule/Completion sheets inherit it.
 
-Scheduler: editable Start Time and End Time in local HH:mm, with explicit
-Today/Tomorrow choices for both ends. No duration input or Now mode.
+Scheduler: native Start/End calendar and time controls using Expo-installed
+@react-native-community/datetimepicker 9.1.0. Dates can be next week or later;
+there are no manual text fields or Today/Tomorrow toggles. Android uses
+imperative dialogs; iOS uses compact controls. DateTimeField owns the native UI.
 Default start is the next whole minute; end is prefilled from the existing
 30m suggestion, 5m coaching action, or original missed-block duration.
-buildStudyTimes({startTime,endTime,startDay,endDay}, now) rejects past starts,
-malformed/nonexistent clocks, invalid days, and nonpositive windows.
-Overnight work requires explicit end-day selection. Minutes are derived
-from actual elapsed instants for the existing SQLite guardrail.
+buildStudyTimes({start:Date,end:Date}, now) rejects only already-passed starts,
+invalid dates and nonpositive windows. 5 PM today is valid at 4 PM today.
+updateStudyWindow merges only the picked calendar/clock component, preserves
+duration when Start moves, and edits End independently. Native repeated-hour
+instants retain offsets; unavailable local times after date changes fail.
+Frozen workload-warning times are validated again before Save anyway.
+Minutes are derived from actual elapsed instants for the existing guardrail.
+
+Instructions now live in FieldLabel/InfoButton native popups across headings,
+auth/study forms and cards; warnings/errors and decision prompts stay visible.
+The bookshelf has page/binding lines, shaded grooves and a themed shelf lip;
+long titles wrap fully rather than being cut to four lines.
 Warn only when a local day's scheduled+done study time would exceed
 240 minutes; explicit confirmation can override. Missed history is
 excluded; cross-midnight workload is split by local day.
@@ -102,6 +112,11 @@ tests pass (24 auth, 38 database, 22 backup). See VALIDATION.md for evidence.
 The 2026-10-22 UX pass passes lint/typecheck and native bundle exports.
 Combined suites in Singapore: 89 cases, 88 passed and one New York DST-only
 skip. New York database suite: all 43 pass, including that DST case.
+The subsequent native-picker/info/bookshelf refinement passes lint/typecheck,
+SDK compatibility and Android/iOS exports. Combined Singapore suites now
+have 90 cases (89 pass, one NY-only skip); all 44 NY database tests pass.
+Native picker/alert gestures and styling still need a phone check; rebuild an
+existing custom development client for the newly added native picker module.
 Earlier DB tests also passed in America/New_York.
 The full SQLite schedule->done->review->miss->reschedule/count loop is
 tested. Native UI gestures, keyboard/modal appearance, live Appwrite,

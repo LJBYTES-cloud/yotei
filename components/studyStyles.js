@@ -10,6 +10,8 @@ export const createStudyStyles = p => StyleSheet.create({
   edition: { fontSize: 9, letterSpacing: 2, color: p.muted, fontWeight: '600' },
   eyebrow: { fontSize: 9, lineHeight: 16, letterSpacing: 1.7, fontWeight: '600', color: p.muted, marginBottom: 8 },
   heading: { fontSize: 28, lineHeight: 36, letterSpacing: -0.8, color: p.text, fontWeight: '700', marginBottom: 20 },
+  screenTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 28 },
+  screenTitle: { fontSize: 28, lineHeight: 36, letterSpacing: -0.8, color: p.text, fontWeight: '700', flexShrink: 1 },
   headerDeck: { fontSize: 20, lineHeight: 28, letterSpacing: -0.4, color: p.text, fontWeight: '600', marginBottom: 8 },
   italic: { color: p.accent, fontStyle: 'italic' },
   intro: { fontSize: 14, lineHeight: 22, color: p.muted, marginBottom: 36 },

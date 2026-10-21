@@ -1,81 +1,64 @@
-/** @typedef {{ startTime: string, endTime: string, startDay: 'today' | 'tomorrow', endDay: 'today' | 'tomorrow' }} StudyWindow */
+/** @typedef {{ start: Date, end: Date }} StudyWindow */
 
-/** @param {Date} date */
-function clockTime(date) {
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+/** Support real finite dates, including native-picker and isolated test realms. @param {unknown} value */
+function validDate(value) {
+  return Object.prototype.toString.call(value) === '[object Date]' && Number.isFinite(/** @type {Date} */ (value).getTime());
 }
 
-/**
- * Keep the existing coaching/reschedule duration as an editable initial window.
- * Start at the next full minute so opening the sheet never selects a past time.
- * If a clock repeats, choose a representable future window with the same length.
- * @param {Date} now
- * @param {number} [initialDuration]
- * @returns {StudyWindow}
+/** Suggestions retain coaching/original duration without limiting the calendar.
+ * @param {Date} now @param {number} [initialDuration] @returns {StudyWindow}
  */
 export function getInitialStudyWindow(now, initialDuration = 30) {
-  if (!Number.isFinite(now.getTime())) throw new Error('The current date is unavailable. Please try again.');
-  const start = new Date(Math.floor(now.getTime() / 60000) * 60000 + 60000);
-  // The time-only UI offers today/tomorrow. An old multi-day duration remains
-  // editable without silently presenting its end on the wrong calendar date.
-  const latestEnd = new Date(now);
-  latestEnd.setDate(latestEnd.getDate() + 1);
-  latestEnd.setHours(23, 59, 0, 0);
+  if (!validDate(now)) throw new Error('The current date is unavailable. Please try again.');
   const minutes = Number.isFinite(initialDuration) && initialDuration > 0 ? Math.round(initialDuration) : 30;
-  let end;
-  while (true) {
-    const available = (latestEnd.getTime() - start.getTime()) / 60000;
-    end = new Date(start.getTime() + Math.min(available, Math.max(1, minutes)) * 60000);
-    const parsedStart = localClock(clockTime(start), start, 'start time').getTime();
-    const parsedEnd = localClock(clockTime(end), end, 'end time').getTime();
-    if (parsedStart === start.getTime() && parsedEnd === end.getTime() && parsedStart > now.getTime()) break;
-    // A repeated HH:mm resolves to its first occurrence. Move only this initial
-    // suggestion to the next representable window; never alter manual inputs.
-    start.setTime(start.getTime() + 60000);
-  }
-  return {
-    startTime: clockTime(start),
-    endTime: clockTime(end),
-    startDay: start.getDate() === now.getDate() ? 'today' : 'tomorrow',
-    endDay: end.getDate() === now.getDate() ? 'today' : 'tomorrow',
-  };
-}
-
-/** @param {string} value @param {Date} day @param {string} field */
-function localClock(value, day, field) {
-  const match = typeof value === 'string' && /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value.trim());
-  if (!match) throw new Error(`Enter a valid ${field} using HH:mm, such as 18:00.`);
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  const result = new Date(day);
-  result.setHours(hours, minutes, 0, 0);
-  if (result.getFullYear() !== day.getFullYear() || result.getMonth() !== day.getMonth()
-    || result.getDate() !== day.getDate() || result.getHours() !== hours || result.getMinutes() !== minutes) {
-    throw new Error(`That ${field} is unavailable on this date. Choose another time.`);
-  }
-  return result;
+  const start = new Date(Math.floor(now.getTime() / 60000) * 60000 + 60000);
+  const end = new Date(start.getTime() + Math.max(1, minutes) * 60000);
+  if (!validDate(start) || !validDate(end)) throw new Error('The session duration is too long. Choose a shorter session.');
+  return { start, end };
 }
 
 /**
- * Interpret local HH:mm clocks without silently moving a past start or a
- * reversed end to another date. Overnight sessions require explicit tomorrow.
- * Store actual instants so workload checks include daylight-saving changes.
- * @param {StudyWindow} input
- * @param {Date} now
+ * Change only the picked calendar or clock component, preserving local time.
+ * Moving the start keeps the selected duration; changing the end is independent.
+ * @param {StudyWindow} window @param {'start' | 'end'} field
+ * @param {'date' | 'time'} part @param {Date} selected @returns {StudyWindow}
  */
-export function buildStudyTimes({ startTime, endTime, startDay, endDay }, now) {
-  if (!Number.isFinite(now.getTime())) throw new Error('The current date is unavailable. Please try again.');
-  if (startDay !== 'today' && startDay !== 'tomorrow') throw new Error('Choose whether the session starts today or tomorrow.');
-  if (endDay !== 'today' && endDay !== 'tomorrow') throw new Error('Choose whether the session ends today or tomorrow.');
-  const startDate = new Date(now);
-  if (startDay === 'tomorrow') startDate.setDate(startDate.getDate() + 1);
-  const start = localClock(startTime, startDate, 'start time');
-  if (start.getTime() <= now.getTime()) throw new Error('Choose a future start time.');
-  const endDate = new Date(now);
-  if (endDay === 'tomorrow') endDate.setDate(endDate.getDate() + 1);
-  const end = localClock(endTime, endDate, 'end time');
-  if (end.getTime() <= start.getTime()) {
-    throw new Error('Choose an end time after the start. Check both times and days.');
+export function updateStudyWindow(window, field, part, selected) {
+  if (!validDate(window.start) || !validDate(window.end) || !validDate(selected)) throw new Error('Choose a valid date and time.');
+  if (!['start', 'end'].includes(field) || !['date', 'time'].includes(part)) throw new Error('Choose a valid date or time field.');
+  const previous = window[field];
+  const sameDay = previous.getFullYear() === selected.getFullYear() && previous.getMonth() === selected.getMonth() && previous.getDate() === selected.getDate();
+  let next;
+  if (part === 'date' && sameDay) {
+    next = new Date(previous);
+  } else if (part === 'time' && sameDay) {
+    // Keep the native picker's instant, including a repeated DST hour.
+    next = new Date(selected.getTime() - selected.getSeconds() * 1000 - selected.getMilliseconds());
+  } else {
+    const date = part === 'date' ? selected : previous;
+    const clock = part === 'time' ? selected : previous;
+    next = new Date(previous);
+    next.setHours(12, 0, 0, 0);
+    next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+    next.setHours(clock.getHours(), clock.getMinutes(), 0, 0);
+    if (next.getFullYear() !== date.getFullYear() || next.getMonth() !== date.getMonth() || next.getDate() !== date.getDate()
+      || next.getHours() !== clock.getHours() || next.getMinutes() !== clock.getMinutes()) {
+      throw new Error('That local time is unavailable on this date. Choose another time.');
+    }
   }
+  const duration = window.end.getTime() - window.start.getTime();
+  const end = field === 'start' ? new Date(next.getTime() + Math.max(60000, duration)) : next;
+  if (!validDate(next) || !validDate(end)) throw new Error('Choose a valid session end date.');
+  return field === 'start' ? { start: next, end } : { start: window.start, end };
+}
+
+/** Validate full selected instants, with no today/tomorrow restriction.
+ * @param {StudyWindow} window @param {Date} now
+ */
+export function buildStudyTimes({ start, end }, now) {
+  if (!validDate(now)) throw new Error('The current date is unavailable. Please try again.');
+  if (!validDate(start) || !validDate(end)) throw new Error('Choose a valid start and end date/time.');
+  if (start.getTime() < now.getTime()) throw new Error('The selected start has already passed. Choose a later date or time.');
+  if (end.getTime() <= start.getTime()) throw new Error('Choose an end date/time after the start.');
   return { start_time: start.toISOString(), end_time: end.toISOString() };
 }

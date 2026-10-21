@@ -13,6 +13,8 @@ Scan the QR code with the compatible native Expo Go client. The package/script f
 
 In environments where normal shims work, the standard commands are `npm ci` and `npx expo start --clear`.
 
+The native scheduler now includes `@react-native-community/datetimepicker` 9.1.0, installed through Expo. Rebuild an existing custom development client after adding this native module. The matching SDK 57 Expo Go client already includes the module, as recorded in the [versioned picker docs](https://docs.expo.dev/versions/v57.0.0/sdk/date-time-picker/).
+
 ## Demo walkthrough
 
 1. Confirm `USE_REAL_AUTH = false` in `auth/index.js` and fully reload if the adapter flag was changed.
@@ -20,12 +22,14 @@ In environments where normal shims work, the standard commands are `npm ci` and 
 3. In Settings, select **Load Demo Data**. The in-app hint identifies that this replaces the current demo account's study data.
 4. Home shows 4 hours of planned/completed study and coaching for two postponed tasks. Elapsed seeded blocks are done; remaining blocks are scheduled.
 5. Library shows Mathematics, Biology, History as colored book spines and six tasks. Tap a book to filter; tap it again or Show all to reset. Verify the selection indicator and task counts.
-6. Select Schedule on a task, enter a short future window today using Start Time and End Time (for example 18:00 to 18:05 if those times are still ahead). Because today's demo already has 240 minutes, the workload warning appears. Adjust or explicitly select Schedule anyway. For an overnight session, explicitly choose End tomorrow; the guardrail checks the minutes falling on each day.
+6. Select Schedule on a task. Use Start's native calendar and clock to select a future time today, then choose an End date/time five minutes later. Today's demo already has 240 minutes, so the workload warning appears. Adjust or explicitly choose Schedule anyway. Overnight sessions select a later End date; workload is checked for each affected calendar day.
 7. Once the session's start time arrives, select Mark Done on Home. The completed block opens the optional review-topic prompt.
 8. Choose Yes, add a topic. Enter a topic and save it. Its subject comes from the completed block, not a new manual subject selection.
 9. Open Review: the three seeded due topics and the new topic are listed. Rate one Hard, one Good, and one Easy. Each leaves the due list, with a 1/3/7-day next-review confirmation.
 10. In Settings, toggle Light mode. Verify monochrome cards/text/buttons; toggle back to Dark. Confirm the motto remains visible below scrolling Settings content.
 11. In Settings > Data Management, export a backup and save the JSON using the native share sheet. Add a temporary subject in Library, then import the saved JSON. Confirm the temporary subject disappears and Home/Library/Review refresh. See [DATA_BACKUP.md](DATA_BACKUP.md) for cancellation, rollback, and account-isolation checks.
+12. Schedule another block for a date next week, including a morning time earlier on the clock than now. Confirm the saved-date notice and exported record show the chosen date. Home remains Today's Focus, so future blocks appear there when that date arrives.
+13. Tap the small info icons next to labels/titles. Check that guidance appears in a brief native popup and dismisses cleanly without changing a draft. Inspect the bookshelf's page lines/binding details and a long subject name in both themes.
 
 The demo seed is day-relative. Reload it on a new date to obtain today's four-hour data; do not expect old seeded sessions to move to a new date automatically.
 
@@ -37,23 +41,25 @@ The demo seed is day-relative. Reload it on a new date to obtain today's four-ho
 | Remember me off | Session works in the current launch; a real cold restart requires login |
 | Remember me on | Public session restores; sign-out clears it; test custom mock-account limitations described in PROJECT_CONTEXT |
 | Subject/task creation | Forms retain drafts on failure; new rows appear across tabs after success |
-| Custom schedule | Manually type Start Time and End Time as HH:mm, select Today/Tomorrow, and verify elapsed minutes and saved times |
-| Invalid time window | Reject blank/text/24:00/18:60, past starts, equal endpoints, reversed same-day endpoints, and nonexistent DST times; preserve the input for correction |
-| Overnight scheduling | Choose End tomorrow explicitly; verify the session overlaps the correct dates and each day's 240-minute check uses only its portion |
+| Native schedule | Pick today, tomorrow, next week, and a year-boundary date; verify chosen local start/end dates and stored instants |
+| Passed-time validation | At 4 PM today, 5 PM today is valid; earlier today is rejected; tomorrow morning is valid; an end at/before the start is rejected |
+| Picker cancellation | Cancel an Android calendar/clock dialog and verify dates/draft stay unchanged; dismiss iOS picker popovers and verify normal native behavior |
+| Overnight scheduling | Select a later End calendar date; verify each local day's 240-minute check uses only that day's portion |
+| Info popups | Label/title icons show guidance; background fields retain drafts. Errors and import/workload warnings remain visible without opening a popup |
 | Task estimates | New and existing task cards omit non-editable estimated-minute text; postponement counts remain visible |
-| Subject bookshelf | Books wrap into columns on small phones/tablets, retain subject colors in both themes, show readable names/task counts, filter tasks, and reset after demo/import |
+| Subject bookshelf | Verify themed shelf/paper/binding detail, long full titles and enlarged text, task filtering/counts, and reset after demo/import |
 | Workload | Exactly 240 minutes is permitted; adding more warns; Cancel/Adjust inserts nothing; explicit confirmation inserts once |
 | Completion prompt | Yes creates a due topic under the correct subject; No/Skip creates none; block remains done in either case |
 | Missed blocks | A scheduled block ending in the past becomes missed on load/refresh/foreground/timer detection |
 | Recommitment | Reschedule preserves the original; a replacement is linked; task count rises once per replacement, including rapid retries |
 | Coaching | After two actual replacement events, the task's coaching action is visible |
 | Review | New topics are immediately due; rating hides them until their next due time; another account cannot view or rate them |
-| Keyboard | On a small iOS/Android screen, focus Subject/Task name, both scheduler fields, and completion topic; the field and text stay visible above the keyboard, the sheet scrolls to actions, and typed drafts survive keyboard dismissal |
+| Keyboard | Subject/Task name and completion/review topic remain visible while typing; the scheduler uses native pickers without a text keyboard |
 | Empty states | Home: No study blocks scheduled for today. Review: You're all caught up on reviews. |
 | Demo reset | Repeated loading produces 3 subjects/6 tasks/4 blocks/3 reviews without affecting another account |
 | Data backup | Export/save JSON; import replaces only the signed-in account; picker cancel/invalid files preserve current data; verify both themes and loading/error feedback |
 
-For a short live missed-block demonstration, choose the next whole minute as Start Time and one minute later as End Time, then leave the sheet closed. Wait for its end plus the next detection tick (up to about 30 seconds while active), or pull to refresh. Reschedule it and repeat to demonstrate a count of 2. Automated tests exercise the same data flow without waiting or changing the device clock.
+For a short live missed-block demonstration, use the native clock to choose the next whole minute for Start and one minute later for End, then close the sheet. Wait for its end plus the next detection tick (up to about 30 seconds while active), or pull to refresh. Reschedule it and repeat to demonstrate a count of 2. Automated tests exercise the same flow without waiting or changing the device clock.
 
 ## Automated commands
 

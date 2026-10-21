@@ -79,3 +79,20 @@ The new time-window coverage verifies strict HH:mm/day validation, past/equal/re
 Read-only UI review found and resolved two layout issues: sheet scrolling must compare the input with the actual native scroll viewport (including header placement), and book titles need intrinsic height for larger text. The bundle imports only the existing Ionicons family for bookshelf icons. No packages or database schema/services changed.
 
 Node tests and bundles do not exercise a real keyboard. On small iOS/Android devices, check every sheet with the keyboard open, scroll to its action buttons, test large text, dismiss/reopen without losing drafts, and verify all bookshelf columns/filter states in both themes. Follow the updated [manual checks](DEMO_AND_TESTING.md#manual-acceptance-checks).
+
+## Native calendar and compact help checks (2026-10-22, Asia/Singapore)
+
+Installed picker 9.1.0 with Expo and verified its API against SDK 57's versioned reference and the library's version-9.1.0 docs/types. The current scheduler keeps full Date instances and does not parse formatted labels or relative day toggles.
+
+| Check | Result |
+| --- | --- |
+| `npx.cmd expo lint` | Passed |
+| `npx.cmd tsc --noEmit` | Passed |
+| Combined auth/database/backup suites, `TZ=Asia/Singapore` | 90 cases: 89 passed, 0 failed, 1 New York DST-only skip |
+| Database suite, `TZ=America/New_York` | All 44 passed, including repeated-hour/calendar-edit coverage |
+| `npx.cmd expo install --check` | Dependencies are up to date |
+| Android/iOS export to `.expo/calendar-verification` | Both passed; Router selected `src/app/`; Ionicons assets resolved |
+
+Regression coverage includes today at 5 PM when now is 4 PM, tomorrow morning despite an earlier wall-clock hour, next week, year boundaries, explicit past rejection, equal/reversed endpoints, picker calendar/clock merge semantics, nonmutation of the input window, duration preservation, a selected date surviving a later midnight, stale warning timestamps, next-week 240/241-minute totals, future overnight splits, account isolation, rescheduling counts, and native DST instants.
+
+Picker cancellation/error handling and info alerts were inspected in code. Native calendar/clock gestures, iOS compact popovers, Android dialog cancellation, popup appearance, long-title scaling and tactile styling have not been exercised on a physical device/simulator here. Follow [DEMO_AND_TESTING.md](DEMO_AND_TESTING.md) for those checks and rebuild an existing custom development client for the added native module. Existing SQLite services/schema and auth behavior remain unchanged.

@@ -8,6 +8,7 @@ import { authService, USE_REAL_AUTH } from '../auth';
 import { DEMO_EMAIL, DEMO_PASSWORD } from '../auth/MockAuthService';
 import { useSession } from '../auth/SessionContext';
 import { useTheme, useThemedStyles } from '../ThemeContext';
+import { InfoButton } from '../components/ui';
 
 /** @param {{ label: string, action?: import('react').ReactNode } & import('react-native').TextInputProps} props */
 function Field({ label, action, ...props }) {
@@ -144,8 +145,7 @@ export default function AuthScreen() {
               <>
                 <View style={styles.intro}>
                   <Text style={styles.eyebrow}>ACCOUNT</Text>
-                  <Text style={styles.heading}>{isSignUp ? 'Create account' : 'Sign in'}</Text>
-                  <Text style={styles.subtitle}>Access your subjects, tasks, study sessions, and review queue.</Text>
+                  <View style={styles.titleRow}><Text style={[styles.heading, styles.flex]}>{isSignUp ? 'Create account' : 'Sign in'}</Text><InfoButton title="Your account" message="Access your subjects, tasks, study sessions, and review queue." /></View>
                 </View>
                 <View style={styles.card}>
                   <View style={styles.tabs} accessibilityRole="tablist">
@@ -160,8 +160,7 @@ export default function AuthScreen() {
                       </Pressable>
                     ))}
                   </View>
-                  <Text style={styles.cardTitle}>{isSignUp ? 'Account details' : 'Credentials'}</Text>
-                  <Text style={styles.cardDescription}>{isSignUp ? 'Enter your name, email address, and password.' : 'Enter your email address and password.'}</Text>
+                  <View style={styles.cardTitleRow}><Text style={[styles.cardTitle, styles.flex]}>{isSignUp ? 'Account details' : 'Credentials'}</Text><InfoButton title={isSignUp ? 'Account details' : 'Credentials'} message={isSignUp ? 'Enter your name, email address, and a password of at least 8 characters.' : 'Enter your email address and password. Remember me keeps the session after an app restart.'} /></View>
                   {isSignUp && <Field label="Your name" placeholder="Alex Morgan" value={name} onChangeText={setName} autoComplete="name" textContentType="name" maxLength={128} editable={!working} />}
                   <Field
                     label="Email address" placeholder="you@example.com"
@@ -247,7 +246,8 @@ const createStyles = colors => StyleSheet.create({
   tabText: { color: colors.muted, fontSize: 13, fontWeight: '600' },
   activeTabText: { color: colors.text },
   cardTitle: { color: colors.text, fontSize: 22, lineHeight: 29, fontWeight: '600', letterSpacing: -0.5 },
-  cardDescription: { color: colors.muted, fontSize: 13, lineHeight: 21, marginTop: 5, marginBottom: 24 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 24 },
   field: { marginBottom: 18 },
   label: { color: colors.text, fontSize: 12, fontWeight: '600', marginBottom: 9 },
   inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.input },

@@ -1,9 +1,30 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 
 const SheetInputContext = createContext(/** @type {((input: import('react-native').TextInput | null) => void) | null} */ (null));
+
+/** @param {{title: string, message: string}} props */
+export function InfoButton({ title, message }) {
+  const { colors, isDark } = useTheme();
+  const s = useThemedStyles(createStyles);
+  return <Pressable accessibilityRole="button" accessibilityLabel={`Information about ${title}`} hitSlop={6}
+    onPress={() => Alert.alert(title, message, [{ text: 'OK' }], { cancelable: true, userInterfaceStyle: isDark ? 'dark' : 'light' })}
+    style={({ pressed }) => [s.infoButton, pressed && s.pressed]}>
+    <Ionicons name="information-circle-outline" size={19} color={colors.muted} />
+  </Pressable>;
+}
+
+/** @param {{label: string, help?: string, textStyle?: import('react-native').StyleProp<import('react-native').TextStyle>}} props */
+export function FieldLabel({ label, help, textStyle }) {
+  const s = useThemedStyles(createStyles);
+  return <View style={s.labelRow}>
+    <Text style={[s.labelText, textStyle, { marginBottom: 0 }]}>{label}</Text>
+    {help && <InfoButton title={label} message={help} />}
+  </View>;
+}
 
 /** @param {{ label: string, accessibilityLabel?: string, onPress: () => void, busy?: boolean, disabled?: boolean, tone?: 'primary' | 'quiet' | 'outline', compact?: boolean }} props */
 export function Button({ label, accessibilityLabel = label, onPress, busy = false, disabled = false, tone = 'primary', compact = false }) {
@@ -31,8 +52,8 @@ export function Pill({ label, selected = false, onPress, disabled = false, color
   );
 }
 
-/** @param {{ label: string } & import('react-native').TextInputProps} props */
-export function Input({ label, onFocus, onBlur, ...props }) {
+/** @param {{ label: string, help?: string } & import('react-native').TextInputProps} props */
+export function Input({ label, help, onFocus, onBlur, ...props }) {
   const { colors: p } = useTheme();
   const s = useThemedStyles(createStyles);
   const [focused, setFocused] = useState(false);
@@ -40,7 +61,7 @@ export function Input({ label, onFocus, onBlur, ...props }) {
   const focusSheetInput = useContext(SheetInputContext);
   return (
     <View style={s.field}>
-      <Text style={s.label}>{label}</Text>
+      <FieldLabel label={label} help={help} />
       <TextInput accessibilityLabel={label} placeholderTextColor={p.subtle} selectionColor={p.accent} {...props} ref={inputRef}
         onFocus={event => { setFocused(true); focusSheetInput?.(inputRef.current); onFocus?.(event); }}
         onBlur={event => { setFocused(false); focusSheetInput?.(null); onBlur?.(event); }}
@@ -131,7 +152,9 @@ const createStyles = p => StyleSheet.create({
   buttonText: { color: p.onAccent, fontSize: 14, fontWeight: '700' }, lightButtonText: { color: p.text },
   pill: { flexDirection: 'row', gap: 8, alignItems: 'center', minHeight: 44, borderWidth: 1, borderColor: p.line, borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10 },
   pillSelected: { borderColor: p.accent, backgroundColor: p.accentSoft }, pillText: { color: p.muted, fontSize: 13, fontWeight: '500' }, pillTextSelected: { color: p.accent },
-  dot: { width: 7, height: 7, borderRadius: 4 }, field: { marginBottom: 24 }, label: { color: p.muted, fontSize: 12, fontWeight: '600', marginBottom: 8 },
+  dot: { width: 7, height: 7, borderRadius: 4 }, field: { marginBottom: 24 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: 4, marginBottom: 8 },
+  labelText: { color: p.muted, fontSize: 12, fontWeight: '600', flexShrink: 1 }, infoButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   input: { minHeight: 52, backgroundColor: p.input, borderWidth: 1, borderColor: p.line, borderRadius: 10, color: p.text, fontSize: 16, padding: 12 },
   inputFocused: { borderColor: p.accent }, message: { color: p.error, fontSize: 13, lineHeight: 20, marginBottom: 16 }, notice: { color: p.green },
   modalRoot: { flex: 1, justifyContent: 'flex-end' }, backdrop: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: p.overlay },

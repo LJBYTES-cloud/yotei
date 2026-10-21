@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { createSubject } from '../db/SubjectService';
 import { createTask } from '../db/TaskService';
-import { Button, Input, Message, Pill, Sheet } from './ui';
+import { Button, FieldLabel, Input, Message, Pill, Sheet } from './ui';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 
 /** @param {{ kind: 'subject' | 'task', userId: string, subjects: import('../db/SubjectService').Subject[], initialSubject?: number | null, onClose: () => void, onSaved: () => void }} props */
@@ -30,19 +30,16 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, onC
   }
   return (
     <Sheet kicker={kind === 'subject' ? 'SUBJECT' : 'TASK'} title={kind === 'subject' ? 'Add subject' : 'Add task'} onClose={onClose} busy={busy}>
-      <Input label={kind === 'subject' ? 'Subject name' : 'Task title'} value={name} onChangeText={setName} placeholder={kind === 'subject' ? 'e.g. Architecture' : 'e.g. Read chapter 3'} maxLength={kind === 'subject' ? 128 : 256} editable={!busy} returnKeyType="done" onSubmitEditing={() => void save()} />
-      <Text style={s.label}>{kind === 'subject' ? 'Subject color' : 'Choose a subject'}</Text>
+      <Input label={kind === 'subject' ? 'Subject name' : 'Task title'} help={kind === 'subject' ? 'Subjects group related tasks and review topics.' : 'After saving, select Schedule in Library to plan this task.'} value={name} onChangeText={setName} placeholder={kind === 'subject' ? 'e.g. Architecture' : 'e.g. Read chapter 3'} maxLength={kind === 'subject' ? 128 : 256} editable={!busy} returnKeyType="done" onSubmitEditing={() => void save()} />
+      <FieldLabel label={kind === 'subject' ? 'Subject color' : 'Subject'} help={kind === 'subject' ? 'This color identifies the subject on your bookshelf.' : 'The task and its review topics belong to this subject.'} />
       {kind === 'subject' ? (
         <View style={s.colorRow}>{(isDark ? [p.accent, '#B0CDBD', '#EAC68D', '#E7A8A6', '#99BCE5'] : [p.accent, '#444444', '#777777', '#999999', '#BBBBBB']).map((value, index) => <Pill key={value} label={(isDark ? ['Iris', 'Sage', 'Honey', 'Rose', 'Sky'] : ['Ink', 'Charcoal', 'Graphite', 'Silver', 'Stone'])[index]} color={value} selected={color === value} disabled={busy} onPress={() => setColor(value)} />)}</View>
       ) : <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={s.subjects}>{subjects.map(subject => <Pill key={subject.id} label={subject.name} color={subject.color} selected={subjectId === subject.id} disabled={busy} onPress={() => setSubjectId(subject.id)} />)}</ScrollView>}
       <Message text={error} />
       <Button label={kind === 'subject' ? 'Create subject ↗' : 'Add task'} busy={busy} onPress={() => void save()} />
-      <Text style={s.note}>{kind === 'subject' ? 'Subjects group related tasks and review topics.' : 'Schedule this task from Library.'}</Text>
     </Sheet>
   );
 }
-/** @param {import('../ThemeContext').ThemeColors} p */
-const createStyles = p => StyleSheet.create({
-  label: { color: p.muted, fontSize: 12, fontWeight: '600', marginBottom: 16 }, colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 20, marginBottom: 32 }, subjects: { gap: 20, paddingBottom: 32 },
-  note: { color: p.muted, fontSize: 12, lineHeight: 19, marginTop: 26, textAlign: 'center' },
+const createStyles = () => StyleSheet.create({
+  colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 20, marginBottom: 32 }, subjects: { gap: 20, paddingBottom: 32 },
 });

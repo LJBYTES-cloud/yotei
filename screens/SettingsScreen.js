@@ -5,7 +5,7 @@ import { useTheme, useThemedStyles } from '../ThemeContext';
 import { Feedback, ScreenHeader } from '../components/StudyCards';
 import { useStudy } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
-import { Button, Message } from '../components/ui';
+import { Button, FieldLabel, Message } from '../components/ui';
 
 export default function SettingsScreen() {
   const { user, blocked, disabled, seeding, loadDemoData, backupAction, manageBackup, signOut, signingOut, signOutError } = useStudy();
@@ -19,29 +19,27 @@ export default function SettingsScreen() {
         <View style={[s.card, t.profile]}><View style={t.avatar}><Text style={t.initial}>{user.name.charAt(0).toUpperCase() || 'Y'}</Text></View><View style={s.flex}><Text style={t.name}>{user.name}</Text><Text style={s.hint}>{user.email}</Text></View></View>
         <Text style={t.label}>01 / APPEARANCE</Text>
         <View style={s.card}>
-          <View style={t.row}><View style={s.flex}><Text style={t.title}>Light mode</Text><Text style={t.description}>{isDark ? 'Dark background with purple accents.' : 'Light background with black text.'}</Text></View>
+          <View style={t.row}><View style={s.flex}><FieldLabel label="Light mode" textStyle={t.title} help="Switch all screens and dialogs between dark purple and monochrome light themes. Subject book colors stay visible in both." /></View>
             <Switch accessibilityLabel="Light mode" accessibilityHint="Switch between dark purple and monochrome light themes" value={!isDark} onValueChange={toggleTheme} trackColor={{ false: p.line, true: p.accent }} thumbColor={isDark ? p.muted : p.surface} ios_backgroundColor={p.line} />
           </View>
-          <View style={t.themePreview}><View style={t.previewPage}><View style={t.previewLine} /><View style={[t.previewLine, t.shortLine]} /><View style={t.previewButton} /></View><View style={s.flex}><Text style={s.eyebrow}>{isDark ? 'DARK / VIOLET' : 'LIGHT / MONOCHROME'}</Text><Text style={s.hint}>Applies to all screens and dialogs.</Text></View></View>
+          <View style={t.themePreview}><View style={t.previewPage}><View style={t.previewLine} /><View style={[t.previewLine, t.shortLine]} /><View style={t.previewButton} /></View><View style={s.flex}><Text style={s.eyebrow}>{isDark ? 'DARK / VIOLET' : 'LIGHT / MONOCHROME'}</Text></View></View>
         </View>
         <Feedback />
         <Text style={t.label}>02 / DATA MANAGEMENT</Text>
         <View style={s.card}>
-          <Text accessibilityRole="header" style={t.title}>Data Management</Text>
-          <Text style={t.body}>Export your study data as JSON or restore a Yotei backup to this account.</Text>
+          <FieldLabel label="Data Management" textStyle={t.title} help="Export your study data as JSON or restore a Yotei backup. Material notes and paths are included; attached file contents and login sessions are excluded." />
           <View style={t.backupActions}>
             <Button label="Export Backup" disabled={disabled || blocked} busy={backupAction === 'export'} onPress={() => void manageBackup('export')} />
             <Button label="Import Backup" tone="outline" disabled={disabled || blocked} busy={backupAction === 'import'} onPress={() => void manageBackup('import')} />
           </View>
           <Text style={t.warning}>Warning: Importing will overwrite your current local data.</Text>
-          <Text style={t.footnote}>Includes material notes and file paths. Attached files and login sessions are not included.</Text>
         </View>
         {!USE_REAL_AUTH && <>
           <Text style={t.label}>03 / DEMO DATA</Text>
-          <View style={s.card}><Text style={t.title}>Demo study data</Text><Text style={t.body}>Load three subjects, six tasks, three due reviews, and four hours of study sessions.</Text><Button label="Load Demo Data" tone="outline" disabled={disabled || blocked} busy={seeding} onPress={() => void loadDemoData()} /><Text style={t.footnote}>Replaces only this demo account’s local study data.</Text></View>
+          <View style={s.card}><FieldLabel label="Demo study data" textStyle={t.title} help="Load three subjects, six tasks, three due reviews, and four hours of study sessions for today." /><Button label="Load Demo Data" tone="outline" disabled={disabled || blocked} busy={seeding} onPress={() => void loadDemoData()} /><Text style={t.footnote}>Replaces this demo account’s local data.</Text></View>
         </>}
         <Text style={t.label}>{USE_REAL_AUTH ? '03' : '04'} / YOUR ACCOUNT</Text>
-        <View style={s.card}><Text style={t.title}>Sign out</Text><Text style={t.body}>Your study data remains stored on this device.</Text><Message text={signOutError} /><Button label="Sign Out ↗" busy={signingOut} disabled={blocked} onPress={signOut} /></View>
+        <View style={s.card}><FieldLabel label="Sign out" textStyle={t.title} help="Signing out clears the login session. Your study data remains stored on this device." /><Message text={signOutError} /><Button label="Sign Out ↗" busy={signingOut} disabled={blocked} onPress={signOut} /></View>
       </ScrollView>
       <View style={t.mottoBar}><Text style={t.mottoText}>By students, for students.</Text></View>
     </SafeAreaView>
@@ -56,7 +54,6 @@ const createStyles = p => StyleSheet.create({
   avatar: { height: 52, width: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: p.accentSoft }, initial: { color: p.accent, fontSize: 23, fontWeight: '500' }, name: { color: p.text, fontSize: 18, fontWeight: '500', marginBottom: 4 },
   label: { color: p.muted, fontSize: 10, letterSpacing: 1.7, fontWeight: '700', marginTop: 12, marginBottom: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 16 }, title: { color: p.text, fontSize: 19, lineHeight: 26, fontWeight: '700', letterSpacing: -0.4 },
-  description: { color: p.muted, fontSize: 12, lineHeight: 20, marginTop: 6 }, body: { color: p.muted, fontSize: 14, lineHeight: 23, marginTop: 12, marginBottom: 24 },
   footnote: { color: p.muted, fontSize: 11, lineHeight: 18, textAlign: 'center', marginTop: 16 },
   backupActions: { gap: 12 },
   warning: { color: p.text, fontSize: 12, lineHeight: 20, marginTop: 16, fontWeight: '600' },
