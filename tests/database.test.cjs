@@ -518,6 +518,61 @@ test('subject edits reject invalid IDs, metadata, and other accounts without cha
   assert.equal((await s.getSubjectsForUser('other-user')).length, 0);
 });
 
+test('subject deletion cascades tasks, rescheduled blocks, reviews and materials while preserving other subjects/accounts', async t => {
+  const s = await loadServices(':memory:', false, '2026-10-20T12:00:00Z');
+  t.after(s.close);
+  const db = await s.getDatabase();
+  const subjects = [];
+  for (const [user, name] of [['owner', 'Delete me'], ['owner', 'Keep mine'], ['other', 'Keep theirs']]) {
+    const subject = await s.createSubject(user, { name });
+    subjects.push(subject);
+    const task = await s.createTask(user, { subject_id: subject.id, title: name });
+    await s.createStudyBlock(user, { task_id: task.id, start_time: '2026-10-20T10:00:00Z', end_time: '2026-10-20T10:30:00Z' });
+    await s.createReviewItem(user, { subject_id: subject.id, topic: name });
+    await db.runAsync('INSERT INTO Material (subject_id, task_id, title) VALUES (?, ?, ?)', subject.id, task.id, name);
+  }
+  await s.markExpiredStudyBlocks('owner', '2026-10-20T12:00:00Z');
+  const source = (await s.getStudyBlocksForUser('owner')).find(block => block.subject_id === subjects[0].id);
+  await s.rescheduleStudyBlock('owner', source.id, '2026-10-20T12:00:00Z');
+  const targetTaskIds = (await s.getTasksForUser('owner')).filter(task => task.subject_id === subjects[0].id).map(task => task.id);
+  const before = {};
+  for (const table of ['Subject', 'Task', 'StudyBlock', 'ReviewItem', 'Material']) before[table] = await db.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
+  await s.deleteSubject('owner', subjects[0].id);
+  for (const table of Object.keys(before)) {
+    const expected = before[table].filter(row => table === 'Subject' ? row.id !== subjects[0].id
+      : table === 'StudyBlock' ? !targetTaskIds.includes(row.task_id) : row.subject_id !== subjects[0].id);
+    assert.deepEqual(await db.getAllAsync(`SELECT * FROM ${table} ORDER BY id`), expected, `${table}: only the deleted subject's rows disappear`);
+  }
+  assert.deepEqual(await db.getAllAsync('PRAGMA foreign_key_check'), []);
+  assert.equal((await s.getSubjectsForUser('owner'))[0].id, subjects[1].id);
+  assert.equal((await s.getSubjectsForUser('other'))[0].id, subjects[2].id);
+});
+
+test('subject deletion rejects invalid/unowned IDs and rolls back all cascades on failure', async t => {
+  const s = await loadServices();
+  t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Preserve on failure' });
+  await s.createTask('owner', { subject_id: subject.id, title: 'Keep task' });
+  const db = await s.getDatabase();
+  const snapshot = async () => {
+    const data = {};
+    for (const table of ['Subject', 'Task', 'StudyBlock', 'ReviewItem', 'Material']) data[table] = await db.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
+    return data;
+  };
+  const before = await snapshot();
+  for (const action of [
+    () => s.deleteSubject('', subject.id),
+    () => s.deleteSubject('other', subject.id),
+    ...[0, -1, 1.5, '1 OR 1=1', 9999].map(id => () => s.deleteSubject('owner', id)),
+  ]) { await assert.rejects(action); assert.deepEqual(await snapshot(), before); }
+  await db.execAsync("CREATE TRIGGER reject_task_deletion BEFORE DELETE ON Task BEGIN SELECT RAISE(ABORT, 'Injected delete failure'); END");
+  await assert.rejects(s.deleteSubject('owner', subject.id), /Injected delete failure/);
+  assert.deepEqual(await snapshot(), before);
+  await db.execAsync('DROP TRIGGER reject_task_deletion');
+  await s.deleteSubject('owner', subject.id);
+  await assert.rejects(s.deleteSubject('owner', subject.id), /belonging/);
+});
+
 test('binds SQL input safely and validates empty or invalid input', async t => {
   const services = await loadServices();
   t.after(services.close);

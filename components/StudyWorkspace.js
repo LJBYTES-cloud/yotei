@@ -239,6 +239,10 @@ function WorkspaceContent({ user, children }) {
           study.setEntry(null);
           study.setNotice(study.editingSubject ? 'Subject updated.' : study.entry === 'subject' ? 'Subject created.' : 'Task created.');
           void study.data.refresh();
+        }} onDeleted={() => {
+          study.setEntry(null);
+          study.setNotice('Subject deleted.');
+          void study.data.refresh();
         }} />}
       {study.schedule && <ScheduleSheet userId={study.user.id} {...study.schedule} onClose={() => study.setSchedule(null)} onSaved={study.savedSession} />}
       {study.reviewPrompt && <CompletionReviewSheet key={study.reviewPrompt.id} block={study.reviewPrompt} busy={study.addingReview || study.workingBlock !== null} onClose={study.dismissReviewPrompt} onAdd={study.addCompletedReview} />}

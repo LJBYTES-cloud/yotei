@@ -46,6 +46,17 @@ export async function updateSubject(userId, subjectId, { name, field_of_study, f
   return { id: subjectId, user_id: userId, name: trimmedName, field_of_study: field, field_colors: colors };
 }
 
+/** Delete one owned subject; SQLite cascades its linked study data atomically.
+ * @param {string} userId @param {number} subjectId @returns {Promise<void>}
+ */
+export async function deleteSubject(userId, subjectId) {
+  requireUserId(userId);
+  if (!Number.isSafeInteger(subjectId) || subjectId < 1) throw new Error('Choose a valid subject.');
+  const database = await getDatabase();
+  const result = await database.runAsync('DELETE FROM Subject WHERE id = ? AND user_id = ?', subjectId, userId);
+  if (result.changes !== 1) throw new Error('Choose a subject belonging to your account.');
+}
+
 /** @param {string} userId @returns {Promise<Subject[]>} */
 export async function getSubjectsForUser(userId) {
   requireUserId(userId);

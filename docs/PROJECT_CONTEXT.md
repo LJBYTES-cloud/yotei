@@ -131,6 +131,7 @@ erDiagram
 
 - Task uses the composite `(subject_id, user_id)` foreign key to prevent linking another user's subject.
 - Subject deletion cascades through its related tables; Task deletion cascades blocks and clears Material.task_id.
+- `deleteSubject` validates the account and integer ID and executes one owned DELETE. Foreign keys atomically remove its tasks, blocks (including replacement history), review items and materials. Missing/unowned IDs reject; a cascade failure rolls back the statement. The edit sheet offers a red Delete Subject action with native Cancel/Delete confirmation. Confirmation locks competing save/delete actions; success closes the sheet and refreshes shared tab data. Library clears a filter whose subject no longer exists; cancel/dismiss preserves the draft, and failure leaves the editor available to retry.
 - `rescheduled_from` references the original block; a unique partial index permits one direct replacement for each original.
 - Initialization adds `rescheduled_from` for older databases, converts legacy `planned` status to `scheduled`, installs the postponement trigger, and backfills counts without reducing existing demo/coaching values.
 - Subject migration adds the two field columns, copies legacy `color` into `field_colors`, assigns existing subjects to `General`, then drops `color` in the initialization transaction. IDs, ownership and dependent records are preserved. A `(user_id, field_of_study, id)` index supports field access.
@@ -140,7 +141,7 @@ erDiagram
 
 | Module | Public functions / values |
 | --- | --- |
-| SubjectService | `createSubject(userId, {name, field_of_study?, field_colors?})`, `updateSubject(userId, subjectId, {name, field_of_study, field_colors})`, `getSubjectsForUser(userId)` |
+| SubjectService | `createSubject(userId, {name, field_of_study?, field_colors?})`, `updateSubject(userId, subjectId, {name, field_of_study, field_colors})`, `deleteSubject(userId, subjectId)`, `getSubjectsForUser(userId)` |
 | TaskService | `createTask(userId, {subject_id, title, deadline?, estimated_minutes?})`, `getTasksForUser(userId, {date?, hasDeadline?})`, `getTasksWithDeadlines`, `getTasksForDate` |
 | StudyBlockService | `createStudyBlock`, `getStudyBlocksForUser`, `getMissedBlocksForUser`, `markExpiredStudyBlocks`, `updateStudyBlockStatus`, `rescheduleStudyBlock` |
 | StudyLoadService | `DAILY_STUDY_LIMIT = 240`, `StudyLoadWarning`, `getDailyStudyMinutes`, `checkStudyLoad` |

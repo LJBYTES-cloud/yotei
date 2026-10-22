@@ -1,5 +1,13 @@
 # Validation snapshot
 
+## Subject deletion (2026-10-22)
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.
+- `node --experimental-vm-modules --test tests/database.test.cjs tests/subject-deletion.test.cjs`: 52 tests total, 51 passed, 0 failed, 1 timezone-specific DST case skipped in Asia/Singapore.
+- Production-SQL coverage confirms deletion of an owned subject and its tasks, original/replacement study blocks, reviews and materials; unrelated subjects/accounts remain unchanged. Invalid/unowned IDs reject without writes, and an injected cascade failure rolls back the parent and dependent deletions.
+- New EntrySheet tests compile the actual component and substitute native UI/storage bridges to exercise edit-only visibility, exact confirmation text, Cancel/dismiss no-ops, duplicate-tap prevention, save/delete exclusion, success callbacks, and retained draft/retry behavior after failure.
+- `git diff --check`: passed. No dependency/schema changes. Native Alert gestures/colors, keyboard interaction, post-delete tab refresh, and selected-filter clearing still need the device checks in `DEMO_AND_TESTING.md`. Native exports and unrelated suites were not rerun; their earlier evidence below remains historical.
+
 ## Subject editing and Show All Tasks (2026-10-22)
 
 - `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.

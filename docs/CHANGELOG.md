@@ -242,6 +242,29 @@ File-by-file changes (two new files, no files deleted):
 | `docs/VALIDATION.md` | Recorded this pass's checks and remaining native verification. |
 | `docs/CHANGELOG.md` | Recorded this implementation and every changed file. |
 
+### Subject deletion (2026-10-22)
+
+- Added `deleteSubject(userId, subjectId)` with account/ID validation and a parameter-bound owned DELETE. Existing SQLite cascades remove linked tasks, study blocks (including replacement history), reviews, and materials atomically.
+- Added a red `#FF4C4C` trash action labeled Delete Subject at the bottom of Edit Subject only. The native Alert uses the requested warning and Cancel/Delete actions. Confirmation and pending deletion guard against duplicate taps and competing saves; a failed deletion keeps the draft available for retry.
+- Confirmed deletion closes the sheet, reports Subject deleted, and refreshes shared tab data. Library clears its selected subject filter when that subject no longer exists.
+- Lint/typecheck passed. Database and confirmation-flow tests: 51 passed, 0 failed, one timezone-specific skip. No dependency or schema changes.
+
+| File changed | Summary |
+| --- | --- |
+| `db/SubjectService.js` | Added owned subject deletion relying on atomic SQLite cascades. |
+| `components/EntrySheet.js` | Added edit-only red delete action, native confirmation, save/delete locks, loading and error feedback. |
+| `components/StudyWorkspace.js` | Close the sheet, show deletion confirmation, and refresh all shared lists after success. |
+| `screens/LibraryScreen.js` | Clear the filter when its selected subject has been deleted. |
+| `tests/database.test.cjs` | Added cascade/history/material/account isolation, invalid-ID rejection, and rollback coverage. |
+| `tests/subject-deletion.test.cjs` | New actual-component confirmation tests for cancel/dismiss, success, duplicate taps, save exclusion, and failure/retry. |
+| `docs/PROJECT_CONTEXT.md` | Updated delete API and UI/data behavior. |
+| `docs/NEXT_SESSION_PROMPT.md` | Added deletion continuation context and test command. |
+| `docs/DEMO_AND_TESTING.md` | Added device deletion checks and the new test suite to the combined command. |
+| `docs/VALIDATION.md` | Recorded test evidence and remaining native checks. |
+| `docs/CHANGELOG.md` | Recorded this implementation and every changed/created file. |
+
+One test file created; no files deleted.
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |

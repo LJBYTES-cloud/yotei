@@ -42,6 +42,7 @@ The demo seed is day-relative. Reload it on a new date to obtain today's four-ho
 | Remember me on | Public session restores; sign-out clears it; test custom mock-account limitations described in PROJECT_CONTEXT |
 | Subject/task creation | Field text required; choose one/two distinct colors, no third or empty selection; forms retain drafts on failure; linked task/review markers still work |
 | Subject editing | Pencil opens a pre-filled sheet in both themes without filtering the task list; Save changes updates the same row and shared tabs; Cancel changes nothing; invalid input retains the draft; imported colors remain selectable; Add subject starts a fresh form after closing the editor |
+| Subject deletion | Create a temporary subject with a task, block and review. Select its task filter, open its pencil, and find the red Delete Subject button below Save changes. Cancel (or dismiss on Android) preserves the draft and all data. Reopen confirmation and Delete: sheet closes, subject/linked data disappear across tabs, and Library shows remaining tasks without a stale filter. Verify both themes and failure/retry/loading feedback; no delete button appears in Add Subject/Add Task |
 | Theme persistence | Light and Dark each restore after a cold restart, including before sign-in; rapid toggles retain the last choice; sign-out/import leave the preference intact |
 | Subject migration | Upgrade an existing database: subject names/IDs/colors and linked tasks/reviews/materials survive under General; no reset required |
 | Native schedule | Pick today, tomorrow, next week, and a year-boundary date; verify chosen local start/end dates and stored instants |
@@ -69,7 +70,7 @@ For a short live missed-block demonstration, use the native clock to choose the 
 ```powershell
 npx.cmd expo lint
 npx.cmd tsc --noEmit
-node --experimental-vm-modules --test tests/database.test.cjs tests/auth.test.cjs tests/backup.test.cjs tests/theme.test.cjs
+node --experimental-vm-modules --test tests/database.test.cjs tests/auth.test.cjs tests/backup.test.cjs tests/theme.test.cjs tests/subject-deletion.test.cjs
 ```
 
 Date-sensitive database coverage can run in separate PowerShell processes with:

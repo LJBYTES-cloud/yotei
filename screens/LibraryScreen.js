@@ -17,6 +17,9 @@ export default function LibraryScreen() {
   const s = useThemedStyles(createStudyStyles);
   const l = useThemedStyles(createStyles);
   useEffect(() => { setSubjectId(null); list.current?.scrollToOffset({ offset: 0, animated: false }); }, [demoRevision]);
+  useEffect(() => {
+    if (data.ready && subjectId !== null && !data.subjects.some(subject => subject.id === subjectId)) setSubjectId(null);
+  }, [data.ready, data.subjects, subjectId]);
   const tasks = useMemo(() => data.tasks.filter(task => subjectId === null || task.subject_id === subjectId), [data.tasks, subjectId]);
   const taskCounts = useMemo(() => {
     const counts = new Map();

@@ -55,6 +55,13 @@ updateSubject(userId, subjectId, {name, field_of_study, field_colors}) validates
 and updates only the owned row in place. Save refreshes all shared tabs without changing
 subject IDs or filter selection. Imported/legacy swatches remain available in the editor.
 The filter-reset button is labeled Show All Tasks.
+Edit Subject also has a red Delete Subject button at the bottom, with native
+Cancel/Delete confirmation. deleteSubject(userId, subjectId) uses an owned DELETE;
+SQLite cascades its tasks/blocks/reviews/materials. Success closes the sheet and
+refreshes shared data; Library clears a deleted subject's filter. Cancel/failure
+keeps the editor/draft. Duplicate taps and competing saves are guarded.
+Run node --experimental-vm-modules --test tests/subject-deletion.test.cjs for
+the actual EntrySheet callback tests; SQL cascade coverage is in database.test.cjs.
 LinearGradient spines retain page/binding details and black titles on light paper labels
 in both themes; bookshelf/swatch colors are exceptions to light-mode monochrome chrome.
 One-color spines get a subtle shade; two-color spines blend the selected pair.
