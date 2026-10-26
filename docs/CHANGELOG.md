@@ -545,6 +545,65 @@ File-by-file summary for this pass:
 | `docs/VALIDATION.md` | Record regression/bundle evidence and remaining physical-device checks. |
 | `docs/CHANGELOG.md` | Record implementation decisions and this complete 31-file summary. |
 
+### Reflection Pivot, Study Materials, Task Descriptions, and Interactive Progress (2026-10-27)
+
+- Completed presentation/UI and notebook data work first, followed by chart interaction and the reflection pivot. The auth card now says Welcome Back. Settings always offers the account-scoped demo reset, including with Appwrite. Fresh theme fallback remains Light; stored choices still restore. Both book themes use identical vibrant field gradients, with light text/code on dark paper labels. Existing three-second global toast, Settings discard, Title Case and themed information dialogs remain integrated.
+- Added nullable Task.description with in-place migration, owned validated service writes, multiline create/edit and notebook display. Omitted updates preserve old descriptions; explicit empty input clears them.
+- Added owned MaterialService and notebook Study Materials with Title/URL-or-path forms, recoverable OS opening errors, edit and confirmed deletion. Absolute Windows/device paths and HTTP(S)/file/content references normalize for Linking.openURL. No uploads, copied file contents or original-file deletion.
+- Chart points open themed daily details with completed task titles, allocated session, actual work/break/elapsed totals and scheduled-end overrun. The background opens weekly total, seven-date daily average and best day, with date links into details. Point/background dispatch is separated. Details query account-scoped completed sessions using the chart's local completion-day/DST boundaries; untimed historical completions retain their scheduled-duration fallback. There is no invented separate break allocation.
+- Replaced spaced repetition with ReflectionItem(id, subject_id, study_block_id nullable, note, created_at). Existing review topics/IDs/subjects migrate atomically into notes; old schedules are retired. A failed migration leaves old records/schema intact and retries safely. Session links detach when their block is deleted; subject deletion cascades notes.
+- Finish Session persists completion before the optional Reflect on This Session note sheet. Skip or failed note saving never undoes completion; failure retains the draft. Reflections replaces Review in the tab bar and route tree, with a journal icon, standalone notes and subject-grouped newest-first entries.
+- Backup version 5 includes descriptions and reflection session links. Versions 1-4 still import, converting topics into notes with last-reviewed/export timestamps and null descriptions. ID remapping, timer/history validation, 20 MB bounds and owned transaction rollback remain intact. Demo now includes described tasks, three linked reflections and three material URLs alongside the unchanged four-hour/two-coaching/six-historical-day fixtures.
+- Verification: lint/typecheck, SDK dependency check, Android/iOS/web exports, 155 passing regression cases with one existing timezone skip, and all 61 New York database cases. No dependencies were added. Device appearance, gestures, file access and live Appwrite remain manual checks.
+
+Complete per-file summary for this overhaul (nine files created, four retired):
+
+| File | Change |
+| --- | --- |
+| `db/database.js` | Add Task.description and migrate legacy ReviewItem into the five-column ReflectionItem table atomically, preserving IDs/data and required cascades/indexes. |
+| `db/TaskService.js` | Create/read/update optional validated descriptions; preserve omitted values; update reflection terminology. |
+| `db/MaterialService.js` | **Created:** validated account-scoped material create/list/edit/delete. |
+| `utils/materialLinks.js` | **Created:** supported URL/file-location validation and absolute-path-to-URI conversion. |
+| `components/MaterialSheet.js` | **Created:** keyboard-aware Title/URL-or-path editor with loading and draft-preserving errors. |
+| `components/StudyMaterials.js` | **Created:** notebook references, OS linking, recoverable errors, edit and delete actions. |
+| `components/EntrySheet.js` | Add prefilled multiline Task Description and reflection terminology in help/confirmation copy. |
+| `components/StudyCards.js` | Display descriptions in notebook tasks and update subject/reflection guidance. |
+| `screens/OpenedBookScreen.js` | Attach the subject-scoped Study Materials section below tasks. |
+| `screens/AuthScreen.js` | Replace Credentials with Welcome Back and update journal guidance. |
+| `screens/SettingsScreen.js` | Show functional Load Demo Data for both adapters, retain replacement warning and describe new demo fixtures. |
+| `components/SubjectBookshelf.js` | Restore identical vibrant field gradients in both themes while retaining themed book ink/details. |
+| `components/InfoModal.js` | Support optional rich children for progress-detail dialogs while preserving standard guidance messages. |
+| `db/ProgressService.js` | Add owned completed-day session detail query and allocation/study/break/elapsed/overrun metrics. |
+| `components/ProgressDetailsModal.js` | **Created:** themed weekly aggregate and lazy-loaded daily task/session details, errors and accessible date actions. |
+| `components/WeeklyProgressCard.js` | Separate point/background taps, open detail/summary modals and prevent point taps from being replaced by background actions. |
+| `screens/HomeScreen.js` | Pass the signed-in account ID into interactive chart details. |
+| `db/ReflectionService.js` | **Created:** owned note creation/chronological reads, optional completed-session validation and composed insert result. |
+| `components/CompletionReflectionSheet.js` | **Created:** quick multiline post-session note, save/skip and draft/error handling. |
+| `screens/ReflectionsScreen.js` | **Created:** keyboard-aware standalone note form and subject-grouped chronological journal. |
+| `src/app/(tabs)/reflections.tsx` | **Created:** active Reflections route wrapper. |
+| `src/app/(tabs)/_layout.tsx` | Replace Review tab with Reflections and journal icons. |
+| `components/StudyWorkspace.js` | Wire reflection/material flows and locks, preserve global success/error behavior, enable both-adapter demo resets and update backup/demo feedback. |
+| `hooks/useDashboardData.js` | Share reflection/material lists with existing refresh guards and progress data. |
+| `components/studyStyles.js` | Add theme/font-consistent reflection note styling. |
+| `db/BackupService.js` | Version-5 descriptions/reflections, legacy conversion, linked-session validation and owned ID remapping/restoration. |
+| `db/seedData.js` | Seed task descriptions, linked reflection notes and material references; retain today's 240 minutes and six historical completions. |
+| `db/ReviewService.js` | **Deleted:** retired rating/due-date service, replaced by ReflectionService. |
+| `components/CompletionReviewSheet.js` | **Deleted:** retired review-topic choice sheet, replaced by CompletionReflectionSheet. |
+| `screens/ReviewScreen.js` | **Deleted:** retired spaced-repetition UI, replaced by ReflectionsScreen. |
+| `src/app/(tabs)/review.tsx` | **Deleted:** retired tab route, replaced by reflections.tsx. |
+| `tests/database.test.cjs` | Add description/material/reflection/day-detail/migration-rollback coverage; replace obsolete rating tests and update seed/cascade fixtures. |
+| `tests/backup.test.cjs` | Exercise version-5 fields/links, old-version conversions, invalid data preservation and updated table snapshots. |
+| `tests/task-library.test.cjs` | Test descriptions, materials, OS link errors, confirmations, chart dispatch/details, reflection flow/journal and real-auth demo access. |
+| `tests/notifications.test.cjs` | Use current Reflection saved copy and Reflections route in toast isolation checks. |
+| `tests/subject-deletion.test.cjs` | Update expected destructive-warning text for reflections. |
+| `README.md` | Update feature overview, demo access, materials, interactive chart and reflection/backup behavior. |
+| `docs/PROJECT_CONTEXT.md` | Update current schema, services, routes, migration, ownership and UI/business contracts. |
+| `docs/NEXT_SESSION_PROMPT.md` | Rewrite copyable continuation context around the implemented reflection/material engine. |
+| `docs/DEMO_AND_TESTING.md` | Rewrite presentation walkthrough, acceptance checks, current test commands and troubleshooting. |
+| `docs/DATA_BACKUP.md` | Document version-5 JSON and versions 1-4 conversion, linked IDs, materials and current Settings feedback. |
+| `docs/VALIDATION.md` | Record current regression/timezone/bundle evidence and native verification limits. |
+| `docs/CHANGELOG.md` | Record implementation decisions and this complete file-by-file summary. |
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |

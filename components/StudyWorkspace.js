@@ -1,20 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 import { router } from 'expo-router';
-import { USE_REAL_AUTH } from '../auth';
 import { useSession } from '../auth/SessionContext';
 import { getLocalDateKey } from '../db/dateUtils';
 import { deleteTask } from '../db/TaskService';
 import { deleteSubject } from '../db/SubjectService';
+import { deleteMaterial } from '../db/MaterialService';
 import { useTheme } from '../ThemeContext';
 import { finishStudyBlock, pauseStudyBlock, resumeStudyBlock, startStudyBlock } from '../db/StudyBlockService';
 import { seedDemoData } from '../db/seedData';
-import { createReviewItem, markReviewed } from '../db/ReviewService';
+import { createReflectionItem } from '../db/ReflectionService';
 import { exportBackup, importBackup } from '../db/BackupService';
 import { useDashboardData } from '../hooks/useDashboardData';
 import EntrySheet from './EntrySheet';
 import ScheduleSheet from './ScheduleSheet';
-import CompletionReviewSheet from './CompletionReviewSheet';
+import CompletionReflectionSheet from './CompletionReflectionSheet';
+import MaterialSheet from './MaterialSheet';
 import { formatTime } from './theme';
 import { formatElapsed } from '../utils/focusTimer';
 
@@ -37,12 +38,13 @@ function useWorkspaceState(user) {
   const [editingTask, setEditingTask] = useState(/** @type {import('../db/TaskService').Task | null} */ (null));
   const [deletingTask, setDeletingTask] = useState(/** @type {number | null} */ (null));
   const [deletingSubject, setDeletingSubject] = useState(/** @type {number | null} */ (null));
+  const [deletingMaterial, setDeletingMaterial] = useState(/** @type {number | null} */ (null));
+  const [materialEntry, setMaterialEntry] = useState(/** @type {{subjectId: number, material?: import('../db/MaterialService').Material} | null} */ (null));
   const [schedule, setSchedule] = useState(/** @type {Schedule | null} */ (null));
-  const [reviewPrompt, setReviewPrompt] = useState(/** @type {StudyBlock | null} */ (null));
+  const [reflectionPrompt, setReflectionPrompt] = useState(/** @type {StudyBlock | null} */ (null));
   const [workingBlock, setWorkingBlock] = useState(/** @type {number | null} */ (null));
   const [workingTimerAction, setWorkingTimerAction] = useState(/** @type {'start' | 'break' | 'resume' | 'finish' | null} */ (null));
-  const [addingReview, setAddingReview] = useState(false);
-  const [workingReview, setWorkingReview] = useState(/** @type {{id: number, difficulty: import('../db/ReviewService').ReviewDifficulty} | null} */ (null));
+  const [addingReflection, setAddingReflection] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [backupAction, setBackupAction] = useState(/** @type {'export' | 'import' | null} */ (null));
   // Full data replacements invalidate subject selections and unfinished topics.
@@ -57,9 +59,9 @@ function useWorkspaceState(user) {
   const mutation = useRef(false);
   const busyRef = useRef(false);
   const mounted = useRef(false);
-  const busy = signingOut || workingBlock !== null || deletingTask !== null || deletingSubject !== null || seeding || backupAction !== null || addingReview || workingReview !== null;
+  const busy = signingOut || workingBlock !== null || deletingTask !== null || deletingSubject !== null || deletingMaterial !== null || seeding || backupAction !== null || addingReflection;
   const disabled = busy || !data.ready || data.refreshing;
-  const blocked = busy || entry !== null || schedule !== null || reviewPrompt !== null;
+  const blocked = busy || entry !== null || schedule !== null || reflectionPrompt !== null || materialEntry !== null;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { busyRef.current = blocked; }, [blocked]);
   useEffect(() => {
@@ -78,57 +80,43 @@ function useWorkspaceState(user) {
   const refreshData = useCallback(() => { if (!busyRef.current) void refresh(); }, [refresh]);
   const refreshInBackground = useCallback(() => { if (!busyRef.current) void refresh(true); }, [refresh]);
 
-  /** @param {{subject_id: number, topic: string}} input @returns {Promise<boolean>} */
-  async function addReview(input) {
+  /** @param {{subject_id: number, note: string}} input @returns {Promise<boolean>} */
+  async function addReflection(input) {
     if (mutation.current || disabled || busyRef.current) return false;
-    mutation.current = true; busyRef.current = true; setAddingReview(true); setActionError(''); setNotice('');
+    mutation.current = true; busyRef.current = true; setAddingReflection(true); setActionError(''); setNotice('');
     try {
-      await createReviewItem(user.id, input);
+      await createReflectionItem(user.id, input);
       if (!mounted.current) return false;
-      setNotice('Topic added to the review queue.');
+      setNotice('Reflection saved.');
       await data.refresh();
       return true;
     } catch {
-      if (mounted.current) setActionError('Could not add the review topic. Check the subject and try again.');
+      if (mounted.current) setActionError('Could not save the reflection. Check the subject and try again.');
       return false;
-    } finally { mutation.current = false; busyRef.current = false; if (mounted.current) setAddingReview(false); }
+    } finally { mutation.current = false; busyRef.current = false; if (mounted.current) setAddingReflection(false); }
   }
 
-  /** @param {string} topic @returns {Promise<boolean>} */
-  async function addCompletedReview(topic) {
-    if (!reviewPrompt || mutation.current || busy) return false;
-    mutation.current = true; busyRef.current = true; setAddingReview(true); setActionError('');
+  /** @param {string} note @returns {Promise<boolean>} */
+  async function addCompletedReflection(note) {
+    if (!reflectionPrompt || mutation.current || busy) return false;
+    mutation.current = true; busyRef.current = true; setAddingReflection(true); setActionError('');
     let saved = false;
     try {
-      await createReviewItem(user.id, { subject_id: reviewPrompt.subject_id, topic });
+      await createReflectionItem(user.id, { subject_id: reflectionPrompt.subject_id, study_block_id: reflectionPrompt.id, note });
       saved = true;
       if (!mounted.current) return true;
-      setReviewPrompt(null);
-      setNotice('Session completed. Topic added to the Review Queue.');
+      setReflectionPrompt(null);
+      setNotice('Reflection saved.');
       await data.refresh();
       return true;
     } catch { return false; }
-    finally { mutation.current = false; busyRef.current = !saved; if (mounted.current) setAddingReview(false); }
+    finally { mutation.current = false; busyRef.current = !saved; if (mounted.current) setAddingReflection(false); }
   }
 
-  function dismissReviewPrompt() {
+  function dismissReflectionPrompt() {
     if (mutation.current || busy) return;
     busyRef.current = false;
-    setReviewPrompt(null);
-  }
-
-  /** @param {number} id @param {import('../db/ReviewService').ReviewDifficulty} difficulty */
-  async function review(id, difficulty) {
-    if (mutation.current || disabled || busyRef.current) return;
-    mutation.current = true; busyRef.current = true; setWorkingReview({ id, difficulty }); setActionError(''); setNotice('');
-    try {
-      await markReviewed(user.id, id, difficulty);
-      if (!mounted.current) return;
-      setNotice('Review saved.');
-      await data.refresh();
-    } catch {
-      if (mounted.current) setActionError('Could not save the review. Refresh the queue and try again.');
-    } finally { mutation.current = false; busyRef.current = false; if (mounted.current) setWorkingReview(null); }
+    setReflectionPrompt(null);
   }
 
   /** @param {number} id @param {'start' | 'break' | 'resume'} action */
@@ -155,7 +143,7 @@ function useWorkspaceState(user) {
       const completed = await finishStudyBlock(user.id, id);
       if (!mounted.current) return;
       openedPrompt = true;
-      setReviewPrompt(completed);
+      setReflectionPrompt(completed);
       setNotice(`Session completed. ${formatElapsed(completed.actual_study_seconds)} studied.`);
       await data.refresh();
     } catch { if (mounted.current) setActionError('We couldn’t update that session. Pull down to refresh, then try again.'); }
@@ -163,7 +151,7 @@ function useWorkspaceState(user) {
   }
 
   async function loadDemoData() {
-    if (USE_REAL_AUTH || mutation.current || disabled || busyRef.current) return;
+    if (mutation.current || disabled || busyRef.current) return;
     mutation.current = true; busyRef.current = true; setSeeding(true); setActionError(''); setNotice('');
     try {
       await seedDemoData(user.id);
@@ -172,7 +160,7 @@ function useWorkspaceState(user) {
       await data.refresh();
       if (mounted.current) {
         setDemoRevision(value => value + 1);
-        setNotice('Demo loaded: 3 subjects, 6 tasks, 3 due reviews, 6 previous study days, and 4 hours planned today.');
+        setNotice('Demo loaded: 3 subjects, 6 tasks, 3 reflections, 6 previous study days, and 4 hours planned today.');
         router.navigate('/');
       }
     } catch {
@@ -194,7 +182,7 @@ function useWorkspaceState(user) {
         setClock(Date.now()); setToday(getLocalDateKey());
         setDemoRevision(value => value + 1);
         await data.refresh();
-        if (mounted.current) setNotice(`Backup imported: ${counts.subjects} subjects, ${counts.tasks} tasks, ${counts.studyBlocks} study blocks, ${counts.reviewItems} review topics, and ${counts.materials} materials.`);
+        if (mounted.current) setNotice(`Backup imported: ${counts.subjects} subjects, ${counts.tasks} tasks, ${counts.studyBlocks} study blocks, ${counts.reflectionItems} reflections, and ${counts.materials} materials.`);
       }
     } catch (error) {
       if (mounted.current) {
@@ -245,11 +233,17 @@ function useWorkspaceState(user) {
     if (disabled || busyRef.current || task.user_id !== user.id) return;
     busyRef.current = true; setEditingTask(task); setEditingSubject(null); setInitialSubject(null); setInitialField(''); setEntry('task'); setActionError('');
   }
-  /** @param {import('../db/TaskService').Task | import('../db/SubjectService').Subject} record @param {'task' | 'subject'} kind */
+  /** @param {number} subjectId @param {import('../db/MaterialService').Material} [material] */
+  function openMaterial(subjectId, material) {
+    if (disabled || busyRef.current || !data.subjects.some(subject => subject.id === subjectId)) return;
+    busyRef.current = true; setMaterialEntry({ subjectId, material }); setActionError(''); setNotice('');
+  }
+  /** @param {import('../db/TaskService').Task | import('../db/SubjectService').Subject | import('../db/MaterialService').Material} record @param {'task' | 'subject' | 'material'} kind */
   function confirmDeleteRecord(record, kind) {
-    if (mutation.current || disabled || busyRef.current || record.user_id !== user.id) return;
-    const setDeleting = kind === 'task' ? setDeletingTask : setDeletingSubject;
-    const label = kind === 'task' ? 'Task' : 'Subject';
+    const owned = 'user_id' in record ? record.user_id === user.id : data.materials.some(item => item.id === record.id);
+    if (mutation.current || disabled || busyRef.current || !owned) return;
+    const setDeleting = kind === 'task' ? setDeletingTask : kind === 'subject' ? setDeletingSubject : setDeletingMaterial;
+    const label = kind === 'task' ? 'Task' : kind === 'subject' ? 'Subject' : 'Material';
     mutation.current = true; busyRef.current = true; setDeleting(record.id); setActionError(''); setNotice('');
     let started = false, settled = false;
     const release = () => {
@@ -261,7 +255,7 @@ function useWorkspaceState(user) {
       if (started || settled || !mounted.current) return;
       started = true;
       try {
-        await (kind === 'task' ? deleteTask(user.id, record.id) : deleteSubject(user.id, record.id));
+        await ({ task: deleteTask, subject: deleteSubject, material: deleteMaterial }[kind](user.id, record.id));
         if (!mounted.current) return;
         setNotice(`${label} deleted.`);
         await data.refresh();
@@ -270,8 +264,9 @@ function useWorkspaceState(user) {
       } finally { release(); }
     };
     const message = kind === 'task'
-      ? 'Are you sure you want to delete this task? All associated study blocks will also be permanently deleted. Subject reviews and materials will be kept.'
-      : 'Are you sure you want to delete this subject? All associated tasks and reviews will also be permanently deleted.';
+      ? 'Are you sure you want to delete this task? All associated study blocks will also be permanently deleted. Subject reflections and materials will be kept.'
+      : kind === 'subject' ? 'Are you sure you want to delete this subject? All associated tasks and reflections will also be permanently deleted.'
+        : 'Delete this material link? The original file or website will not be deleted.';
     Alert.alert(`Delete ${label}`, message, [
       { text: 'Cancel', style: 'cancel', onPress: cancel },
       { text: 'Delete', style: 'destructive', onPress: () => { void remove(); } },
@@ -281,19 +276,22 @@ function useWorkspaceState(user) {
   function confirmDeleteTask(task) { confirmDeleteRecord(task, 'task'); }
   /** @param {import('../db/SubjectService').Subject} subject */
   function confirmDeleteSubject(subject) { confirmDeleteRecord(subject, 'subject'); }
+  /** @param {import('../db/MaterialService').Material} material */
+  function confirmDeleteMaterial(material) { confirmDeleteRecord(material, 'material'); }
   function savedEntry() {
     setEntry(null);
     setNotice(entry === 'task' ? editingTask ? 'Task updated.' : 'Task created.' : '');
     void data.refresh();
   }
   return {
-    user, data, clock, today, disabled, blocked, workingBlock, workingTimerAction, seeding, demoRevision, addingReview, workingReview, addReview, review,
+    user, data, clock, today, disabled, blocked, workingBlock, workingTimerAction, seeding, demoRevision, addingReflection, addReflection,
     notice, noticeId, dismissNotice, error: data.error || actionError,
     refresh: refreshData, refreshInBackground,
     complete, controlTimer, loadDemoData, backupAction, manageBackup, openEntry, openEditSubject, openEditTask, confirmDeleteTask, deletingTask, confirmDeleteSubject, deletingSubject, savedEntry, openSchedule, openReschedule,
     signingOut, signOutError, signOut: () => { if (!busyRef.current) void signOut(); },
     entry, initialSubject, initialField, editingSubject, editingTask, schedule, setEntry, setSchedule, setNotice, savedSession,
-    reviewPrompt, addCompletedReview, dismissReviewPrompt,
+    reflectionPrompt, addCompletedReflection, dismissReflectionPrompt,
+    openMaterial, materialEntry, setMaterialEntry, confirmDeleteMaterial, deletingMaterial,
   };
 }
 
@@ -317,7 +315,10 @@ function WorkspaceContent({ user, children }) {
           void study.data.refresh();
         }} />}
       {study.schedule && <ScheduleSheet userId={study.user.id} {...study.schedule} onClose={() => study.setSchedule(null)} onSaved={study.savedSession} />}
-      {study.reviewPrompt && <CompletionReviewSheet key={study.reviewPrompt.id} block={study.reviewPrompt} busy={study.addingReview || study.workingBlock !== null} onClose={study.dismissReviewPrompt} onAdd={study.addCompletedReview} />}
+      {study.reflectionPrompt && <CompletionReflectionSheet key={study.reflectionPrompt.id} block={study.reflectionPrompt} busy={study.addingReflection || study.workingBlock !== null} onClose={study.dismissReflectionPrompt} onAdd={study.addCompletedReflection} />}
+      {study.materialEntry && <MaterialSheet userId={user.id} {...study.materialEntry} onClose={() => study.setMaterialEntry(null)} onSaved={() => {
+        study.setMaterialEntry(null); study.setNotice('Material saved.'); void study.data.refresh();
+      }} />}
     </StudyContext.Provider>
   );
 }

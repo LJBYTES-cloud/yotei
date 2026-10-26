@@ -3,8 +3,9 @@ import { getSubjectsForUser } from '../db/SubjectService';
 import { getTasksForUser } from '../db/TaskService';
 import { getStudyBlocksForUser, markExpiredStudyBlocks } from '../db/StudyBlockService';
 import { getDailyStudyMinutes } from '../db/StudyLoadService';
-import { getDueReviews } from '../db/ReviewService';
+import { getReflectionsForUser } from '../db/ReflectionService';
 import { getWeeklyStudyMinutes } from '../db/ProgressService';
+import { getMaterialsForUser } from '../db/MaterialService';
 
 /** @param {string} userId @param {string} date */
 export function useDashboardData(userId, date) {
@@ -12,8 +13,9 @@ export function useDashboardData(userId, date) {
   const [tasks, setTasks] = useState(/** @type {import('../db/TaskService').Task[]} */ ([]));
   const [blocks, setBlocks] = useState(/** @type {import('../db/StudyBlockService').StudyBlock[]} */ ([]));
   const [minutes, setMinutes] = useState(0);
-  const [reviews, setReviews] = useState(/** @type {import('../db/ReviewService').ReviewItem[]} */ ([]));
+  const [reflections, setReflections] = useState(/** @type {import('../db/ReflectionService').ReflectionItem[]} */ ([]));
   const [weekly, setWeekly] = useState(/** @type {import('../db/ProgressService').StudyProgressDay[]} */ ([]));
+  const [materials, setMaterials] = useState(/** @type {import('../db/MaterialService').Material[]} */ ([]));
   const [ready, setReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -26,12 +28,14 @@ export function useDashboardData(userId, date) {
     if (!background) setRefreshing(true);
     try {
       await markExpiredStudyBlocks(userId);
-      const [nextSubjects, nextTasks, nextBlocks, nextMinutes, nextReviews, nextWeekly] = await Promise.all([
+      const [nextSubjects, nextTasks, nextBlocks, nextMinutes, nextReflections, nextWeekly, nextMaterials] = await Promise.all([
         getSubjectsForUser(userId), getTasksForUser(userId),
-        getStudyBlocksForUser(userId, { date, includeUnresolvedMissed: true }), getDailyStudyMinutes(userId, date), getDueReviews(userId), getWeeklyStudyMinutes(userId, date),
+        getStudyBlocksForUser(userId, { date, includeUnresolvedMissed: true }), getDailyStudyMinutes(userId, date), getReflectionsForUser(userId), getWeeklyStudyMinutes(userId, date),
+        getMaterialsForUser(userId),
       ]);
       if (!mounted.current || id !== requestId.current) return;
-      setSubjects(nextSubjects); setTasks(nextTasks); setBlocks(nextBlocks); setMinutes(nextMinutes); setReviews(nextReviews); setWeekly(nextWeekly);
+      setSubjects(nextSubjects); setTasks(nextTasks); setBlocks(nextBlocks); setMinutes(nextMinutes); setReflections(nextReflections); setWeekly(nextWeekly);
+      setMaterials(nextMaterials);
       setReady(true); setError('');
     } catch {
       if (mounted.current && id === requestId.current) setError('Could not refresh study data. Try again.');
@@ -41,5 +45,5 @@ export function useDashboardData(userId, date) {
   }, [userId, date]);
 
   useEffect(() => { void refresh(); }, [refresh]);
-  return { subjects, tasks, blocks, minutes, reviews, weekly, ready, refreshing, error, refresh };
+  return { subjects, tasks, blocks, minutes, reflections, weekly, materials, ready, refreshing, error, refresh };
 }

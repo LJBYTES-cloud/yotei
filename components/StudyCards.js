@@ -49,6 +49,7 @@ export function TaskCard({ task, hasMissedSession = false, notebook = false }) {
   return <View style={[s.card, notebook && s.notebookTask]}>
     <View style={s.cardTop}><View style={[s.dot, { backgroundColor: subjectColor(task.subject_color) }]} /><Text style={s.subject}>{task.subject_name}</Text></View>
     <Text style={s.title}>{task.title}</Text>
+    {notebook && Boolean(task.description) && <Text style={[s.hint, { marginTop: 12 }]}>{task.description}</Text>}
     {hasMissedSession && <Text style={[s.badge, s.missedBadge, { alignSelf: 'flex-start', marginTop: 16 }]}>Missed Session</Text>}
     {task.postpone_count >= 2 && <CoachingCard task={task} />}
     <View style={s.cardBottom}>

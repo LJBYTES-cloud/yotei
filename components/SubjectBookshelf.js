@@ -9,7 +9,7 @@ import { bookGradient } from '../utils/subjectFields';
 /** @param {{subject: import('../db/SubjectService').Subject, count: number, revealed: boolean, disabled: boolean, reduceMotion: boolean, onReveal: () => void, onReturn: () => void, onOpen: () => void, onEdit: () => void}} props */
 function SubjectBook({ subject, count, revealed, disabled, reduceMotion, onReveal, onReturn, onOpen, onEdit }) {
   const s = useThemedStyles(createStyles);
-  const { colors: p, isDark } = useTheme();
+  const { colors: p } = useTheme();
   const [progress] = useState(() => new Animated.Value(revealed ? 1 : 0));
   const [coverHeight, setCoverHeight] = useState(280);
   useEffect(() => {
@@ -18,7 +18,7 @@ function SubjectBook({ subject, count, revealed, disabled, reduceMotion, onRevea
     animation.start();
     return () => animation.stop();
   }, [progress, revealed, reduceMotion]);
-  const colors = bookGradient(subject.field_colors, isDark ? p.background : null);
+  const colors = bookGradient(subject.field_colors);
   const details = <>
     <View pointerEvents="none" style={s.binding} />
     <View pointerEvents="none" style={s.coverShade} />

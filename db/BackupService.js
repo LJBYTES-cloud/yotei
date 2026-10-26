@@ -7,16 +7,16 @@ import { DEFAULT_FIELD, DEFAULT_SUBJECT_CODE, normalizeFieldColors, normalizeFie
 
 /**
  * @typedef {{id: number, name: string, subject_code: string, field_of_study: string, field_colors: string}} BackupSubject
- * @typedef {{id: number, subject_id: number, title: string, deadline: string | null, estimated_minutes: number, status: string, postpone_count: number}} BackupTask
+ * @typedef {{id: number, subject_id: number, title: string, description: string | null, deadline: string | null, estimated_minutes: number, status: string, postpone_count: number}} BackupTask
  * @typedef {{id: number, task_id: number, start_time: string, end_time: string, status: string, rescheduled_from: number | null, actual_start_time: string | null, break_time_minutes: number, break_started_at: string | null, break_time_ms: number, actual_end_time: string | null, actual_study_seconds: number}} BackupBlock
- * @typedef {{id: number, subject_id: number, topic: string, last_reviewed_at: string | null, next_review_at: string | null}} BackupReview
+ * @typedef {{id: number, subject_id: number, study_block_id: number | null, note: string, created_at: string}} BackupReflection
  * @typedef {{id: number, subject_id: number, task_id: number | null, title: string, url_or_note: string | null, local_file_path: string | null}} BackupMaterial
- * @typedef {{subjects: BackupSubject[], tasks: BackupTask[], studyBlocks: BackupBlock[], reviewItems: BackupReview[], materials: BackupMaterial[]}} BackupData
+ * @typedef {{subjects: BackupSubject[], tasks: BackupTask[], studyBlocks: BackupBlock[], reflectionItems: BackupReflection[], materials: BackupMaterial[]}} BackupData
  * @typedef {{format: string, version: number, exported_at: string, data: BackupData}} Backup
  */
 
 const FORMAT = 'yotei.study-backup';
-const VERSION = 4;
+const VERSION = 5;
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 /** @param {unknown} value */
@@ -49,7 +49,7 @@ const subjectCode = value => {
 /** @type {Record<keyof BackupData, Record<string, (value: unknown) => boolean>>} */
 const fields = {
   subjects: { id: positiveId, name: value => text(value) && /** @type {string} */ (value).trim().length <= 128, subject_code: subjectCode, field_of_study: fieldOfStudy, field_colors: fieldColors },
-  tasks: { id: positiveId, subject_id: positiveId, title: text, deadline: nullableTimestamp,
+  tasks: { id: positiveId, subject_id: positiveId, title: text, description: value => nullableText(value) && (value === null || /** @type {string} */ (value).length <= 4000), deadline: nullableTimestamp,
     estimated_minutes: positiveId, status: text,
     postpone_count: value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 },
   studyBlocks: { id: positiveId, task_id: positiveId, start_time: timestamp, end_time: timestamp,
@@ -58,7 +58,7 @@ const fields = {
     break_started_at: nullableTimestamp, break_time_ms: nonnegativeInteger,
     actual_end_time: nullableTimestamp, actual_study_seconds: nonnegativeInteger,
     rescheduled_from: value => value === null || positiveId(value) },
-  reviewItems: { id: positiveId, subject_id: positiveId, topic: text, last_reviewed_at: nullableTimestamp, next_review_at: nullableTimestamp },
+  reflectionItems: { id: positiveId, subject_id: positiveId, study_block_id: value => value === null || positiveId(value), note: value => text(value) && /** @type {string} */ (value).length <= 4000, created_at: timestamp },
   materials: { id: positiveId, subject_id: positiveId, task_id: value => value === null || positiveId(value),
     title: text, url_or_note: nullableText, local_file_path: nullableText },
 };
@@ -67,8 +67,8 @@ const fields = {
 function validateBackup(input) {
   if (!record(input)) throw new Error('Choose a valid Yotei JSON backup.');
   const backup = /** @type {Backup} */ (input);
-  if (backup.format !== FORMAT || ![1, 2, 3, VERSION].includes(backup.version)) {
-    throw new Error('This file is not a supported Yotei backup (version 1, 2, 3 or 4).');
+  if (backup.format !== FORMAT || ![1, 2, 3, 4, VERSION].includes(backup.version)) {
+    throw new Error('This file is not a supported Yotei backup (versions 1 through 5).');
   }
   if (!timestamp(backup.exported_at) || !record(backup.data)) throw new Error('The backup header is invalid.');
   const data = { ...backup.data };
@@ -89,6 +89,15 @@ function validateBackup(input) {
       actual_start_time: null, break_time_minutes: 0, break_started_at: null,
       break_time_ms: 0, actual_end_time: null, actual_study_seconds: 0,
     });
+  }
+  if (backup.version < 5) {
+    const legacy = /** @type {{reviewItems?: {id: number, subject_id: number, topic: string, last_reviewed_at: string | null, next_review_at: string | null}[]}} */ (/** @type {unknown} */ (data));
+    if (!Array.isArray(legacy.reviewItems)) throw new Error('The legacy backup must contain a reviewItems list.');
+    data.reflectionItems = legacy.reviewItems.map(row => {
+      if (!record(row) || !text(row.topic) || !nullableTimestamp(row.last_reviewed_at) || !nullableTimestamp(row.next_review_at)) throw new Error('A legacy review item is invalid.');
+      return { id: row.id, subject_id: row.subject_id, study_block_id: null, note: row.topic, created_at: row.last_reviewed_at ?? backup.exported_at };
+    });
+    if (Array.isArray(data.tasks)) data.tasks = data.tasks.map(row => !record(row) ? row : { ...row, description: null });
   }
   for (const name of /** @type {(keyof BackupData)[]} */ (Object.keys(fields))) {
     const rows = data[name];
@@ -165,8 +174,13 @@ function validateBackup(input) {
   for (const task of data.tasks) {
     if (task.postpone_count < (postponements.get(task.id) || 0)) throw new Error('A task postponement count does not match its history.');
   }
-  for (const row of [...data.reviewItems, ...data.materials]) {
-    if (!subjects.has(row.subject_id)) throw new Error('A review or material references a subject missing from the backup.');
+  for (const row of [...data.reflectionItems, ...data.materials]) {
+    if (!subjects.has(row.subject_id)) throw new Error('A reflection or material references a subject missing from the backup.');
+  }
+  for (const reflection of data.reflectionItems) {
+    if (reflection.study_block_id !== null && (!blocks.has(reflection.study_block_id) || blocks.get(reflection.study_block_id)?.status !== 'done')) {
+      throw new Error('A reflection references a missing or unfinished study session.');
+    }
   }
   for (const material of data.materials) {
     if (material.task_id !== null && !tasks.has(material.task_id)) throw new Error('A material references a task missing from the backup.');
@@ -187,16 +201,16 @@ export async function exportBackup(userId) {
   if (!await Sharing.isAvailableAsync()) throw new Error('File sharing is unavailable on this device.');
   const database = await getDatabase();
   /** @type {BackupData} */
-  const data = { subjects: [], tasks: [], studyBlocks: [], reviewItems: [], materials: [] };
+  const data = { subjects: [], tasks: [], studyBlocks: [], reflectionItems: [], materials: [] };
   await database.withExclusiveTransactionAsync(async transaction => {
     data.subjects = await transaction.getAllAsync('SELECT id, name, subject_code, field_of_study, field_colors FROM Subject WHERE user_id = ? ORDER BY id', userId);
-    data.tasks = await transaction.getAllAsync(`SELECT id, subject_id, title, deadline, estimated_minutes, status, postpone_count
+    data.tasks = await transaction.getAllAsync(`SELECT id, subject_id, title, description, deadline, estimated_minutes, status, postpone_count
       FROM Task WHERE user_id = ? ORDER BY id`, userId);
     data.studyBlocks = await transaction.getAllAsync(`SELECT b.id, b.task_id, b.start_time, b.end_time, b.status, b.rescheduled_from,
       b.actual_start_time, b.break_time_minutes, b.break_started_at, b.break_time_ms, b.actual_end_time, b.actual_study_seconds
       FROM StudyBlock b JOIN Task t ON t.id = b.task_id WHERE t.user_id = ? ORDER BY b.id`, userId);
-    data.reviewItems = await transaction.getAllAsync(`SELECT r.id, r.subject_id, r.topic, r.last_reviewed_at, r.next_review_at
-      FROM ReviewItem r JOIN Subject s ON s.id = r.subject_id WHERE s.user_id = ? ORDER BY r.id`, userId);
+    data.reflectionItems = await transaction.getAllAsync(`SELECT r.id, r.subject_id, r.study_block_id, r.note, r.created_at
+      FROM ReflectionItem r JOIN Subject s ON s.id = r.subject_id WHERE s.user_id = ? ORDER BY r.id`, userId);
     data.materials = await transaction.getAllAsync(`SELECT m.id, m.subject_id, m.task_id, m.title, m.url_or_note, m.local_file_path
       FROM Material m JOIN Subject s ON s.id = m.subject_id WHERE s.user_id = ? ORDER BY m.id`, userId);
   });
@@ -223,7 +237,7 @@ export async function exportBackup(userId) {
 /** @param {BackupData} data */
 function countsFor(data) {
   return { subjects: data.subjects.length, tasks: data.tasks.length, studyBlocks: data.studyBlocks.length,
-    reviewItems: data.reviewItems.length, materials: data.materials.length };
+    reflectionItems: data.reflectionItems.length, materials: data.materials.length };
 }
 
 /** Pick, validate and atomically replace only the current user's study data. Cancellation returns null. @param {string} userId */
@@ -243,7 +257,7 @@ export async function importBackup(userId) {
   const database = await getDatabase();
   await database.withExclusiveTransactionAsync(async transaction => {
     await transaction.runAsync('DELETE FROM Material WHERE subject_id IN (SELECT id FROM Subject WHERE user_id = ?)', userId);
-    await transaction.runAsync('DELETE FROM ReviewItem WHERE subject_id IN (SELECT id FROM Subject WHERE user_id = ?)', userId);
+    await transaction.runAsync('DELETE FROM ReflectionItem WHERE subject_id IN (SELECT id FROM Subject WHERE user_id = ?)', userId);
     await transaction.runAsync('DELETE FROM StudyBlock WHERE task_id IN (SELECT id FROM Task WHERE user_id = ?)', userId);
     await transaction.runAsync('DELETE FROM Task WHERE user_id = ?', userId);
     await transaction.runAsync('DELETE FROM Subject WHERE user_id = ?', userId);
@@ -257,8 +271,8 @@ export async function importBackup(userId) {
       subjects.set(row.id, inserted.lastInsertRowId);
     }
     for (const row of data.tasks) {
-      const inserted = await transaction.runAsync(`INSERT INTO Task (user_id, subject_id, title, deadline, estimated_minutes, status, postpone_count)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`, userId, subjects.get(row.subject_id), row.title, row.deadline, row.estimated_minutes, row.status, row.postpone_count);
+      const inserted = await transaction.runAsync(`INSERT INTO Task (user_id, subject_id, title, description, deadline, estimated_minutes, status, postpone_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, userId, subjects.get(row.subject_id), row.title, row.description, row.deadline, row.estimated_minutes, row.status, row.postpone_count);
       tasks.set(row.id, inserted.lastInsertRowId);
     }
     for (const row of data.studyBlocks) {
@@ -274,9 +288,9 @@ export async function importBackup(userId) {
       if (row.rescheduled_from !== null) await transaction.runAsync(`UPDATE StudyBlock SET rescheduled_from = ?
         WHERE id = ? AND task_id IN (SELECT id FROM Task WHERE user_id = ?)`, blocks.get(row.rescheduled_from), blocks.get(row.id), userId);
     }
-    for (const row of data.reviewItems) {
-      await transaction.runAsync(`INSERT INTO ReviewItem (subject_id, topic, last_reviewed_at, next_review_at) VALUES (?, ?, ?, ?)`,
-        subjects.get(row.subject_id), row.topic, row.last_reviewed_at, row.next_review_at);
+    for (const row of data.reflectionItems) {
+      await transaction.runAsync(`INSERT INTO ReflectionItem (subject_id, study_block_id, note, created_at) VALUES (?, ?, ?, ?)`,
+        subjects.get(row.subject_id), row.study_block_id === null ? null : blocks.get(row.study_block_id), row.note, row.created_at);
     }
     for (const row of data.materials) {
       await transaction.runAsync(`INSERT INTO Material (subject_id, task_id, title, url_or_note, local_file_path) VALUES (?, ?, ?, ?, ?)`,

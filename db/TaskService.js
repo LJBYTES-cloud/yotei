@@ -3,7 +3,7 @@ import { getLocalDayRange } from './dateUtils';
 import { firstFieldColor } from '../utils/subjectFields';
 
 /**
- * @typedef {{ id: number, user_id: string, subject_id: number, title: string,
+ * @typedef {{ id: number, user_id: string, subject_id: number, title: string, description: string | null,
  * deadline: string | null, estimated_minutes: number, status: string,
  * postpone_count: number, subject_name: string, subject_color: string,
  * has_missed_session: number, latest_scheduled_start: string | null }} Task
@@ -11,11 +11,12 @@ import { firstFieldColor } from '../utils/subjectFields';
 
 /**
  * @param {string} userId
- * @param {{ title: string, subject_id: number, deadline?: string | null, estimated_minutes?: number }} input
+ * @param {{ title: string, subject_id: number, description?: string | null, deadline?: string | null, estimated_minutes?: number }} input
  * @returns {Promise<Task>}
  */
-export async function createTask(userId, { title, subject_id, deadline = null, estimated_minutes = 30 }) {
+export async function createTask(userId, { title, subject_id, description = null, deadline = null, estimated_minutes = 30 }) {
   requireUserId(userId);
+  const taskDescription = normalizeDescription(description);
   const trimmedTitle = typeof title === 'string' ? title.trim() : '';
   if (!trimmedTitle || trimmedTitle.length > 256) {
     throw new Error('Enter a task title between 1 and 256 characters.');
@@ -39,11 +40,11 @@ export async function createTask(userId, { title, subject_id, deadline = null, e
   // The composite foreign key also enforces ownership if data changes between
   // the lookup and this insert. Every value is bound, never interpolated.
   const result = await database.runAsync(
-    'INSERT INTO Task (user_id, subject_id, title, deadline, estimated_minutes, status, postpone_count) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    userId, subject_id, trimmedTitle, deadline, estimated_minutes, 'pending', 0,
+    'INSERT INTO Task (user_id, subject_id, title, description, deadline, estimated_minutes, status, postpone_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    userId, subject_id, trimmedTitle, taskDescription, deadline, estimated_minutes, 'pending', 0,
   );
   return {
-    id: result.lastInsertRowId, user_id: userId, subject_id, title: trimmedTitle,
+    id: result.lastInsertRowId, user_id: userId, subject_id, title: trimmedTitle, description: taskDescription,
     deadline, estimated_minutes, status: 'pending', postpone_count: 0,
     subject_name: subject.name, subject_color: firstFieldColor(subject.field_colors),
     has_missed_session: 0, latest_scheduled_start: null,
@@ -52,26 +53,33 @@ export async function createTask(userId, { title, subject_id, deadline = null, e
 
 /** Update editable fields without replacing the task or its study history.
  * @param {string} userId @param {number} taskId
- * @param {{title: string, subject_id: number}} input @returns {Promise<void>}
+ * @param {{title: string, subject_id: number, description?: string | null}} input @returns {Promise<void>}
  */
-export async function updateTask(userId, taskId, { title, subject_id }) {
+export async function updateTask(userId, taskId, { title, subject_id, description }) {
   requireUserId(userId);
   if (!Number.isSafeInteger(taskId) || taskId < 1) throw new Error('Choose a valid task.');
   const trimmedTitle = typeof title === 'string' ? title.trim() : '';
   if (!trimmedTitle || trimmedTitle.length > 256) throw new Error('Enter a task title between 1 and 256 characters.');
   if (!Number.isSafeInteger(subject_id) || subject_id < 1) throw new Error('Choose a subject for this task.');
+  const taskDescription = description === undefined ? undefined : normalizeDescription(description);
   const database = await getDatabase();
   const subject = await database.getFirstAsync('SELECT id FROM Subject WHERE id = ? AND user_id = ?', subject_id, userId);
   if (!subject) throw new Error('Choose a subject belonging to your account.');
   const result = await database.runAsync(
-    'UPDATE Task SET title = ?, subject_id = ? WHERE id = ? AND user_id = ?',
-    trimmedTitle, subject_id, taskId, userId,
+    `UPDATE Task SET title = ?, subject_id = ?${taskDescription === undefined ? '' : ', description = ?'} WHERE id = ? AND user_id = ?`,
+    trimmedTitle, subject_id, ...(taskDescription === undefined ? [] : [taskDescription]), taskId, userId,
   );
   if (result.changes !== 1) throw new Error('Choose a task belonging to your account.');
 }
 
+/** @param {string | null} value */
+function normalizeDescription(value) {
+  if (value !== null && (typeof value !== 'string' || value.length > 4000)) throw new Error('Keep the task description under 4,000 characters.');
+  return value?.trim() || null;
+}
+
 /** Delete one owned task; SQLite cascades study blocks and unlinks materials.
- * Subject-linked reviews and material notes remain under their original subject.
+ * Subject-linked reflections and material notes remain under their original subject.
  * @param {string} userId @param {number} taskId @returns {Promise<void>}
  */
 export async function deleteTask(userId, taskId) {

@@ -146,7 +146,7 @@ export default function AuthScreen() {
               <>
                 <View style={styles.intro}>
                   <Text style={styles.eyebrow}>Account</Text>
-                  <View style={styles.titleRow}><Text style={[styles.heading, styles.flex]}>{isSignUp ? 'Create Account' : 'Sign In'}</Text><InfoButton title="Your Account" message="Access your subjects, tasks, study sessions, and review queue." /></View>
+                  <View style={styles.titleRow}><Text style={[styles.heading, styles.flex]}>{isSignUp ? 'Create Account' : 'Sign In'}</Text><InfoButton title="Your Account" message="Access your subjects, tasks, study sessions, and reflection journal." /></View>
                 </View>
                 <View style={styles.card}>
                   <View style={styles.tabs} accessibilityRole="tablist">
@@ -161,7 +161,7 @@ export default function AuthScreen() {
                       </Pressable>
                     ))}
                   </View>
-                  <View style={styles.cardTitleRow}><Text style={[styles.cardTitle, styles.flex]}>{isSignUp ? 'Account Details' : 'Credentials'}</Text><InfoButton title={isSignUp ? 'Account Details' : 'Credentials'} message={isSignUp ? 'Enter your name, email address, and a password of at least 8 characters.' : 'Enter your email address and password. Remember me keeps the session after an app restart.'} /></View>
+                  <View style={styles.cardTitleRow}><Text style={[styles.cardTitle, styles.flex]}>{isSignUp ? 'Account Details' : 'Welcome Back'}</Text><InfoButton title={isSignUp ? 'Account Details' : 'Welcome Back'} message={isSignUp ? 'Enter your name, email address, and a password of at least 8 characters.' : 'Enter your email address and password. Remember me keeps the session after an app restart.'} /></View>
                   {isSignUp && <Field label="Your Name" placeholder="Alex Morgan" value={name} onChangeText={setName} autoComplete="name" textContentType="name" maxLength={128} editable={!working} />}
                   <Field
                     label="Email Address" placeholder="you@example.com"

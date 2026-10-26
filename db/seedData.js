@@ -27,7 +27,7 @@ export async function seedDemoData(userId) {
   const database = await getDatabase();
   await database.withExclusiveTransactionAsync(async transaction => {
     await transaction.runAsync('DELETE FROM Material WHERE subject_id IN (SELECT id FROM Subject WHERE user_id = ?)', userId);
-    await transaction.runAsync('DELETE FROM ReviewItem WHERE subject_id IN (SELECT id FROM Subject WHERE user_id = ?)', userId);
+    await transaction.runAsync('DELETE FROM ReflectionItem WHERE subject_id IN (SELECT id FROM Subject WHERE user_id = ?)', userId);
     await transaction.runAsync('DELETE FROM StudyBlock WHERE task_id IN (SELECT id FROM Task WHERE user_id = ?)', userId);
     await transaction.runAsync('DELETE FROM Task WHERE user_id = ?', userId);
     await transaction.runAsync('DELETE FROM Subject WHERE user_id = ?', userId);
@@ -45,17 +45,22 @@ export async function seedDemoData(userId) {
       );
       subjectIds.push(result.lastInsertRowId);
     }
-    const reviewTopics = [
-      'Solving quadratic equations by completing the square',
-      'The stages of mitosis and their key differences',
-      'Causes of the French Revolution',
+    const reflectionNotes = [
+      'Completing the square is clearer now. I need more practice checking the final roots.',
+      'I can explain the mitosis stages without notes. Next time, draw each stage from memory.',
+      'The timeline helped connect the economic and political causes. Revisit the Estates-General.',
     ];
-    for (let index = 0; index < reviewTopics.length; index += 1) {
-      // New topics are immediately due, matching topics added from a study block.
+    for (let index = 0; index < reflectionNotes.length; index += 1) {
+      // Journal notes are grouped by subject; no spaced-repetition schedule remains.
       await transaction.runAsync(`
-        INSERT INTO ReviewItem (subject_id, topic, last_reviewed_at, next_review_at)
-        SELECT id, ?, NULL, NULL FROM Subject WHERE id = ? AND user_id = ?
-      `, reviewTopics[index], subjectIds[index], userId);
+        INSERT INTO ReflectionItem (subject_id, note, created_at)
+        SELECT id, ?, ? FROM Subject WHERE id = ? AND user_id = ?
+      `, reflectionNotes[index], new Date(now.getTime() - (index + 1) * 86400000).toISOString(), subjectIds[index], userId);
+    }
+    for (let index = 0; index < subjectIds.length; index += 1) {
+      await transaction.runAsync('INSERT INTO Material (subject_id, title, url_or_note) VALUES (?, ?, ?)', subjectIds[index],
+        ['Mathematics Reference', 'Biology Reference', 'History Reference'][index],
+        ['https://openstax.org/subjects/math', 'https://openstax.org/subjects/science', 'https://www.britannica.com/event/French-Revolution'][index]);
     }
     const tasks = [
       { subject: 0, title: 'Practice quadratic equations for the quiz', deadline: tomorrowKey, minutes: 45, postponed: 0 },
@@ -69,9 +74,9 @@ export async function seedDemoData(userId) {
     const taskIds = [];
     for (const task of tasks) {
       const result = await transaction.runAsync(`
-        INSERT INTO Task (user_id, subject_id, title, deadline, estimated_minutes, status, postpone_count)
-        VALUES (?, ?, ?, ?, ?, 'pending', ?)
-      `, userId, subjectIds[task.subject], task.title, task.deadline, task.minutes, task.postponed);
+        INSERT INTO Task (user_id, subject_id, title, description, deadline, estimated_minutes, status, postpone_count)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+      `, userId, subjectIds[task.subject], task.title, ['Work through the examples and check each result.', 'Label each stage, then explain the process without notes.', 'Use the source timeline and write a short explanation.'][task.subject], task.deadline, task.minutes, task.postponed);
       taskIds.push(result.lastInsertRowId);
     }
     const sessionTasks = [taskIds[0], taskIds[1], taskIds[2], taskIds[5]];
@@ -92,11 +97,12 @@ export async function seedDemoData(userId) {
       const begins = new Date(now);
       begins.setDate(begins.getDate() - (6 - index)); begins.setHours(10, 0, 0, 0);
       const ends = new Date(begins.getTime() + historyMinutes[index] * minute);
-      await transaction.runAsync(`
+      const completed = await transaction.runAsync(`
         INSERT INTO StudyBlock (task_id, start_time, end_time, status, actual_start_time, actual_end_time, actual_study_seconds)
         SELECT id, ?, ?, 'done', ?, ?, ? FROM Task WHERE id = ? AND user_id = ?
       `, begins.toISOString(), ends.toISOString(), begins.toISOString(), ends.toISOString(), historyMinutes[index] * 60, taskIds[index], userId);
+      if (index < 3) await transaction.runAsync('UPDATE ReflectionItem SET study_block_id = ?, created_at = ? WHERE subject_id = ?', completed.lastInsertRowId, ends.toISOString(), subjectIds[index]);
     }
   });
-  return { subjects: 3, tasks: 6, studyBlocks: 10, reviewItems: 3, totalMinutes: 240 };
+  return { subjects: 3, tasks: 6, studyBlocks: 10, reflectionItems: 3, totalMinutes: 240 };
 }

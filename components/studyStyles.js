@@ -6,6 +6,7 @@ export const createStudyStyles = p => StyleSheet.create({
   screen: { flex: 1, backgroundColor: p.background },
   content: { paddingHorizontal: 20, paddingTop: 28, paddingBottom: 44, width: '100%', maxWidth: 640, alignSelf: 'center' },
   flex: { flex: 1 }, pressed: { opacity: 0.7 },
+  reflectionNote: { fontFamily: fonts.body, fontSize: typeScale.body, lineHeight: typeLeading.body, color: p.text },
   masthead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 24 },
   wordmark: { fontFamily: fonts.serifBold, fontSize: typeScale.h1, lineHeight: typeLeading.h1, fontWeight: 'normal', letterSpacing: -1.5, color: p.text }, accent: { color: p.accent },
   edition: { fontFamily: fonts.semibold, fontSize: typeScale.small, lineHeight: typeLeading.small, letterSpacing: 2, color: p.muted, fontWeight: 'normal', flexShrink: 1, textAlign: 'right' },

@@ -22,7 +22,7 @@ export default function TabLayout() {
     }}>
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "home" : "home-outline"} size={23} color={color} /> }} />
       <Tabs.Screen name="library" options={{ title: 'Library', tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "book" : "book-outline"} size={23} color={color} /> }} />
-      <Tabs.Screen name="review" options={{ title: 'Review', tabBarIcon: ({ color }) => <Ionicons name="repeat" size={24} color={color} /> }} />
+      <Tabs.Screen name="reflections" options={{ title: 'Reflections', tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? 'journal' : 'journal-outline'} size={24} color={color} /> }} />
       <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "settings" : "settings-outline"} size={23} color={color} /> }} />
     </Tabs>
   </StudyWorkspace>;

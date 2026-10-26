@@ -26,6 +26,7 @@ async function initializeDatabase() {
           user_id TEXT NOT NULL,
           subject_id INTEGER NOT NULL,
           title TEXT NOT NULL CHECK (length(trim(title)) > 0),
+          description TEXT,
           deadline TEXT,
           estimated_minutes INTEGER NOT NULL DEFAULT 30 CHECK (estimated_minutes > 0),
           status TEXT NOT NULL DEFAULT 'pending',
@@ -48,12 +49,12 @@ async function initializeDatabase() {
           rescheduled_from INTEGER REFERENCES StudyBlock (id) ON DELETE SET NULL
         );
 
-        CREATE TABLE IF NOT EXISTS ReviewItem (
+        CREATE TABLE IF NOT EXISTS ReflectionItem (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           subject_id INTEGER NOT NULL REFERENCES Subject (id) ON DELETE CASCADE,
-          topic TEXT NOT NULL,
-          last_reviewed_at TEXT,
-          next_review_at TEXT
+          study_block_id INTEGER REFERENCES StudyBlock (id) ON DELETE SET NULL,
+          note TEXT NOT NULL CHECK (length(trim(note)) > 0),
+          created_at TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS Material (
@@ -71,10 +72,20 @@ async function initializeDatabase() {
         CREATE INDEX IF NOT EXISTS idx_task_subject ON Task (subject_id, user_id);
         CREATE INDEX IF NOT EXISTS idx_study_block_task ON StudyBlock (task_id);
         CREATE INDEX IF NOT EXISTS idx_study_block_task_time ON StudyBlock (task_id, start_time, end_time);
-        CREATE INDEX IF NOT EXISTS idx_review_subject ON ReviewItem (subject_id);
+        CREATE INDEX IF NOT EXISTS idx_reflection_subject_created ON ReflectionItem (subject_id, created_at, id);
         CREATE INDEX IF NOT EXISTS idx_material_subject ON Material (subject_id);
         CREATE INDEX IF NOT EXISTS idx_material_task ON Material (task_id);
       `);
+      const legacyReviews = await database.getFirstAsync("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'ReviewItem'");
+      if (legacyReviews) {
+        // Preserve IDs/subjects and all topic text as journal notes. The old
+        // review schedule is intentionally retired by the reflection pivot.
+        await database.execAsync(`INSERT INTO ReflectionItem (id, subject_id, study_block_id, note, created_at)
+          SELECT id, subject_id, NULL, topic, COALESCE(last_reviewed_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) FROM ReviewItem;
+          DROP TABLE ReviewItem;`);
+      }
+      const taskColumns = /** @type {{name: string}[]} */ (await database.getAllAsync('PRAGMA table_info(Task)'));
+      if (!taskColumns.some(column => column.name === 'description')) await database.execAsync('ALTER TABLE Task ADD COLUMN description TEXT');
       // ALTER preserves subject IDs and all dependent foreign keys. Copy the
       // legacy color before dropping it, in the same retryable transaction.
       const subjectColumns = /** @type {{ name: string }[]} */ (await database.getAllAsync('PRAGMA table_info(Subject)'));

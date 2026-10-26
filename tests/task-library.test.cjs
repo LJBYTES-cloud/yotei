@@ -21,9 +21,9 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
   let cursor = 0, effects = [], refreshes = 0, saved = 0, release;
   const gate = hold ? new Promise(resolve => { release = resolve; }) : Promise.resolve();
   class StudyLoadWarning extends Error { constructor() { super('Heavy day'); this.days = [{ date: '2026-10-26', current_minutes: 0, added_minutes: 270, total_minutes: 270 }]; } }
-  const data = { tasks: [task], subjects: [subject, { ...subject, id: 8, name: 'Chemistry' }], blocks: [], weekly: [], minutes: 0, ready: true, refreshing: false,
+  const data = { tasks: [task], subjects: [subject, { ...subject, id: 8, name: 'Chemistry' }], blocks: [], materials: [], reflections: [], daySessions: [], weekly: [], minutes: 0, ready: true, refreshing: false,
     refresh: async () => { refreshes++; } };
-  const study = { data, today: '2026-10-20', clock: Date.parse('2026-10-20T11:00:00Z'), disabled: false, demoRevision: 0,
+  const study = { data, user: { id: 'owner', name: 'Alex', email: 'alex@example.com' }, refreshInBackground() {}, today: '2026-10-20', clock: Date.parse('2026-10-20T11:00:00Z'), disabled: false, demoRevision: 0,
     refresh: data.refresh, openEntry: (...args) => actions.push(['entry', ...args]), openEditSubject: value => actions.push(['editSubject', value]), confirmDeleteSubject: value => actions.push(['deleteSubject', value]),
     openEditTask: value => actions.push(['edit', value]), confirmDeleteTask: value => actions.push(['delete', value]),
     openSchedule: value => actions.push(['schedule', value]) };
@@ -56,8 +56,8 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
   const modules = {
     react: hooks,
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }), Fragment: 'Fragment' },
-    'react-native': { ...Object.fromEntries(['ActivityIndicator', 'FlatList', 'Pressable', 'RefreshControl', 'ScrollView', 'Text', 'View'].map(name => [name, name])),
-      StyleSheet: { create: value => value }, Alert: { alert: (...args) => alerts.push(args) }, AppState: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} },
+    'react-native': { ...Object.fromEntries(['ActivityIndicator', 'FlatList', 'Pressable', 'RefreshControl', 'ScrollView', 'SectionList', 'KeyboardAvoidingView', 'Switch', 'Text', 'View'].map(name => [name, name])),
+      StyleSheet: { create: value => value }, Platform: { OS: 'ios' }, Linking: { openURL: async value => { actions.push(['openURL', value]); if (failure) throw new Error('Unavailable'); } }, Alert: { alert: (...args) => alerts.push(args) }, AppState: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} },
       AccessibilityInfo: { isReduceMotionEnabled: async () => reduceMotion, addEventListener: () => ({ remove() {} }) },
       Animated: { View: 'AnimatedView', Value: class { constructor(value) { this.value = value; } setValue(value) { this.value = value; } interpolate({ outputRange }) { return this.value ? outputRange.at(-1) : outputRange[0]; } },
         timing: (value, config) => { const animation = { ...config, value, stopped: false }; return { start() { animations.push(animation); if (!holdAnimations) value.setValue(config.toValue); }, stop() { animation.stopped = true; } }; } } },
@@ -65,8 +65,8 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
     'expo-linear-gradient': { LinearGradient: 'Gradient' },
     'react-native-chart-kit': { LineChart: 'LineChart' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-    'expo-router': { useScrollToTop() {}, useLocalSearchParams: () => ({ subjectId: routeSubjectId }), Redirect: 'Redirect', router: { navigate() {}, push: value => actions.push(['push', value]), canGoBack: () => true, back: () => actions.push(['back']) } },
-    '../auth': { USE_REAL_AUTH: false },
+    'expo-router': { useFocusEffect: cb => hooks.useEffect(cb, [cb]), useScrollToTop() {}, useLocalSearchParams: () => ({ subjectId: routeSubjectId }), Redirect: 'Redirect', router: { navigate: value => actions.push(['navigate', value]), push: value => actions.push(['push', value]), canGoBack: () => true, back: () => actions.push(['back']) } },
+    '../auth': { USE_REAL_AUTH: true },
     '../auth/SessionContext': { useSession: () => ({ user: { id: 'owner' }, signingOut: false, signOut() {} }) },
     '../ThemeContext': theme,
     '../db/SubjectService': { createSubject: async (...args) => { createdSubjects.push(args); if (failure) throw new Error('Disk error'); }, deleteSubject: async (...args) => { subjectDeletions.push(args); await gate; if (failure) throw new Error('Disk error'); }, updateSubject: async (...args) => { subjectUpdates.push(args); } },
@@ -74,14 +74,17 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
       updateTask: async (...args) => { updates.push(args); await gate; if (failure) throw new Error('Disk error'); },
       deleteTask: async (...args) => { deletions.push(args); await gate; if (failure) throw new Error('Disk error'); } },
     '../db/dateUtils': { getLocalDateKey: () => '2026-10-20', getLocalDayRange: () => ({ start: '2026-10-20T00:00:00Z', end: '2026-10-21T00:00:00Z' }) },
-    '../db/StudyBlockService': { finishStudyBlock() {}, pauseStudyBlock() {}, resumeStudyBlock() {}, startStudyBlock() {},
+    '../db/StudyBlockService': { finishStudyBlock: async (_user, id) => ({ id, subject_id: 7, subject_name: 'Biology', task_title: 'Read cells', status: 'done', actual_study_seconds: 600 }), pauseStudyBlock() {}, resumeStudyBlock() {}, startStudyBlock() {},
       createStudyBlock: async (...args) => { schedules.push(args); if (warn && !args[2]?.allowHeavyDay) throw new StudyLoadWarning(); return { id: 27, ...args[1] }; },
       rescheduleStudyBlock: async (...args) => { schedules.push(args); return { id: 28, ...args[3] }; } },
     '../db/StudyLoadService': { StudyLoadWarning },
-    '../db/seedData': { seedDemoData() {} }, '../db/ReviewService': { createReviewItem() {}, markReviewed() {} },
+    '../db/seedData': { seedDemoData: async user => actions.push(['seed', user]) },
+    '../db/ReflectionService': { createReflectionItem: async (...args) => { actions.push(['reflection', ...args]); await gate; if (failure) throw new Error('Disk error'); } },
+    '../db/MaterialService': { createMaterial: async (...args) => { actions.push(['createMaterial', ...args]); if (failure) throw new Error('Disk error'); }, updateMaterial: async (...args) => { actions.push(['updateMaterial', ...args]); if (failure) throw new Error('Disk error'); }, deleteMaterial: async (...args) => { actions.push(['deleteMaterial', ...args]); } },
+    '../db/ProgressService': { getStudyDayDetails: async (...args) => { actions.push(['day', ...args]); if (failure) throw new Error('Read failed'); return data.daySessions; } },
     '../db/BackupService': { exportBackup() {}, importBackup() {} },
     '../hooks/useDashboardData': { useDashboardData: () => data },
-    './EntrySheet': { default: 'EntrySheet' }, './ScheduleSheet': { default: 'ScheduleSheet' }, './CompletionReviewSheet': { default: 'CompletionReviewSheet' },
+    './EntrySheet': { default: 'EntrySheet' }, './ScheduleSheet': { default: 'ScheduleSheet' }, './CompletionReflectionSheet': { default: 'CompletionReflectionSheet' }, './MaterialSheet': { default: 'MaterialSheet' }, './ProgressDetailsModal': { default: 'ProgressDetailsModal' }, './InfoModal': { default: 'InfoModal' }, '../components/StudyMaterials': { default: 'StudyMaterials' },
     './DateTimeField': { default: 'DateTimeField' },
     './StudyWorkspace': { useStudy: () => study }, '../components/StudyWorkspace': { useStudy: () => study },
     './ui': controls, '../components/ui': controls,
@@ -91,13 +94,13 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
     '../components/SubjectBookshelf': { default: 'Bookshelf' },
     './theme': { formatTime() {}, formatMinutes() {} }, '../components/theme': { formatMinutes() {} }, '../utils/focusTimer': { formatElapsed() {} },
   };
-  const context = vm.createContext({ Date, setInterval: () => 1, clearInterval() {} });
+  const context = vm.createContext({ Date, URL, setInterval: () => 1, clearInterval() {} });
   const source = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     fileName: file.replace(/\.js$/, '.jsx'), compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const module = new vm.SourceTextModule(source, { context });
   await module.link(async name => {
-    if (name === '../utils/subjectFields' || name === '../utils/scheduling' || name.endsWith('/typography')) {
+    if (name === '../utils/subjectFields' || name === '../utils/scheduling' || name === '../utils/materialLinks' || name.endsWith('/typography')) {
       const sourcePath = name.endsWith('/typography') ? 'components/typography.js' : name.slice(3) + '.js';
       const fields = new vm.SourceTextModule(fs.readFileSync(sourcePath, 'utf8'), { context });
       await fields.link(() => { throw new Error('Unexpected field dependency'); }); return fields;
@@ -128,7 +131,7 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
 test('weekly progress waits for layout, preserves zero days, resizes and supports point inspection in both themes', async () => {
   const s = await setup('components/WeeklyProgressCard.js');
   const days = Array.from({ length: 7 }, (_, index) => ({ date: `2026-10-${14 + index}`, minutes: index === 2 ? 45.5 : 0 }));
-  const props = { days, ready: true };
+  const props = { userId: 'owner', days, ready: true };
   assert.equal(find(s.render(props), 'LineChart'), undefined);
   const measure = width => find(s.render(props), 'View', p => typeof p.onLayout === 'function').props.onLayout({ nativeEvent: { layout: { width } } });
   measure(278.5);
@@ -139,7 +142,12 @@ test('weekly progress waits for layout, preserves zero days, resizes and support
   assert.equal(chart.chartConfig.color(), '#2D5A41');
   assert.equal(chart.chartConfig.backgroundGradientFrom, '#F8F6F2');
   chart.onDataPointClick({ index: 2 });
-  assert.ok(find(s.render(props), 'Text', p => typeof p.children === 'string' && /Oct 16.*45.5 min/.test(p.children)));
+  assert.equal(find(s.render(props), 'ProgressDetailsModal').props.selection, '2026-10-16');
+  const background = () => find(s.render(props), 'Pressable', p => p.accessibilityLabel?.startsWith('Open Weekly Summary'));
+  background().props.onPress();
+  assert.equal(find(s.render(props), 'ProgressDetailsModal').props.selection, '2026-10-16', 'a point tap must not bubble into the weekly summary');
+  background().props.onStartShouldSetResponderCapture(); background().props.onPress();
+  assert.equal(find(s.render(props), 'ProgressDetailsModal').props.selection, 'week');
   measure(360); s.setDark(true);
   chart = find(s.render(props), 'LineChart').props;
   assert.equal(chart.width, 360); assert.equal(chart.chartConfig.color(), '#7CB58F');
@@ -148,7 +156,114 @@ test('weekly progress waits for layout, preserves zero days, resizes and support
   chart = find(s.render(props), 'LineChart').props;
   assert.ok(chart.data.datasets[0].data.every(value => value === 0));
   assert.equal(chart.fromZero, true); assert.equal(chart.fromNumber, 1, 'an all-zero week retains a nonzero y-axis range');
-  assert.ok(find(s.render(props), 'View', p => p.accessibilityLabel?.includes('0 minutes')));
+  assert.ok(find(s.render(props), 'Pressable', p => p.accessibilityLabel?.includes('0 minutes')));
+});
+
+test('progress detail dialogs show week aggregates, actual/break allocation, overruns and read errors', async () => {
+  const s = await setup('components/ProgressDetailsModal.js');
+  const days = Array.from({ length: 7 }, (_, i) => ({ date: `2026-10-${14 + i}`, minutes: i === 6 ? 70 : 0 }));
+  const props = { userId: 'owner', days, selection: 'week', onDay() {}, onClose() {} };
+  assert.equal(s.render(props).props.title, 'Weekly Summary');
+  assert.ok(find(s.render(props), 'Text', p => p.children === '10 min'), 'average includes all seven dates');
+  s.data.daySessions = [{ id: 1, task_title: 'Read cells', subject_name: 'Biology', actual_start_time: '2026-10-20T10:00:00Z', studied_minutes: 25, planned_minutes: 30, break_minutes: 2, elapsed_minutes: 27, overrun_minutes: 10 }];
+  props.selection = '2026-10-20'; s.render(props); await s.flush();
+  assert.ok(find(s.render(props), 'Text', p => p.children === 'Read cells'));
+  assert.deepEqual(s.actions, [['day', 'owner', '2026-10-20']]);
+  assert.ok(find(s.render(props), 'Text', p => Array.isArray(p.children) && p.children.some(part => typeof part === 'string' && part.includes('After Scheduled End'))));
+  const failure = await setup('components/ProgressDetailsModal.js', { failure: true });
+  failure.render(props); await failure.flush();
+  assert.ok(find(failure.render(props), 'Text', p => p.accessibilityRole === 'alert'));
+});
+
+test('material sheets preserve failed drafts, save edits and open links through the OS with recoverable errors', async () => {
+  const s = await setup('components/MaterialSheet.js', { failure: true });
+  const material = { id: 6, subject_id: 7, title: 'Notes', url_or_note: 'https://example.com' };
+  const props = { userId: 'owner', subjectId: 7, material, onClose() {}, onSaved: s.onSaved };
+  find(s.render(props), 'Input', p => p.label === 'Title').props.onChangeText('Lecture Notes');
+  find(s.render(props), 'Button').props.onPress(); await s.flush();
+  assert.equal(s.saved(), 0); assert.equal(find(s.render(props), 'Input', p => p.label === 'Title').props.value, 'Lecture Notes');
+  s.fail(false); find(s.render(props), 'Button').props.onPress(); await s.flush();
+  assert.equal(s.saved(), 1); assert.equal(s.actions.at(-1)[0], 'updateMaterial');
+  const links = await setup('components/StudyMaterials.js', { failure: true });
+  links.data.materials = [material]; links.study.openMaterial = (...args) => links.actions.push(['edit', ...args]); links.study.confirmDeleteMaterial = value => links.actions.push(['delete', value]);
+  const render = () => links.render({ subjectId: 7 });
+  find(render(), 'Pressable', p => p.accessibilityRole === 'link').props.onPress(); await links.flush();
+  assert.deepEqual(links.actions[0], ['openURL', 'https://example.com']);
+  assert.match(find(render(), 'Message').props.text, /could not be opened/);
+  links.fail(false); find(render(), 'Pressable', p => p.accessibilityRole === 'link').props.onPress(); await links.flush();
+  assert.equal(find(render(), 'Message').props.text, '');
+  find(render(), 'Button', p => p.label === 'Edit').props.onPress(); find(render(), 'Button', p => p.label === 'Delete').props.onPress();
+  assert.deepEqual(links.actions.slice(-2), [['edit', 7, material], ['delete', material]]);
+});
+
+test('demo loading works for real-auth presentations and completion creates a linked reflection once', async () => {
+  const s = await setup('components/StudyWorkspace.js');
+  const render = () => s.render({ children: 'screen' }, 'StudyWorkspace').props.value;
+  await render().loadDemoData();
+  assert.deepEqual(s.actions[0], ['seed', 'owner']); assert.equal(render().demoRevision, 1);
+  await render().complete(27);
+  assert.equal(render().reflectionPrompt.id, 27);
+  await render().addCompletedReflection('I can now explain the stages.');
+  assert.equal(render().reflectionPrompt, null); assert.equal(render().notice, 'Reflection saved.');
+  assert.deepEqual(JSON.parse(JSON.stringify(s.actions.find(action => action[0] === 'reflection'))), ['reflection', 'owner', { subject_id: 7, study_block_id: 27, note: 'I can now explain the stages.' }]);
+});
+
+test('reflection journal groups notes by subject and preserves an unsaved draft on failure', async () => {
+  const s = await setup('screens/ReflectionsScreen.js'); let saved = false;
+  s.data.reflections = [{ id: 1, subject_id: 7, subject_name: 'Biology', note: 'Cells', created_at: '2026-10-20T10:00:00Z' }, { id: 2, subject_id: 8, subject_name: 'Chemistry', note: 'Atoms', created_at: '2026-10-20T10:00:00Z' }];
+  s.study.addReflection = async () => saved;
+  const header = () => find(s.render(), 'SectionList').props.ListHeaderComponent;
+  find(header(), 'Input').props.onChangeText('More practice with cells.');
+  find(header(), 'Button', p => p.label === 'Save Reflection').props.onPress(); await s.flush();
+  assert.equal(find(header(), 'Input').props.value, 'More practice with cells.');
+  saved = true; find(header(), 'Button', p => p.label === 'Save Reflection').props.onPress(); await s.flush();
+  assert.equal(find(header(), 'Input').props.value, '');
+  assert.deepEqual(JSON.parse(JSON.stringify(find(s.render(), 'SectionList').props.sections.map(group => [group.title, group.data.length]))), [['Biology', 1], ['Chemistry', 1]]);
+});
+
+test('post-session reflection keeps the note on failure, saves once and supports skipping', async () => {
+  const s = await setup('components/CompletionReflectionSheet.js'); let saved = false, closed = 0, calls = 0;
+  const props = { block: { subject_name: 'Biology', task_title: 'Read cells' }, busy: false, onClose: () => { closed++; }, onAdd: async () => { calls++; return saved; } };
+  const render = () => s.render(props);
+  find(render(), 'Button', p => p.label === 'Save Reflection').props.onPress(); await s.flush();
+  assert.equal(calls, 0, 'blank notes do not submit');
+  find(render(), 'Input').props.onChangeText('I can explain the stages now.');
+  const save = find(render(), 'Button', p => p.label === 'Save Reflection').props.onPress;
+  save(); save(); await s.flush();
+  assert.equal(calls, 1); assert.equal(find(render(), 'Input').props.value, 'I can explain the stages now.');
+  assert.match(find(render(), 'Message').props.text, /still here/);
+  saved = true; find(render(), 'Button', p => p.label === 'Save Reflection').props.onPress(); await s.flush();
+  assert.equal(calls, 2);
+  find(render(), 'Button', p => p.label === 'Skip').props.onPress(); assert.equal(closed, 1);
+});
+
+test('descriptions prefill, edit and appear only on notebook task cards', async () => {
+  const s = await setup('components/EntrySheet.js');
+  const editing = { ...task, description: 'Read chapter 4\nDraw the stages' };
+  const props = { kind: 'task', userId: 'owner', subjects: s.data.subjects, editingTask: editing, onSaved: s.onSaved, onClose() {} };
+  const description = find(s.render(props), 'Input', p => p.label === 'Task Description');
+  assert.equal(description.props.value, editing.description); assert.equal(description.props.multiline, true);
+  description.props.onChangeText('New detailed instructions');
+  find(s.render(props), 'Button', p => p.label === 'Save Changes').props.onPress(); await s.flush();
+  assert.equal(s.updates[0][2].description, 'New detailed instructions');
+  const card = await setup('components/StudyCards.js');
+  assert.ok(find(card.render({ task: editing, notebook: true }, 'TaskCard'), 'Text', p => p.children === editing.description));
+  assert.equal(find(card.render({ task: editing }, 'TaskCard'), 'Text', p => p.children === editing.description), undefined);
+});
+
+test('Settings always includes demo loading and materials require confirmation before deletion', async () => {
+  const settings = await setup('screens/SettingsScreen.js'); let loaded = 0;
+  settings.study.loadDemoData = () => { loaded++; };
+  find(settings.render(), 'Button', p => p.label === 'Load Demo Data').props.onPress();
+  assert.equal(loaded, 1);
+  const s = await setup('components/StudyWorkspace.js');
+  const material = { id: 6, subject_id: 7, title: 'Notes' }; s.data.materials = [material];
+  const render = () => s.render({ children: 'screen' }, 'StudyWorkspace').props.value;
+  render().confirmDeleteMaterial(material); assert.equal(s.alerts[0][0], 'Delete Material');
+  s.alerts[0][2][0].onPress(); assert.equal(s.actions.length, 0);
+  render().confirmDeleteMaterial(material); const confirm = s.alerts[1][2][1].onPress;
+  confirm(); confirm(); await s.flush();
+  assert.deepEqual(s.actions, [['deleteMaterial', 'owner', 6]]); assert.equal(s.refreshes(), 1);
 });
 
 test('weekly progress has loading/error feedback and Home renders it before Today\'s Focus', async () => {
@@ -195,7 +310,7 @@ test('task editor prefills both fields, saves once, and keeps failed drafts avai
   assert.equal(s.saved(), 0); assert.equal(find(render(), 'Input').props.value, 'New title');
   assert.match(find(render(), 'Message').props.text, /draft is still here/);
   s.fail(false); find(render(), 'Button', props => props.label === 'Save Changes').props.onPress(); await s.flush();
-  assert.deepEqual(s.updates.map(args => JSON.parse(JSON.stringify(args))), [['owner', 9, { title: 'New title', subject_id: 8 }], ['owner', 9, { title: 'New title', subject_id: 8 }]]);
+  assert.deepEqual(s.updates.map(args => JSON.parse(JSON.stringify(args))), [['owner', 9, { title: 'New title', description: '', subject_id: 8 }], ['owner', 9, { title: 'New title', description: '', subject_id: 8 }]]);
   assert.equal(s.saved(), 1);
 });
 
@@ -407,7 +522,7 @@ test('book covers remain mounted while closing, reverse an interrupted transitio
   }
 });
 
-test('dark books use muted gradients without changing saved colors; shelf add uses the shelf field', async () => {
+test('books retain identical vibrant gradients across themes and shelf add uses its field', async () => {
   const s = await setup('components/SubjectBookshelf.js');
   const fields = [];
   const props = { subjects: [subject], taskCounts: new Map(), onOpen() {}, onEdit() {}, onAddField: field => fields.push(field) };
@@ -417,8 +532,7 @@ test('dark books use muted gradients without changing saved colors; shelf add us
   const light = find(renderBook(), 'Gradient').props.colors;
   s.setDark(true);
   const dark = find(renderBook(), 'Gradient').props.colors;
-  const luminance = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).reduce((sum, n, i) => sum + n * [0.2126, 0.7152, 0.0722][i], 0);
-  for (let i = 0; i < 2; i++) assert.ok(luminance(dark[i]) < luminance(light[i]));
+  assert.deepEqual(dark, light);
   assert.equal(subject.field_colors, stored);
   s.setDark(false); assert.deepEqual(find(renderBook(), 'Gradient').props.colors, light);
   find(shelf(), 'Pressable', p => p.accessibilityLabel === 'Add Subject to Sciences').props.onPress();

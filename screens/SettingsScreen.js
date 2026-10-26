@@ -1,7 +1,6 @@
 import { fonts, typeScale, typeLeading } from '../components/typography';
 import { Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { USE_REAL_AUTH } from '../auth';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { Feedback, ScreenHeader } from '../components/StudyCards';
 import { useStudy } from '../components/StudyWorkspace';
@@ -38,10 +37,8 @@ export default function SettingsScreen() {
           </View>
           <Text style={t.warning}>Warning: Importing will overwrite your current local data.</Text>
         </View>
-        {!USE_REAL_AUTH && <>
-          <View style={s.card}><FieldLabel label="Demo Study Data" textStyle={t.title} help="Load three subjects, six tasks, three due reviews, six previous days of completed study, and four hours planned today." /><Button label="Load Demo Data" tone="outline" disabled={disabled || blocked} busy={seeding} onPress={() => void loadDemoData()} /><Text style={t.footnote}>Replaces this demo account’s local data.</Text></View>
-        </>}
-        <Text style={t.label}>{USE_REAL_AUTH ? '03' : '04'} / Your Account</Text>
+          <View style={s.card}><FieldLabel label="Demo Study Data" textStyle={t.title} help="Load three subjects, six tasks, three reflections, three material links, six previous days of completed study, and four hours planned today." /><Button label="Load Demo Data" tone="outline" disabled={disabled || blocked} busy={seeding} onPress={() => void loadDemoData()} /><Text style={t.footnote}>Replaces this account’s local data.</Text></View>
+        <Text style={t.label}>04 / Your Account</Text>
         <View style={s.card}><FieldLabel label="Sign Out" textStyle={t.title} help="Signing out clears the login session. Your study data remains stored on this device." /><Message text={signOutError} /><Button label="Sign Out ↗" busy={signingOut} disabled={blocked} onPress={signOut} /></View>
       </ScrollView>
     </SafeAreaView>

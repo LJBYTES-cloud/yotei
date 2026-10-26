@@ -30,6 +30,7 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, ini
   const subjectToEdit = kind === 'subject' ? editingSubject : null;
   const taskToEdit = kind === 'task' ? editingTask : null;
   const [name, setName] = useState(subjectToEdit?.name ?? taskToEdit?.title ?? '');
+  const [description, setDescription] = useState(taskToEdit?.description ?? '');
   const [subjectId, setSubjectId] = useState(taskToEdit?.subject_id ?? initialSubject ?? subjects[0]?.id ?? null);
   const [field, setField] = useState(subjectToEdit?.field_of_study ?? initialField);
   const [fieldExpanded, setFieldExpanded] = useState(false);
@@ -64,8 +65,8 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, ini
         if (subjectToEdit) await updateSubject(userId, subjectToEdit.id, { name, .../** @type {{subject_code: string, field_of_study: string, field_colors: string}} */ (subjectFields) });
         else await createSubject(userId, { name, ...subjectFields });
       }
-      else if (taskToEdit) await updateTask(userId, taskToEdit.id, { title: name, subject_id: /** @type {number} */ (subjectId) });
-      else await createTask(userId, { title: name, subject_id: /** @type {number} */ (subjectId) });
+      else if (taskToEdit) await updateTask(userId, taskToEdit.id, { title: name, description, subject_id: /** @type {number} */ (subjectId) });
+      else await createTask(userId, { title: name, description, subject_id: /** @type {number} */ (subjectId) });
       onSaved();
     } catch { setError('We couldn’t save that yet. Your draft is still here; try again.'); }
     finally { submitting.current = false; setBusy(false); setSaving(false); }
@@ -85,14 +86,14 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, ini
     const cancel = () => {
       if (!submitting.current) { confirmingDelete.current = false; setBusy(false); }
     };
-    Alert.alert('Delete Subject', 'Are you sure you want to delete this subject? All associated tasks and reviews will also be permanently deleted.', [
+    Alert.alert('Delete Subject', 'Are you sure you want to delete this subject? All associated tasks and reflections will also be permanently deleted.', [
       { text: 'Cancel', style: 'cancel', onPress: cancel },
       { text: 'Delete', style: 'destructive', onPress: () => { void removeSubject(); } },
     ], { cancelable: true, onDismiss: cancel, userInterfaceStyle: isDark ? 'dark' : 'light' });
   }
   return (
     <Sheet kicker={kind === 'subject' ? 'Subject' : 'Task'} title={subjectToEdit ? 'Edit Subject' : taskToEdit ? 'Edit Task' : kind === 'subject' ? 'Add Subject' : 'Add Task'} onClose={onClose} busy={busy}>
-      <Input label={kind === 'subject' ? 'Subject Name' : 'Task Title'} help={kind === 'subject' ? 'Subjects group related tasks and review topics.' : 'After saving, select Schedule in Library to plan this task.'} value={name} onChangeText={setName} onFocus={() => setFieldExpanded(false)} placeholder={kind === 'subject' ? 'e.g. Architecture' : 'e.g. Read chapter 3'} maxLength={kind === 'subject' ? 128 : 256} editable={!busy} returnKeyType="done" onSubmitEditing={() => void save()} />
+      <Input label={kind === 'subject' ? 'Subject Name' : 'Task Title'} help={kind === 'subject' ? 'Subjects group related tasks and reflections.' : 'After saving, select Schedule in Library to plan this task.'} value={name} onChangeText={setName} onFocus={() => setFieldExpanded(false)} placeholder={kind === 'subject' ? 'e.g. Architecture' : 'e.g. Read chapter 3'} maxLength={kind === 'subject' ? 128 : 256} editable={!busy} returnKeyType="done" onSubmitEditing={() => void save()} />
       {kind === 'subject' ? <>
         <Input label="Subject Code" help="A short code identifies the book on its spine, for example SE-101 or MATH-2." value={code} onChangeText={setCode} onFocus={() => setFieldExpanded(false)} placeholder="e.g. SE-101" maxLength={32} autoCapitalize="characters" autoCorrect={false} editable={!busy} />
         <View style={s.fieldChoice}>
@@ -130,7 +131,8 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, ini
           </Pressable>;
         })}</View>
       </> : <>
-        <FieldLabel label="Subject" help="The task and its review topics belong to this subject." />
+        <Input label="Task Description" help="Optional notes about what to do or what to cover." value={description} onChangeText={setDescription} multiline textAlignVertical="top" style={{ minHeight: 120 }} maxLength={4000} editable={!busy} placeholder="Optional details" />
+        <FieldLabel label="Subject" help="The task and its reflections belong to this subject." />
         <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={s.subjects}>{subjects.map(subject => <Pill key={subject.id} label={subject.name} color={firstFieldColor(subject.field_colors)} selected={subjectId === subject.id} disabled={busy} onPress={() => setSubjectId(subject.id)} />)}</ScrollView>
       </>}
       <Message text={error} />

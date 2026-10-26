@@ -67,7 +67,7 @@ test('Delete Subject only appears in edit mode; Cancel never calls the delete se
   s.deleteButton().props.onPress();
   assert.equal(s.alerts.length, 1);
   const [, message, buttons] = s.alerts[0];
-  assert.equal(message, 'Are you sure you want to delete this subject? All associated tasks and reviews will also be permanently deleted.');
+  assert.equal(message, 'Are you sure you want to delete this subject? All associated tasks and reflections will also be permanently deleted.');
   assert.equal(buttons[0].text, 'Cancel'); assert.equal(buttons[1].text, 'Delete'); assert.equal(buttons[1].style, 'destructive');
   assert.equal(s.deleteButton().props.disabled, true);
   buttons[0].onPress(); await s.flush();

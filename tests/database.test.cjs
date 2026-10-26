@@ -9,7 +9,7 @@ const vm = require('node:vm');
 
 // Execute the production services against real SQLite. Only Expo's native
 // transport is replaced, so SQL, constraints, transactions and joins are real.
-async function loadServices(filename = ':memory:', failFirstInitialization = false, now) {
+async function loadServices(filename = ':memory:', failFirstInitialization = false, now, failSql) {
   class FixedDate extends Date {
     constructor(...args) {
       if (args.length) super(...args);
@@ -17,7 +17,7 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
     }
     static now() { return Date.parse(now); }
   }
-  const context = vm.createContext(now ? { Date: FixedDate } : {});
+  const context = vm.createContext(now ? { Date: FixedDate, URL } : { URL });
   const connections = [];
   let opens = 0;
   const sqlite = new vm.SyntheticModule(['openDatabaseAsync'], function () {
@@ -28,6 +28,7 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
       let closed = false;
       const connection = {
         execAsync: async sql => {
+          if (failSql && sql.includes(failSql)) throw new Error('Migration write failed');
           if (failFirstInitialization) {
             failFirstInitialization = false;
             throw new Error('Storage unavailable');
@@ -92,8 +93,10 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
   await scheduling.evaluate();
   const demo = await load('./db/seedData.js', parent);
   await demo.evaluate();
-  const reviews = await load('./db/ReviewService.js', parent);
+  const reviews = await load('./db/ReflectionService.js', parent);
   await reviews.evaluate();
+  const materials = await load('./db/MaterialService.js', parent);
+  await materials.evaluate();
   const progress = await load('./db/ProgressService.js', parent);
   await progress.evaluate();
   const database = modules.get(path.resolve('db/database.js')).namespace;
@@ -101,7 +104,8 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
   const timer = await load('./utils/focusTimer.js', parent);
   await timer.evaluate();
   return {
-    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace, ...reviews.namespace, ...subjectFields, ...timer.namespace, ...progress.namespace,
+    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace, ...reviews.namespace, ...subjectFields, ...timer.namespace, ...progress.namespace, ...materials.namespace,
+    ...modules.get(path.resolve('utils/materialLinks.js')).namespace,
     setNow: value => { now = value; },
     get opens() { return opens; },
     close: async () => { for (const connection of connections) await connection.closeAsync(); },
@@ -109,6 +113,125 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
 }
 
 const plain = value => JSON.parse(JSON.stringify(value));
+
+test('reflection migration rolls back old topics and schema on failure, then retries without losing IDs', async t => {
+  const filename = path.join(os.tmpdir(), `yotei-reflection-migration-${randomUUID()}.db`);
+  const instances = [];
+  t.after(async () => { for (const instance of instances) await instance.close(); for (const suffix of ['', '-wal', '-shm']) fs.rmSync(filename + suffix, { force: true }); });
+  const legacy = new DatabaseSync(filename);
+  legacy.exec(`CREATE TABLE Subject (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, color TEXT, UNIQUE(id, user_id));
+    CREATE TABLE Task (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, subject_id INTEGER NOT NULL, title TEXT NOT NULL, deadline TEXT,
+      estimated_minutes INTEGER NOT NULL DEFAULT 30, status TEXT DEFAULT 'pending', postpone_count INTEGER DEFAULT 0);
+    CREATE TABLE ReviewItem (id INTEGER PRIMARY KEY, subject_id INTEGER NOT NULL REFERENCES Subject(id), topic TEXT NOT NULL, last_reviewed_at TEXT, next_review_at TEXT);
+    INSERT INTO Subject VALUES (7, 'owner', 'Biology', '#22D3EE');
+    INSERT INTO Task (id,user_id,subject_id,title) VALUES (8,'owner',7,'Cells');
+    INSERT INTO ReviewItem VALUES (77,7,'Keep this original topic','2026-10-20T12:00:00Z','2026-10-27T12:00:00Z');`);
+  legacy.close();
+  const failed = await loadServices(filename, false, undefined, 'ALTER TABLE Task ADD COLUMN description'); instances.push(failed);
+  await assert.rejects(failed.getDatabase(), /Migration write failed/);
+  const inspect = new DatabaseSync(filename);
+  assert.equal(inspect.prepare('SELECT topic FROM ReviewItem WHERE id = 77').get().topic, 'Keep this original topic');
+  assert.equal(inspect.prepare("SELECT name FROM sqlite_master WHERE name='ReflectionItem'").get(), undefined);
+  inspect.close();
+  const retry = await loadServices(filename); instances.push(retry);
+  const saved = (await retry.getReflectionsForUser('owner'))[0];
+  assert.equal(saved.id, 77); assert.equal(saved.note, 'Keep this original topic');
+  assert.equal(saved.created_at, '2026-10-20T12:00:00Z'); assert.equal(saved.study_block_id, null);
+  assert.deepEqual(await (await retry.getDatabase()).getAllAsync('PRAGMA foreign_key_check'), []);
+});
+
+test('material URL conversion preserves websites and encodes device/Windows file paths', async t => {
+  const s = await loadServices(); t.after(s.close);
+  assert.equal(s.getMaterialUrl('www.example.com/study'), 'https://www.example.com/study');
+  assert.equal(s.getMaterialUrl('C:\\Study Notes\\Week #1.pdf'), 'file:///C:/Study%20Notes/Week%20%231.pdf');
+  assert.equal(s.getMaterialUrl('/storage/Week 1.pdf'), 'file:///storage/Week%201.pdf');
+  assert.equal(s.getMaterialUrl('content://provider/document/1'), 'content://provider/document/1');
+  for (const value of ['javascript:alert(1)', '../notes.pdf', 'https://', 'https://example.com\nother']) assert.throws(() => s.getMaterialUrl(value));
+});
+
+test('task descriptions create/edit/clear, preserve omitted values and remain account-scoped', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' });
+  const task = await s.createTask('owner', { title: 'Cells', subject_id: subject.id, description: '  Read pages 4-8\nDraw a cell  ' });
+  assert.equal(task.description, 'Read pages 4-8\nDraw a cell');
+  await s.updateTask('owner', task.id, { title: 'Cell cycle', subject_id: subject.id });
+  assert.equal((await s.getTasksForUser('owner'))[0].description, task.description);
+  await assert.rejects(s.updateTask('other', task.id, { title: 'Stolen', subject_id: subject.id, description: 'Wrong' }));
+  await assert.rejects(s.updateTask('owner', task.id, { title: 'Cells', subject_id: subject.id, description: 'x'.repeat(4001) }));
+  await s.updateTask('owner', task.id, { title: 'Cells', subject_id: subject.id, description: '' });
+  assert.equal((await s.getTasksForUser('owner'))[0].description, null);
+});
+
+test('reflections validate owned subjects/completed sessions, preserve notes and survive task deletion', async t => {
+  const s = await loadServices(':memory:', false, '2026-10-20T09:00:00Z'); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' });
+  const otherSubject = await s.createSubject('other', { name: 'Other' });
+  const task = await s.createTask('owner', { title: 'Cells', subject_id: subject.id });
+  const block = await s.createStudyBlock('owner', { task_id: task.id, start_time: '2026-10-20T09:00:00Z', end_time: '2026-10-20T09:30:00Z' });
+  await assert.rejects(s.createReflectionItem('owner', { subject_id: subject.id, study_block_id: block.id, note: 'Not finished' }));
+  await s.startStudyBlock('owner', block.id); await s.finishStudyBlock('owner', block.id, '2026-10-20T09:10:00Z');
+  const note = "I learned this.'); DROP TABLE ReflectionItem; --";
+  const first = await s.createReflectionItem('owner', { subject_id: subject.id, study_block_id: block.id, note: `  ${note}  ` });
+  assert.equal(first.note, note); assert.equal(first.study_block_id, block.id); assert.equal(first.task_title, 'Cells');
+  s.setNow('2026-10-21T09:00:00Z');
+  const second = await s.createReflectionItem('owner', { subject_id: subject.id, note: 'Follow-up note' });
+  assert.deepEqual(plain((await s.getReflectionsForUser('owner')).map(row => row.id)), [second.id, first.id]);
+  assert.equal((await s.getReflectionsForUser('other')).length, 0);
+  for (const input of [
+    { subject_id: otherSubject.id, note: 'Unowned' }, { subject_id: subject.id, note: '' },
+    { subject_id: subject.id, note: 'x'.repeat(4001) }, { subject_id: subject.id, study_block_id: -1, note: 'Invalid block' },
+  ]) await assert.rejects(s.createReflectionItem('owner', input));
+  await assert.rejects(s.createReflectionItem('other', { subject_id: otherSubject.id, study_block_id: block.id, note: 'Unowned session' }));
+  await s.deleteTask('owner', task.id);
+  const saved = await s.getReflectionsForUser('owner');
+  assert.equal(saved.length, 2); assert.equal(saved[1].study_block_id, null); assert.equal(saved[1].note, note);
+});
+
+test('a reflection read failure inserts nothing and a retry creates one note', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' }), db = await s.getDatabase();
+  const read = db.getFirstAsync; db.getFirstAsync = async () => { throw new Error('Read failed'); };
+  await assert.rejects(s.createReflectionItem('owner', { subject_id: subject.id, note: 'Cells' }), /Read failed/);
+  db.getFirstAsync = read;
+  assert.equal((await s.getReflectionsForUser('owner')).length, 0);
+  await s.createReflectionItem('owner', { subject_id: subject.id, note: 'Cells' });
+  assert.equal((await s.getReflectionsForUser('owner')).length, 1);
+});
+
+test('day details match chart totals, exclude breaks and report scheduled-end overrun with account isolation', async t => {
+  const s = await loadServices(':memory:', false, '2026-10-20T09:13:00Z'); t.after(s.close);
+  const block = await focusFixture(s, 'owner');
+  await s.startStudyBlock('owner', block.id);
+  await s.pauseStudyBlock('owner', block.id, '2026-10-20T09:18:00Z');
+  await s.resumeStudyBlock('owner', block.id, '2026-10-20T09:20:00Z');
+  const done = await s.finishStudyBlock('owner', block.id, '2026-10-20T09:40:00Z');
+  const date = s.getLocalDateKey(new Date(done.actual_end_time));
+  const details = await s.getStudyDayDetails('owner', date);
+  assert.equal(details.length, 1); assert.equal(details[0].studied_minutes, 25);
+  assert.equal(details[0].planned_minutes, 30); assert.equal(details[0].break_minutes, 2);
+  assert.equal(details[0].elapsed_minutes, 27); assert.equal(details[0].overrun_minutes, 10);
+  assert.equal((await s.getWeeklyStudyMinutes('owner', date))[6].minutes, details[0].studied_minutes);
+  assert.equal((await s.getStudyDayDetails('other', date)).length, 0);
+  assert.equal((await s.getStudyDayDetails('owner', '2026-10-19')).length, 0);
+  await assert.rejects(s.getStudyDayDetails('owner', '2026-02-30'));
+});
+
+test('materials validate links, bind owned CRUD and cascade without touching original files', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' });
+  const id = await s.createMaterial('owner', subject.id, { title: "Notes'); DROP TABLE Material; --", location: ' https://example.com/notes ' });
+  assert.equal((await s.getMaterialsForUser('owner'))[0].url_or_note, 'https://example.com/notes');
+  assert.equal((await s.getMaterialsForUser('other')).length, 0);
+  await assert.rejects(s.createMaterial('other', subject.id, { title: 'Bad', location: 'https://example.com' }));
+  await assert.rejects(s.updateMaterial('other', id, { title: 'Bad', location: 'https://example.com' }));
+  await assert.rejects(s.deleteMaterial('other', id));
+  for (const location of ['javascript:alert(1)', 'notes.pdf', '', 'ftp://example.com']) await assert.rejects(s.createMaterial('owner', subject.id, { title: 'Bad', location }));
+  await s.updateMaterial('owner', id, { title: 'Lecture Notes', location: 'C:\\Study\\Week 1.pdf' });
+  assert.equal((await s.getMaterialsForUser('owner'))[0].title, 'Lecture Notes');
+  await s.deleteMaterial('owner', id); assert.equal((await s.getMaterialsForUser('owner')).length, 0);
+  await s.createMaterial('owner', subject.id, { title: 'Local Notes', location: '/storage/notes.pdf' });
+  await s.deleteSubject('owner', subject.id); assert.equal((await s.getMaterialsForUser('owner')).length, 0);
+});
 
 test('weekly progress fills seven local calendar dates across year/leap boundaries and validates input', async t => {
   const s = await loadServices(); t.after(s.close);
@@ -278,144 +401,6 @@ test('active and paused timers survive closing SQLite and reopening without losi
   assert.equal(done.actual_study_seconds, 600); assert.equal(done.break_time_minutes, 1440);
 });
 
-test('review queue binds topics, validates input, and isolates accounts for every operation', async t => {
-  const services = await loadServices(':memory:', false, '2026-10-20T12:00:00Z');
-  t.after(services.close);
-  const user = "review-user' OR 1=1 --";
-  const subject = await services.createSubject(user, { name: 'Biology' });
-  const otherSubject = await services.createSubject('other-user', { name: 'History' });
-  const topic = "Cell division'); DROP TABLE ReviewItem; --";
-  const item = await services.createReviewItem(user, { subject_id: subject.id, topic: `  ${topic}  ` });
-  const other = await services.createReviewItem('other-user', { subject_id: otherSubject.id, topic: 'French Revolution' });
-  assert.equal(item.topic, topic);
-  assert.equal(item.subject_name, 'Biology');
-  assert.equal(item.last_reviewed_at, null);
-  assert.equal(item.next_review_at, null);
-  assert.deepEqual(plain(await services.getDueReviews(user)), [plain(item)]);
-  assert.deepEqual(plain(await services.getDueReviews('other-user')), [plain(other)]);
-  for (const action of [
-    () => services.createReviewItem(user, { subject_id: otherSubject.id, topic: 'Wrong subject' }),
-    () => services.createReviewItem(user, { subject_id: 9999, topic: 'Missing subject' }),
-    () => services.createReviewItem(user, { subject_id: -1, topic: 'Invalid subject' }),
-    () => services.createReviewItem(user, { subject_id: subject.id, topic: ' ' }),
-    () => services.createReviewItem(user, { subject_id: subject.id, topic: 'x'.repeat(257) }),
-    () => services.createReviewItem(user, { subject_id: subject.id, topic: null }),
-    () => services.createReviewItem('', { subject_id: subject.id, topic: 'Invalid user' }),
-    () => services.getDueReviews(' '),
-    () => services.markReviewed(user, other.id, 'Good'),
-    () => services.markReviewed('', item.id, 'Hard'),
-    () => services.markReviewed(user, 0, 'Good'),
-    () => services.markReviewed(user, 99999, 'Good'),
-    () => services.markReviewed(user, item.id, 'Unknown'),
-    () => services.markReviewed(user, item.id, '__proto__'),
-    () => services.markReviewed(user, item.id, null),
-  ]) await assert.rejects(action());
-  assert.deepEqual(plain(await services.getDueReviews(user)), [plain(item)], 'invalid calls do not update or create reviews');
-  assert.deepEqual(plain(await services.getDueReviews('other-user')), [plain(other)], 'another account is unchanged');
-});
-
-test('a failed review subject lookup leaves no topic behind and retries create it once', async t => {
-  const services = await loadServices();
-  t.after(services.close);
-  const subject = await services.createSubject('user-a', { name: 'Biology' });
-  const database = await services.getDatabase();
-  const read = database.getFirstAsync;
-  let failOnce = true;
-  database.getFirstAsync = async (...args) => {
-    if (failOnce) { failOnce = false; throw new Error('Storage read failed'); }
-    return read(...args);
-  };
-  await assert.rejects(services.createReviewItem('user-a', { subject_id: subject.id, topic: 'Cell division' }), /Storage read failed/);
-  assert.equal((await database.getAllAsync('SELECT * FROM ReviewItem')).length, 0);
-  const item = await services.createReviewItem('user-a', { subject_id: subject.id, topic: 'Cell division' });
-  assert.deepEqual(plain(await services.getDueReviews('user-a')), [plain(item)]);
-});
-
-test('due reviews include new, past, and exact-boundary timestamps but exclude the future', async t => {
-  const services = await loadServices(':memory:', false, '2026-10-20T12:00:00.000Z');
-  t.after(services.close);
-  const subject = await services.createSubject('user-a', { name: 'Mathematics' });
-  const database = await services.getDatabase();
-  const deadlines = [null, '2026-10-19T12:00:00Z', '2026-10-20T12:00:00.000Z', '2026-10-20T12:00:00.001Z', '2026-10-20T20:00:00+08:00'];
-  const items = [];
-  for (const deadline of deadlines) {
-    const item = await services.createReviewItem('user-a', { subject_id: subject.id, topic: String(deadline) });
-    await database.runAsync('UPDATE ReviewItem SET next_review_at = ? WHERE id = ?', deadline, item.id);
-    items.push(item);
-  }
-  assert.deepEqual((await services.getDueReviews('user-a')).map(item => item.id), [items[0].id, items[1].id, items[2].id, items[4].id]);
-});
-
-test('ratings remove reviews from the due queue until 1, 3, or 7 calendar days later', async t => {
-  for (const [difficulty, days] of [['Hard', 1], ['Good', 3], ['Easy', 7]]) {
-    await t.test(difficulty, async t => {
-      const now = '2026-10-20T12:15:00Z';
-      const services = await loadServices(':memory:', false, now);
-      t.after(services.close);
-      const subject = await services.createSubject('user-a', { name: 'Biology' });
-      const item = await services.createReviewItem('user-a', { subject_id: subject.id, topic: 'Cell division' });
-      const result = await services.markReviewed('user-a', item.id, difficulty);
-      assert.equal(result.last_reviewed_at, now.replace('Z', '.000Z'));
-      assert.equal(result.next_review_at, `2026-10-${20 + days}T12:15:00.000Z`);
-      assert.equal((await services.getDueReviews('user-a')).length, 0);
-      await assert.rejects(services.markReviewed('user-a', item.id, 'Easy'), /no longer due/);
-      services.setNow(new Date(Date.parse(result.next_review_at) - 1).toISOString());
-      assert.equal((await services.getDueReviews('user-a')).length, 0);
-      services.setNow(result.next_review_at);
-      assert.equal((await services.getDueReviews('user-a'))[0].id, item.id);
-      const repeated = await services.markReviewed('user-a', item.id, 'Hard');
-      assert.equal(repeated.last_reviewed_at, result.next_review_at);
-      assert.ok(Date.parse(repeated.next_review_at) > Date.parse(result.next_review_at));
-    });
-  }
-});
-
-test('review intervals preserve local time across daylight-saving and month boundaries', async t => {
-  for (const localNow of ['2026-03-07T12:30:00', '2026-10-31T12:30:00', '2026-12-31T12:30:00']) {
-    const services = await loadServices(':memory:', false, localNow);
-    t.after(services.close);
-    const subject = await services.createSubject('user-a', { name: 'Biology' });
-    const item = await services.createReviewItem('user-a', { subject_id: subject.id, topic: 'Genetics' });
-    const result = await services.markReviewed('user-a', item.id, 'Hard');
-    const expected = new Date(localNow);
-    expected.setDate(expected.getDate() + 1);
-    assert.equal(result.next_review_at, expected.toISOString());
-    assert.equal(new Date(result.next_review_at).getHours(), 12);
-    assert.equal(new Date(result.next_review_at).getMinutes(), 30);
-  }
-});
-
-test('concurrent review ratings update a due occurrence once', async t => {
-  const services = await loadServices(':memory:', false, '2026-10-20T12:00:00Z');
-  t.after(services.close);
-  const subject = await services.createSubject('user-a', { name: 'History' });
-  const item = await services.createReviewItem('user-a', { subject_id: subject.id, topic: 'Industrial Revolution' });
-  const results = await Promise.allSettled([
-    services.markReviewed('user-a', item.id, 'Hard'), services.markReviewed('user-a', item.id, 'Easy'),
-  ]);
-  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
-  assert.equal(results.filter(result => result.status === 'rejected').length, 1);
-  assert.equal((await services.getDueReviews('user-a')).length, 0);
-});
-
-test('review schedule survives reopening the database', async t => {
-  const filename = path.join(os.tmpdir(), `yotei-review-test-${randomUUID()}.db`);
-  const instances = [];
-  t.after(async () => {
-    for (const instance of instances) await instance.close();
-    for (const suffix of ['', '-wal', '-shm']) if (fs.existsSync(filename + suffix)) fs.unlinkSync(filename + suffix);
-  });
-  const first = await loadServices(filename, false, '2026-10-20T12:00:00Z');
-  instances.push(first);
-  const subject = await first.createSubject('user-a', { name: 'Biology' });
-  const item = await first.createReviewItem('user-a', { subject_id: subject.id, topic: 'Photosynthesis' });
-  const reviewed = await first.markReviewed('user-a', item.id, 'Good');
-  await first.close();
-  const second = await loadServices(filename, false, reviewed.next_review_at);
-  instances.push(second);
-  assert.deepEqual(plain(await second.getDueReviews('user-a')), [plain(reviewed)]);
-});
-
 test('study completion feeds review topics and repeated missed sessions increment task coaching counts once each', async t => {
   const services = await loadServices(':memory:', false, '2026-10-20T09:00:00Z');
   t.after(services.close);
@@ -437,11 +422,11 @@ test('study completion feeds review topics and repeated missed sessions incremen
   assert.equal(completed.break_time_minutes, 2);
   assert.equal(completed.subject_id, subject.id);
   assert.equal(completed.task_title, task.title);
-  const review = await services.createReviewItem('student', {
-    subject_id: completed.subject_id, topic: 'The checkpoints between cell-cycle phases',
+  const review = await services.createReflectionItem('student', {
+    subject_id: completed.subject_id, study_block_id: completed.id, note: 'The checkpoints between cell-cycle phases',
   });
   assert.equal(review.subject_id, subject.id);
-  assert.deepEqual((await services.getDueReviews('student')).map(item => item.id), [review.id]);
+  assert.deepEqual((await services.getReflectionsForUser('student')).map(item => item.id), [review.id]);
 
   const original = await services.createStudyBlock('student', {
     task_id: task.id, start_time: '2026-10-20T09:30:00Z', end_time: '2026-10-20T10:00:00Z',
@@ -482,9 +467,8 @@ test('study completion feeds review topics and repeated missed sessions incremen
   assert.equal((await services.getStudyBlocksForUser('other-student'))[0].id, otherBlock.id);
   assert.equal((await services.getStudyBlocksForUser('other-student'))[0].status, 'scheduled');
   assert.equal((await services.getTasksForUser('other-student'))[0].postpone_count, 0);
-  assert.equal((await services.getDueReviews('other-student')).length, 0);
-  await services.markReviewed('student', review.id, 'Good');
-  assert.equal((await services.getDueReviews('student')).length, 0);
+  assert.equal((await services.getReflectionsForUser('other-student')).length, 0);
+  assert.equal((await services.getReflectionsForUser('student')).length, 1, 'reflections remain in the chronological log');
 });
 
 test('demo reset replaces only the selected account and can be repeated', async t => {
@@ -498,12 +482,12 @@ test('demo reset replaces only the selected account and can be repeated', async 
     await services.createStudyBlock(user, {
       task_id: task.id, start_time: '2026-10-20T09:00:00Z', end_time: '2026-10-20T09:30:00Z',
     });
-    await database.runAsync('INSERT INTO ReviewItem (subject_id, topic) VALUES (?, ?)', subject.id, 'Old review');
+    await database.runAsync("INSERT INTO ReflectionItem (subject_id, note, created_at) VALUES (?, ?, '2026-10-20T12:00:00Z')", subject.id, 'Old review');
     await database.runAsync('INSERT INTO Material (subject_id, task_id, title) VALUES (?, ?, ?)', subject.id, task.id, 'Old notes');
     snapshots[user] = { subject, task: (await services.getTasksForUser(user))[0], blocks: plain(await services.getStudyBlocksForUser(user)) };
   }
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    assert.deepEqual(plain(await services.seedDemoData('demo-user')), { subjects: 3, tasks: 6, studyBlocks: 10, reviewItems: 3, totalMinutes: 240 });
+    assert.deepEqual(plain(await services.seedDemoData('demo-user')), { subjects: 3, tasks: 6, studyBlocks: 10, reflectionItems: 3, totalMinutes: 240 });
     const subjects = await services.getSubjectsForUser('demo-user');
     const tasks = await services.getTasksForUser('demo-user');
     assert.deepEqual(subjects.map(subject => subject.name).sort(), ['Biology', 'History', 'Mathematics']);
@@ -520,22 +504,22 @@ test('demo reset replaces only the selected account and can be repeated', async 
       { date: '2026-10-16', minutes: 75 }, { date: '2026-10-17', minutes: 120 },
       { date: '2026-10-18', minutes: 105 }, { date: '2026-10-19', minutes: 150 },
     ]);
-    const reviews = await services.getDueReviews('demo-user');
+    const reviews = await services.getReflectionsForUser('demo-user');
     assert.equal(reviews.length, 3);
     assert.deepEqual(reviews.map(review => review.subject_name).sort(), ['Biology', 'History', 'Mathematics']);
-    assert.ok(reviews.every(review => review.next_review_at === null && review.last_reviewed_at === null));
-    assert.ok(reviews.every(review => review.topic !== 'Old review'));
+    assert.ok(reviews.every(review => Number.isFinite(Date.parse(review.created_at))));
+    assert.ok(reviews.every(review => review.note !== 'Old review'));
     assert.deepEqual(plain(await services.getSubjectsForUser('other-user')), [plain(snapshots['other-user'].subject)]);
     assert.deepEqual(plain(await services.getTasksForUser('other-user')), [plain(snapshots['other-user'].task)]);
     assert.deepEqual(plain(await services.getStudyBlocksForUser('other-user')), snapshots['other-user'].blocks);
-    for (const table of ['ReviewItem', 'Material']) {
+    for (const table of ['ReflectionItem', 'Material']) {
       const rows = await database.getAllAsync(`SELECT item.* FROM ${table} AS item INNER JOIN Subject AS subject ON subject.id = item.subject_id WHERE subject.user_id = ?`, 'other-user');
       assert.equal(rows.length, 1);
       assert.equal(rows[0].subject_id, snapshots['other-user'].subject.id);
-      if (table === 'ReviewItem') assert.equal(rows[0].topic, 'Old review');
+      if (table === 'ReflectionItem') assert.equal(rows[0].note, 'Old review');
     }
-    assert.equal((await database.getAllAsync('SELECT * FROM Material')).length, 1, 'only the other account retains its old material');
-    assert.equal((await database.getAllAsync('SELECT * FROM ReviewItem')).length, 4, 'reloading replaces demo reviews instead of duplicating them');
+    assert.equal((await database.getAllAsync('SELECT * FROM Material')).length, 4, 'demo has three links and the other account retains its material');
+    assert.equal((await database.getAllAsync('SELECT * FROM ReflectionItem')).length, 4, 'reloading replaces demo reviews instead of duplicating them');
   }
   await assert.rejects(services.seedDemoData(' '), /Sign in/i);
 });
@@ -546,7 +530,7 @@ test('demo data rolls back completely if an insert fails after the reset', async
   await services.seedDemoData('demo-user');
   const database = await services.getDatabase();
   const before = {};
-  const tables = ['Subject', 'Task', 'StudyBlock', 'ReviewItem', 'Material'];
+  const tables = ['Subject', 'Task', 'StudyBlock', 'ReflectionItem', 'Material'];
   for (const table of tables) before[table] = await database.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
   const run = database.runAsync;
   database.runAsync = async (sql, ...params) => {
@@ -608,7 +592,7 @@ test('initializes all five tables and shares one ready connection', async t => {
   assert.equal(first, second);
   assert.equal(services.opens, 1);
   const tables = await first.getAllAsync("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
-  assert.deepEqual(tables.map(row => row.name), ['Material', 'ReviewItem', 'StudyBlock', 'Subject', 'Task']);
+  assert.deepEqual(tables.map(row => row.name), ['Material', 'ReflectionItem', 'StudyBlock', 'Subject', 'Task']);
   assert.equal((await first.getFirstAsync('PRAGMA foreign_keys')).foreign_keys, 1);
 });
 
@@ -646,9 +630,9 @@ test('subject fields normalize, persist, and supply the first gradient color acr
   const task = await s.createTask('user', { subject_id: subject.id, title: 'Enzymes' });
   assert.equal(task.subject_color, '#2DD4BF');
   assert.equal((await s.getTasksForUser('user'))[0].subject_color, '#2DD4BF');
-  const review = await s.createReviewItem('user', { subject_id: subject.id, topic: 'Catalysis' });
+  const review = await s.createReflectionItem('user', { subject_id: subject.id, note: 'Catalysis' });
   assert.equal(review.subject_color, '#2DD4BF');
-  assert.equal((await s.getDueReviews('user'))[0].subject_color, '#2DD4BF');
+  assert.equal((await s.getReflectionsForUser('user'))[0].subject_color, '#2DD4BF');
   const block = await s.createStudyBlock('user', { task_id: task.id, start_time: '2026-11-01T10:00:00Z', end_time: '2026-11-01T10:30:00Z' });
   assert.equal(block.subject_color, '#2DD4BF');
   assert.equal((await s.getStudyBlocksForUser('user'))[0].subject_color, '#2DD4BF');
@@ -714,7 +698,7 @@ test('editing a subject preserves its ID and linked records while refreshing joi
   t.after(s.close);
   const subject = await s.createSubject('user', { name: 'Biology' });
   const task = await s.createTask('user', { subject_id: subject.id, title: 'Study enzymes' });
-  const review = await s.createReviewItem('user', { subject_id: subject.id, topic: 'Catalysis' });
+  const review = await s.createReflectionItem('user', { subject_id: subject.id, note: 'Catalysis' });
   const block = await s.createStudyBlock('user', { task_id: task.id, start_time: '2026-11-01T10:00:00Z', end_time: '2026-11-01T10:30:00Z' });
   const db = await s.getDatabase();
   await db.runAsync('INSERT INTO Material (subject_id, task_id, title) VALUES (?, ?, ?)', subject.id, task.id, 'Class notes');
@@ -727,8 +711,8 @@ test('editing a subject preserves its ID and linked records while refreshing joi
   assert.equal((await s.getTasksForUser('user'))[0].id, task.id);
   assert.equal((await s.getTasksForUser('user'))[0].subject_name, updated.name);
   assert.equal((await s.getTasksForUser('user'))[0].subject_color, '#123ABC');
-  assert.equal((await s.getDueReviews('user'))[0].id, review.id);
-  assert.equal((await s.getDueReviews('user'))[0].subject_name, updated.name);
+  assert.equal((await s.getReflectionsForUser('user'))[0].id, review.id);
+  assert.equal((await s.getReflectionsForUser('user'))[0].subject_name, updated.name);
   assert.equal((await s.getStudyBlocksForUser('user'))[0].id, block.id);
   assert.equal((await s.getStudyBlocksForUser('user'))[0].subject_color, '#123ABC');
   assert.equal((await db.getFirstAsync('SELECT subject_id FROM Material WHERE task_id = ?', task.id)).subject_id, subject.id);
@@ -767,7 +751,7 @@ test('subject deletion cascades tasks, rescheduled blocks, reviews and materials
     subjects.push(subject);
     const task = await s.createTask(user, { subject_id: subject.id, title: name });
     await s.createStudyBlock(user, { task_id: task.id, start_time: '2026-10-20T10:00:00Z', end_time: '2026-10-20T10:30:00Z' });
-    await s.createReviewItem(user, { subject_id: subject.id, topic: name });
+    await s.createReflectionItem(user, { subject_id: subject.id, note: name });
     await db.runAsync('INSERT INTO Material (subject_id, task_id, title) VALUES (?, ?, ?)', subject.id, task.id, name);
   }
   await s.markExpiredStudyBlocks('owner', '2026-10-20T12:00:00Z');
@@ -775,7 +759,7 @@ test('subject deletion cascades tasks, rescheduled blocks, reviews and materials
   await s.rescheduleStudyBlock('owner', source.id, '2026-10-20T12:00:00Z');
   const targetTaskIds = (await s.getTasksForUser('owner')).filter(task => task.subject_id === subjects[0].id).map(task => task.id);
   const before = {};
-  for (const table of ['Subject', 'Task', 'StudyBlock', 'ReviewItem', 'Material']) before[table] = await db.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
+  for (const table of ['Subject', 'Task', 'StudyBlock', 'ReflectionItem', 'Material']) before[table] = await db.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
   await s.deleteSubject('owner', subjects[0].id);
   for (const table of Object.keys(before)) {
     const expected = before[table].filter(row => table === 'Subject' ? row.id !== subjects[0].id
@@ -795,7 +779,7 @@ test('subject deletion rejects invalid/unowned IDs and rolls back all cascades o
   const db = await s.getDatabase();
   const snapshot = async () => {
     const data = {};
-    for (const table of ['Subject', 'Task', 'StudyBlock', 'ReviewItem', 'Material']) data[table] = await db.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
+    for (const table of ['Subject', 'Task', 'StudyBlock', 'ReflectionItem', 'Material']) data[table] = await db.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
     return data;
   };
   const before = await snapshot();
@@ -818,7 +802,7 @@ test('task editing keeps history and metadata while changing owned title and sub
   const second = await s.createSubject('owner', { name: 'Chemistry' });
   const task = await s.createTask('owner', { subject_id: first.id, title: 'Draft', deadline: '2026-11-02', estimated_minutes: 45 });
   const block = await s.createStudyBlock('owner', { task_id: task.id, start_time: '2026-11-01T10:00:00Z', end_time: '2026-11-01T10:30:00Z' });
-  const review = await s.createReviewItem('owner', { subject_id: first.id, topic: 'Original topic' });
+  const review = await s.createReflectionItem('owner', { subject_id: first.id, note: 'Original topic' });
   const db = await s.getDatabase();
   await db.runAsync('UPDATE Task SET postpone_count = 2 WHERE id = ?', task.id);
   await s.updateTask('owner', task.id, { title: "  Read O'Brien's notes; DROP TABLE Task; --  ", subject_id: second.id });
@@ -829,8 +813,8 @@ test('task editing keeps history and metadata while changing owned title and sub
   assert.equal(updated.postpone_count, 2); assert.equal(updated.status, 'pending');
   const [linked] = await s.getStudyBlocksForUser('owner');
   assert.equal(linked.id, block.id); assert.equal(linked.task_title, updated.title); assert.equal(linked.subject_id, second.id);
-  assert.equal((await s.getDueReviews('owner'))[0].id, review.id);
-  assert.equal((await s.getDueReviews('owner'))[0].subject_id, first.id, 'existing review topics stay under their original subject');
+  assert.equal((await s.getReflectionsForUser('owner'))[0].id, review.id);
+  assert.equal((await s.getReflectionsForUser('owner'))[0].subject_id, first.id, 'existing review topics stay under their original subject');
   await s.updateTask('owner', task.id, { title: updated.title, subject_id: second.id });
 });
 
@@ -863,7 +847,7 @@ test('task deletion cascades block history, preserves material notes/reviews/acc
   const block = await s.createStudyBlock('owner', { task_id: task.id, start_time: '2026-10-20T09:00:00Z', end_time: '2026-10-20T09:30:00Z' });
   await s.markExpiredStudyBlocks('owner', '2026-10-20T10:00:00Z');
   await s.rescheduleStudyBlock('owner', block.id, '2026-10-20T10:00:00Z');
-  const review = await s.createReviewItem('owner', { subject_id: subject.id, topic: 'Keep this review' });
+  const review = await s.createReflectionItem('owner', { subject_id: subject.id, note: 'Keep this review' });
   const db = await s.getDatabase();
   await db.runAsync('INSERT INTO Material (subject_id, task_id, title) VALUES (?, ?, ?)', subject.id, task.id, 'Task notes');
   await db.runAsync('INSERT INTO Material (subject_id, title) VALUES (?, ?)', subject.id, 'Subject notes');
@@ -878,7 +862,7 @@ test('task deletion cascades block history, preserves material notes/reviews/acc
   assert.equal((await s.getStudyBlocksForUser('owner')).length, 0);
   assert.equal((await s.getTasksForUser('other'))[0].id, other.id);
   assert.equal((await s.getSubjectsForUser('owner'))[0].id, subject.id);
-  assert.equal((await s.getDueReviews('owner'))[0].id, review.id);
+  assert.equal((await s.getReflectionsForUser('owner'))[0].id, review.id);
   const materials = await db.getAllAsync('SELECT * FROM Material ORDER BY id');
   assert.equal(materials.length, 2);
   assert.deepEqual(materials.map(row => row.title), ['Task notes', 'Subject notes']);
@@ -1175,7 +1159,11 @@ test('migrates legacy planned blocks without losing data and can reopen safely',
   assert.equal(migratedSubject.field_colors, '#B8A0F5');
   assert.equal(migrated[0].subject_color, '#B8A0F5');
   assert.equal((await (await first.getDatabase()).getAllAsync('PRAGMA table_info(Subject)')).some(column => column.name === 'color'), false);
-  assert.equal((await first.getDueReviews('user-a'))[0].topic, 'Algebra recall');
+  assert.equal((await first.getReflectionsForUser('user-a'))[0].note, 'Algebra recall');
+  const migratedDb = await first.getDatabase();
+  assert.deepEqual((await migratedDb.getAllAsync('PRAGMA table_info(ReflectionItem)')).map(column => column.name), ['id', 'subject_id', 'study_block_id', 'note', 'created_at']);
+  assert.equal(await migratedDb.getFirstAsync("SELECT name FROM sqlite_master WHERE name = 'ReviewItem'"), null);
+  assert.equal((await first.getTasksForUser('user-a'))[0].description, null);
   assert.equal((await (await first.getDatabase()).getFirstAsync('SELECT subject_id FROM Material WHERE id = 1')).subject_id, 1);
   assert.deepEqual(await (await first.getDatabase()).getAllAsync('PRAGMA foreign_key_check'), []);
   assert.deepEqual(migrated.map(block => block.status), ['scheduled', 'done']);

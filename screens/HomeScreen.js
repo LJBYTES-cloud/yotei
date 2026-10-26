@@ -40,7 +40,7 @@ export default function HomeScreen() {
             <View style={h.stats}><Text style={s.hint}><Text style={h.statNumber}>{planned}</Text> ahead</Text><Text style={s.hint}><Text style={h.statNumber}>{completed}</Text> done today</Text></View>
           </View>
           <Feedback />
-          <WeeklyProgressCard days={data.weekly} ready={data.ready} error={data.error} />
+          <WeeklyProgressCard userId={study.user.id} days={data.weekly} ready={data.ready} error={data.error} />
           {coaching.length > 0 && <View style={s.card}><View style={s.section}><Text style={s.sectionTitle}>Postponed Tasks</Text></View>{coaching.map(task => <CoachingCard key={task.id} task={task} />)}</View>}
           <View style={s.card}>
             <View style={s.section}><Text style={s.sectionTitle}>Today’s Focus</Text><Text style={s.sectionCount}>{String(blocks.length).padStart(2, '0')}</Text></View>
