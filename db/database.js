@@ -15,6 +15,7 @@ async function initializeDatabase() {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           user_id TEXT NOT NULL,
           name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+          subject_code TEXT NOT NULL DEFAULT 'GEN-101' CHECK (length(trim(subject_code)) BETWEEN 1 AND 32),
           field_of_study TEXT NOT NULL DEFAULT 'General' CHECK (length(trim(field_of_study)) > 0),
           field_colors TEXT NOT NULL DEFAULT '#C2ACF3',
           UNIQUE (id, user_id)
@@ -77,6 +78,9 @@ async function initializeDatabase() {
       // ALTER preserves subject IDs and all dependent foreign keys. Copy the
       // legacy color before dropping it, in the same retryable transaction.
       const subjectColumns = /** @type {{ name: string }[]} */ (await database.getAllAsync('PRAGMA table_info(Subject)'));
+      if (!subjectColumns.some(column => column.name === 'subject_code')) {
+        await database.execAsync("ALTER TABLE Subject ADD COLUMN subject_code TEXT NOT NULL DEFAULT 'GEN-101' CHECK (length(trim(subject_code)) BETWEEN 1 AND 32)");
+      }
       if (!subjectColumns.some(column => column.name === 'field_of_study')) {
         await database.execAsync("ALTER TABLE Subject ADD COLUMN field_of_study TEXT NOT NULL DEFAULT 'General' CHECK (length(trim(field_of_study)) > 0)");
       }

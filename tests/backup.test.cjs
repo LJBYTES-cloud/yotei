@@ -137,7 +137,8 @@ test('export includes all five owned tables, formatted JSON, and native sharing 
   assert.doesNotMatch(shared.json, /Private other account|user-a|user-b|password|session/i);
   const backup = JSON.parse(shared.json);
   assert.equal(backup.format, 'yotei.study-backup');
-  assert.equal(backup.version, 3);
+  assert.equal(backup.version, 4);
+  assert.equal(backup.data.subjects[0].subject_code, 'GEN-101');
   assert.equal(backup.data.subjects[0].field_of_study, 'General');
   assert.equal(backup.data.subjects[0].field_colors, '#C2ACF3');
   assert.equal('color' in backup.data.subjects[0], false);
@@ -210,30 +211,40 @@ const invalidCases = {
   'inconsistent count': backup => { backup.data.tasks[0].postpone_count = 1; },
 };
 
-test('field metadata round-trips in version 3 while versions 1 and 2 receive empty timer defaults', async t => {
+test('subject codes and fields round-trip in version 4 while legacy backups receive defaults', async t => {
   const s = await setup(t);
   s.pick(fixture());
   await s.importBackup('user');
   let subject = await s.db.getFirstAsync('SELECT * FROM Subject WHERE user_id = ?', 'user');
   assert.equal(subject.field_of_study, 'General');
   assert.equal(subject.field_colors, fixture().data.subjects[0].color);
-  await s.db.runAsync('UPDATE Subject SET field_of_study = ?, field_colors = ? WHERE id = ?', 'Biology, Chemistry', '#2DD4BF,#60A5FA', subject.id);
+  assert.equal(subject.subject_code, 'GEN-101');
+  await s.db.runAsync('UPDATE Subject SET subject_code = ?, field_of_study = ?, field_colors = ? WHERE id = ?', 'BIO-101', 'Biology, Chemistry', '#2DD4BF,#60A5FA', subject.id);
   await s.exportBackup('user');
   const exported = JSON.parse(s.device.shares.at(-1).json);
-  assert.equal(exported.version, 3);
+  assert.equal(exported.version, 4);
+  assert.equal(exported.data.subjects[0].subject_code, 'BIO-101');
   assert.equal(exported.data.subjects[0].field_of_study, 'Biology, Chemistry');
   assert.equal(exported.data.subjects[0].field_colors, '#2DD4BF,#60A5FA');
   s.pick(exported);
   await s.importBackup('user');
   subject = await s.db.getFirstAsync('SELECT * FROM Subject WHERE user_id = ?', 'user');
+  assert.equal(subject.subject_code, 'BIO-101');
   assert.equal(subject.field_of_study, 'Biology, Chemistry');
   assert.equal(subject.field_colors, '#2DD4BF,#60A5FA');
   const legacyV2 = structuredClone(exported);
   legacyV2.version = 2;
+  delete legacyV2.data.subjects[0].subject_code;
   for (const block of legacyV2.data.studyBlocks) for (const key of ['actual_start_time', 'break_time_minutes', 'break_started_at', 'break_time_ms', 'actual_end_time', 'actual_study_seconds']) delete block[key];
   s.pick(legacyV2); await s.importBackup('user');
+  assert.equal((await s.db.getFirstAsync('SELECT * FROM Subject LIMIT 1')).subject_code, 'GEN-101');
   assert.equal((await s.db.getFirstAsync('SELECT * FROM StudyBlock LIMIT 1')).actual_start_time, null);
   const before = await snapshot(s);
+  for (const subject_code of ['', null, 'a'.repeat(33), 'DROP; TABLE']) {
+    const invalid = structuredClone(exported); invalid.data.subjects[0].subject_code = subject_code;
+    s.pick(invalid); await assert.rejects(s.importBackup('user'));
+    assert.deepEqual(await snapshot(s), before);
+  }
   for (const value of ['', '#GG0000', '#FF0000,#00FF00,#0000FF', '#FF0000,#ff0000']) {
     const invalid = structuredClone(exported);
     invalid.data.subjects[0].field_colors = value;
@@ -258,7 +269,7 @@ for (const [name, change] of Object.entries(invalidCases)) {
   });
 }
 
-test('version 3 preserves paused timers and frozen actual totals through export and import', async t => {
+test('versions 3 and 4 preserve paused timers and frozen actual totals through export and import', async t => {
   const s = await setup(t);
   s.pick(fixture()); await s.importBackup('user');
   const task = await s.db.getFirstAsync('SELECT * FROM Task WHERE user_id = ?', 'user');
@@ -269,7 +280,7 @@ test('version 3 preserves paused timers and frozen actual totals through export 
     'done', '2026-10-22T10:00:00Z', '2026-10-22T10:20:00Z', 2, 120000, 1080)`, task.id);
   await s.exportBackup('user');
   const exported = JSON.parse(s.device.shares.at(-1).json);
-  assert.equal(exported.version, 3);
+  assert.equal(exported.version, 4);
   s.pick(exported); await s.importBackup('user');
   const active = await s.db.getFirstAsync("SELECT b.* FROM StudyBlock b JOIN Task t ON t.id = b.task_id WHERE t.user_id = ? AND b.status = 'active'", 'user');
   assert.equal(active.actual_start_time, '2026-10-22T12:13:00Z');
@@ -278,6 +289,14 @@ test('version 3 preserves paused timers and frozen actual totals through export 
   const done = await s.db.getFirstAsync("SELECT * FROM StudyBlock WHERE status = 'done'");
   assert.equal(done.actual_end_time, '2026-10-22T10:20:00Z'); assert.equal(done.actual_study_seconds, 1080);
   assert.equal(done.break_time_ms, 120000);
+  const legacyV3 = structuredClone(exported); legacyV3.version = 3;
+  for (const row of legacyV3.data.subjects) delete row.subject_code;
+  s.pick(legacyV3); await s.importBackup('user');
+  const legacyActive = await s.db.getFirstAsync("SELECT * FROM StudyBlock WHERE status = 'active'");
+  assert.equal(legacyActive.break_started_at, active.break_started_at);
+  assert.equal(legacyActive.break_time_ms, active.break_time_ms);
+  assert.equal((await s.db.getFirstAsync("SELECT * FROM StudyBlock WHERE status = 'done'")).actual_study_seconds, 1080);
+  assert.equal((await s.db.getFirstAsync('SELECT * FROM Subject LIMIT 1')).subject_code, 'GEN-101');
   const before = await snapshot(s);
   const invalidCases = [
     data => { data.studyBlocks.find(block => block.status === 'active').actual_start_time = null; },

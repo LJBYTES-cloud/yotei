@@ -54,6 +54,9 @@ Latest UX: shared cards have 24px vertical separation and 20px internal
 padding. Library uses horizontal shelves grouped by field_of_study (case-insensitive).
 Subject replaces color with field_of_study and comma-separated field_colors.
 Migration preserves IDs and dependencies, maps legacy colors to General, and drops color.
+Subject has subject_code TEXT, migrated in place with GEN-101 default. Codes normalize
+uppercase (1?32 letters/numbers plus spaces . / _ -). Add/Edit Subject includes the
+code; old updateSubject callers omitting it retain the current value.
 Add Subject takes field text and one/two choices from twelve color swatches in both themes.
 Each book has an accessible pencil action that opens the same EntrySheet pre-filled.
 updateSubject(userId, subjectId, {name, field_of_study, field_colors}) validates metadata
@@ -75,8 +78,11 @@ refreshes shared data; Library clears a deleted subject's filter. Cancel/failure
 keeps the editor/draft. Duplicate taps and competing saves are guarded.
 Run node --experimental-vm-modules --test tests/subject-deletion.test.cjs for
 the actual EntrySheet callback tests; SQL cascade coverage is in database.test.cjs.
-LinearGradient spines retain page/binding details and black titles on light paper labels
-in both themes; bookshelf/swatch colors are exceptions to light-mode monochrome chrome.
+Closed gradient spines show only subject_code rotated 90 degrees, with bindings/pages.
+Tap a spine to animate out its cover using standard Animated with reduced-motion support.
+The cover shows full name/code/task count, Return, and separate Edit controls. Revealing
+never filters; tapping the cover body does, with selected indicators. Show All Tasks
+resets filtering and closes the cover. Book/swatch colors remain exceptions in light mode.
 One-color spines get a subtle shade; two-color spines blend the selected pair.
 Task/block/review subject_color results derive the first field color; light markers stay black.
 Task cards no longer display non-editable estimated_minutes.
@@ -86,7 +92,11 @@ all Entry/Schedule/Completion sheets inherit it.
 
 Scheduler: native Start/End calendar and time controls using Expo-installed
 @react-native-community/datetimepicker 9.1.0. Dates can be next week or later;
-there are no manual text fields or Today/Tomorrow toggles. Android uses
+there are no Today/Tomorrow toggles. Optional Duration accepts 4h 30m / 45m / 2h or
+bare whole minutes and calculates End. Moving Start retains duration; editing End clears
+the shortcut. Invalid drafts block Save, including keyboard submission. Helpers
+parseStudyDuration/applyStudyDuration in utils/scheduling.js add elapsed minutes across
+midnight/DST and preserve the SQLite workload warning. Android uses
 imperative dialogs; iOS uses compact controls. DateTimeField owns the native UI.
 Default start is the next whole minute; end is prefilled from the existing
 30m suggestion, 5m coaching action, or original missed-block duration.
@@ -140,8 +150,9 @@ Elapsed seeded blocks are done so missed detection preserves the total.
 Data backup: Settings > Data Management exports/imports the five study
 collections with db/BackupService.js. expo-file-system uses SDK 57 File/Paths;
 expo-sharing and expo-document-picker provide native share/pick UI.
-JSON format is yotei.study-backup, exports version 3 (fields plus timer metadata),
-imports versions 1, 2 and 3, with a 20 MB limit. Old files get empty timer defaults;
+JSON format is yotei.study-backup, exports version 4 (codes/fields/timer metadata),
+imports versions 1?4 with a 20 MB limit. Versions 1?3 get GEN-101 codes; only
+versions 1/2 get empty timer defaults, while version-3 timer values are preserved;
 version 1 colors migrate to General. Validate timer states/totals and one active block.
 Validate before deletion; replace only the signed-in account atomically;
 allocate fresh IDs and remap every relation. Set rescheduled_from by UPDATE

@@ -39,7 +39,7 @@ export default function LibraryScreen() {
           </View>
           <Feedback />
           <View style={s.card}>
-            <View style={s.section}><FieldLabel label="Subject bookshelf" textStyle={s.sectionTitle} help="Subjects are grouped by field of study. Swipe to browse, tap a book to filter tasks, or use its pencil to edit. Tap the book again or Show All Tasks to reset." /><Text style={s.sectionCount}>{String(data.subjects.length).padStart(2, '0')}</Text></View>
+            <View style={s.section}><FieldLabel label="Subject bookshelf" textStyle={s.sectionTitle} help="Swipe through subject codes grouped by field. Tap a spine to reveal its cover, then tap the cover to filter tasks or its pencil to edit. Show All Tasks resets the filter." /><Text style={s.sectionCount}>{String(data.subjects.length).padStart(2, '0')}</Text></View>
             {data.subjects.length ? <SubjectBookshelf subjects={data.subjects} taskCounts={taskCounts} selectedId={subjectId}
               disabled={disabled} onSelect={setSubjectId} onEdit={openEditSubject} /> : <Text style={s.hint}>No subjects added.</Text>}
           </View>

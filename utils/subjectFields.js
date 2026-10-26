@@ -1,5 +1,15 @@
 export const DEFAULT_FIELD = 'General';
 export const DEFAULT_FIELD_COLORS = '#C2ACF3';
+export const DEFAULT_SUBJECT_CODE = 'GEN-101';
+
+/** @param {unknown} value */
+export function normalizeSubjectCode(value) {
+  const code = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (!code || code.length > 32 || !/^[A-Z0-9][A-Z0-9 ._\/-]*$/.test(code)) {
+    throw new Error('Enter a subject code of 1–32 letters or numbers, using spaces, hyphens, dots, slashes or underscores if needed.');
+  }
+  return code;
+}
 
 /** @param {unknown} value */
 export function normalizeFieldOfStudy(value) {

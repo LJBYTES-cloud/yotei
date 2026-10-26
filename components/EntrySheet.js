@@ -5,7 +5,7 @@ import { createSubject, deleteSubject, updateSubject } from '../db/SubjectServic
 import { createTask, updateTask } from '../db/TaskService';
 import { Button, FieldLabel, Input, Message, Pill, Sheet } from './ui';
 import { useTheme, useThemedStyles } from '../ThemeContext';
-import { firstFieldColor, normalizeFieldColors, normalizeFieldOfStudy } from '../utils/subjectFields';
+import { DEFAULT_SUBJECT_CODE, firstFieldColor, normalizeFieldColors, normalizeFieldOfStudy, normalizeSubjectCode } from '../utils/subjectFields';
 
 const subjectColors = [
   { name: 'Iris', color: '#C2ACF3' },
@@ -31,6 +31,7 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, edi
   const [name, setName] = useState(subjectToEdit?.name ?? taskToEdit?.title ?? '');
   const [subjectId, setSubjectId] = useState(taskToEdit?.subject_id ?? initialSubject ?? subjects[0]?.id ?? null);
   const [field, setField] = useState(subjectToEdit?.field_of_study ?? '');
+  const [code, setCode] = useState(subjectToEdit?.subject_code ?? DEFAULT_SUBJECT_CODE);
   const [colors, setColors] = useState(() => subjectToEdit ? normalizeFieldColors(subjectToEdit.field_colors).split(',') : [subjectColors[0].color]);
   // Imported/legacy colors must remain visible and selectable while editing.
   const storedColors = subjectToEdit ? normalizeFieldColors(subjectToEdit.field_colors).split(',') : [];
@@ -48,13 +49,13 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, edi
     if (kind === 'task' && subjectId === null) { setError('Create a subject before adding a task.'); return; }
     let subjectFields;
     if (kind === 'subject') {
-      try { subjectFields = { field_of_study: normalizeFieldOfStudy(field), field_colors: normalizeFieldColors(colors.join(',')) }; }
+      try { subjectFields = { subject_code: normalizeSubjectCode(code), field_of_study: normalizeFieldOfStudy(field), field_colors: normalizeFieldColors(colors.join(',')) }; }
       catch (validationError) { setError(/** @type {Error} */ (validationError).message); return; }
     }
     submitting.current = true; setBusy(true); setSaving(true);
     try {
       if (kind === 'subject') {
-        if (subjectToEdit) await updateSubject(userId, subjectToEdit.id, { name, .../** @type {{field_of_study: string, field_colors: string}} */ (subjectFields) });
+        if (subjectToEdit) await updateSubject(userId, subjectToEdit.id, { name, .../** @type {{subject_code: string, field_of_study: string, field_colors: string}} */ (subjectFields) });
         else await createSubject(userId, { name, ...subjectFields });
       }
       else if (taskToEdit) await updateTask(userId, taskToEdit.id, { title: name, subject_id: /** @type {number} */ (subjectId) });
@@ -87,6 +88,7 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, edi
     <Sheet kicker={kind === 'subject' ? 'SUBJECT' : 'TASK'} title={subjectToEdit ? 'Edit subject' : taskToEdit ? 'Edit task' : kind === 'subject' ? 'Add subject' : 'Add task'} onClose={onClose} busy={busy}>
       <Input label={kind === 'subject' ? 'Subject name' : 'Task title'} help={kind === 'subject' ? 'Subjects group related tasks and review topics.' : 'After saving, select Schedule in Library to plan this task.'} value={name} onChangeText={setName} placeholder={kind === 'subject' ? 'e.g. Architecture' : 'e.g. Read chapter 3'} maxLength={kind === 'subject' ? 128 : 256} editable={!busy} returnKeyType="done" onSubmitEditing={() => void save()} />
       {kind === 'subject' ? <>
+        <Input label="Subject code" help="A short code identifies the book on its spine, for example SE-101 or MATH-2." value={code} onChangeText={setCode} placeholder="e.g. SE-101" maxLength={32} autoCapitalize="characters" autoCorrect={false} editable={!busy} />
         <Input label="Field of Study" help="Subjects with the same field appear on the same shelf. You can combine fields, such as Biology, Chemistry." value={field} onChangeText={setField} placeholder="e.g. Biology, Chemistry" maxLength={128} editable={!busy} />
         <FieldLabel label="Field colors" help="Choose one or two colors. Select a chosen color to remove it; at least one must remain." />
         <View style={s.colorRow}>{colorOptions.map(option => {

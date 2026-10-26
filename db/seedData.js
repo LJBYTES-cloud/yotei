@@ -33,15 +33,15 @@ export async function seedDemoData(userId) {
     await transaction.runAsync('DELETE FROM Subject WHERE user_id = ?', userId);
 
     const subjects = [
-      { name: 'Mathematics', field_of_study: 'Mathematics', field_colors: '#C2ACF3' },
-      { name: 'Biology', field_of_study: 'Biology, Chemistry', field_colors: '#2DD4BF,#60A5FA' },
-      { name: 'History', field_of_study: 'Humanities', field_colors: '#FBBF24,#FB7185' },
+      { name: 'Mathematics', subject_code: 'MATH-2', field_of_study: 'Mathematics', field_colors: '#C2ACF3' },
+      { name: 'Biology', subject_code: 'BIO-101', field_of_study: 'Biology, Chemistry', field_colors: '#2DD4BF,#60A5FA' },
+      { name: 'History', subject_code: 'HIST-101', field_of_study: 'Humanities', field_colors: '#FBBF24,#FB7185' },
     ];
     /** @type {number[]} */
     const subjectIds = [];
     for (const subject of subjects) {
       const result = await transaction.runAsync(
-        'INSERT INTO Subject (user_id, name, field_of_study, field_colors) VALUES (?, ?, ?, ?)', userId, subject.name, subject.field_of_study, subject.field_colors,
+        'INSERT INTO Subject (user_id, name, subject_code, field_of_study, field_colors) VALUES (?, ?, ?, ?, ?)', userId, subject.name, subject.subject_code, subject.field_of_study, subject.field_colors,
       );
       subjectIds.push(result.lastInsertRowId);
     }

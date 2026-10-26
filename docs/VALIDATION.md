@@ -1,5 +1,15 @@
 # Validation snapshot
 
+## Subject-code spines, animated covers, and typed durations (2026-10-26)
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.
+- All eight test suites: 129 cases total, 128 passed, 0 failed, 1 New York-specific DST case skipped in Asia/Singapore. Command: `node --experimental-vm-modules --test tests/database.test.cjs tests/backup.test.cjs tests/task-library.test.cjs tests/subject-deletion.test.cjs tests/focus-timer.test.cjs tests/auth.test.cjs tests/theme.test.cjs tests/web-platform.test.cjs`.
+- Database suite with `TZ=America/New_York`: 61 passed, 0 failed/skipped. Coverage includes strict duration parsing, overnight/DST elapsed addition, a typed 270-minute SQLite workload warning/override, normalized owned subject-code creation/editing, omitted-code update preservation, and migration/reopening with GEN-101 and linked records intact.
+- Backup tests verify version-4 code/field round trips, invalid-code rejection without replacement, version-1/2 defaults, and version-3 paused/completed timer preservation with default codes.
+- Actual-component bridge tests verify code prefill/save; code-only spines; separate reveal/filter/edit/return/reset callbacks and selected state; duration-to-End updates; Start changes; End override; invalid keyboard submission; frozen workload confirmation; and reschedule options. These tests substitute native UI/animation bridges and do not verify rendered animation smoothness.
+- `npx.cmd expo export --platform android --platform ios --output-dir .expo/bookshelf-duration-verification`: passed, using `src/app/` routes. No dependency/config changes were required; animations use standard React Native Animated.
+- Verify the shelf animation, long/scaled titles and codes, narrow devices, reduced-motion settings, keyboard/picker interaction, and native share/import on a physical device using DEMO_AND_TESTING.md. Bundle exports confirm compilation/assets, not these native interactions.
+
 ## Task editing/deletion and Library missed badge (2026-10-26)
 
 - `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.

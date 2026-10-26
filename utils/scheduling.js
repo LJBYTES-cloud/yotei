@@ -5,6 +5,27 @@ function validDate(value) {
   return Object.prototype.toString.call(value) === '[object Date]' && Number.isFinite(/** @type {Date} */ (value).getTime());
 }
 
+/** Whole minutes, optionally expressed as hours and minutes. @param {string} input */
+export function parseStudyDuration(input) {
+  const text = typeof input === 'string' ? input.trim().toLowerCase() : '';
+  const parts = /^(?:(\d+)\s*h\s*)?(?:(\d+)\s*m)?$/.exec(text);
+  const minutes = /^\d+$/.test(text) ? Number(text) : parts ? Number(parts[1] ?? 0) * 60 + Number(parts[2] ?? 0) : NaN;
+  if (!Number.isSafeInteger(minutes) || minutes <= 0 || !Number.isSafeInteger(minutes * 60000)) {
+    throw new Error('Enter a positive duration such as 4h 30m, 45m, or 2h.');
+  }
+  return minutes;
+}
+
+/** Use elapsed minutes so overnight and DST windows retain the requested length.
+ * @param {StudyWindow} window @param {string} input @returns {StudyWindow}
+ */
+export function applyStudyDuration(window, input) {
+  if (!validDate(window.start)) throw new Error('Choose a valid start date and time.');
+  const end = new Date(window.start.getTime() + parseStudyDuration(input) * 60000);
+  if (!validDate(end)) throw new Error('The session duration is too long. Choose a shorter session.');
+  return { start: window.start, end };
+}
+
 /** Suggestions retain coaching/original duration without limiting the calendar.
  * @param {Date} now @param {number} [initialDuration] @returns {StudyWindow}
  */

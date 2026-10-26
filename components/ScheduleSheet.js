@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 import { Keyboard, StyleSheet, Text, View } from 'react-native';
 import { createStudyBlock, rescheduleStudyBlock } from '../db/StudyBlockService';
 import { StudyLoadWarning } from '../db/StudyLoadService';
-import { buildStudyTimes, getInitialStudyWindow, updateStudyWindow } from '../utils/scheduling';
-import { Button, FieldLabel, Message, Sheet } from './ui';
+import { applyStudyDuration, buildStudyTimes, getInitialStudyWindow, updateStudyWindow } from '../utils/scheduling';
+import { Button, FieldLabel, Input, Message, Sheet } from './ui';
 import DateTimeField from './DateTimeField';
 import { formatMinutes } from './theme';
 import { useThemedStyles } from '../ThemeContext';
@@ -13,10 +13,27 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
   const s = useThemedStyles(createStyles);
   const [window, setWindow] = useState(() => getInitialStudyWindow(new Date(), initialDuration));
   const windowRef = useRef(window);
+  const [duration, setDuration] = useState('');
+  const durationRef = useRef('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState(/** @type {{ days: import('../db/StudyLoadService').StudyLoad[], times: {start_time: string, end_time: string} } | null} */ (null));
   const submitting = useRef(false);
+  let durationError = '';
+  if (duration.trim()) {
+    try { applyStudyDuration(window, duration); }
+    catch (cause) { durationError = cause instanceof Error ? cause.message : 'Enter a valid duration.'; }
+  }
+
+  /** @param {string} value */
+  function changeDuration(value) {
+    durationRef.current = value; setDuration(value); setError('');
+    if (!value.trim()) return;
+    try {
+      const next = applyStudyDuration(windowRef.current, value);
+      windowRef.current = next; setWindow(next);
+    } catch { /* Keep the draft and previous dates; invalid input cannot be saved. */ }
+  }
 
   /** @param {'start' | 'end'} field @param {Date} picked @param {'date' | 'time'} part */
   function changeWindow(field, picked, part) {
@@ -24,6 +41,8 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
       const next = updateStudyWindow(windowRef.current, field, part, picked);
       windowRef.current = next;
       setWindow(next);
+      // Editing End directly takes precedence over the duration shortcut.
+      if (field === 'end') { durationRef.current = ''; setDuration(''); }
       setError('');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Choose a valid date and time.'); }
   }
@@ -40,7 +59,7 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
     try {
       const times = proceed && warning
         ? buildStudyTimes({ start: new Date(warning.times.start_time), end: new Date(warning.times.end_time) }, new Date())
-        : buildStudyTimes(windowRef.current, new Date());
+        : buildStudyTimes(durationRef.current.trim() ? applyStudyDuration(windowRef.current, durationRef.current) : windowRef.current, new Date());
       proposedTimes = times;
       const block = sourceBlock
         ? await rescheduleStudyBlock(userId, sourceBlock.id, new Date().toISOString(), { ...times, allowHeavyDay: proceed })
@@ -75,10 +94,12 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
         <>
           <DateTimeField label="Start" help="Choose any upcoming date and local time. Changing the start keeps the current session length."
             value={window.start} minimumDate={today} disabled={busy} onChange={(picked, part) => changeWindow('start', picked, part)} />
+          <Input label="Duration (optional)" help="Type 4h 30m, 45m, 2h, or a whole number of minutes to calculate End from Start. Moving Start keeps that duration; editing End clears this shortcut."
+            value={duration} onChangeText={changeDuration} placeholder="e.g. 4h 30m" autoCapitalize="none" autoCorrect={false} maxLength={40} editable={!busy} returnKeyType="done" onSubmitEditing={() => void submit()} />
           <DateTimeField label="End" help="Choose a date/time after the start. Overnight sessions can end on a later calendar date."
             value={window.end} minimumDate={firstEndDay} disabled={busy} onChange={(picked, part) => changeWindow('end', picked, part)} />
-          <Message text={error} />
-          <Button label={sourceBlock ? 'Reschedule session ↗' : 'Save session'} busy={busy} onPress={() => void submit()} />
+          <Message text={durationError || error} />
+          <Button label={sourceBlock ? 'Reschedule session ↗' : 'Save session'} disabled={Boolean(durationError)} busy={busy} onPress={() => void submit()} />
         </>
       )}
     </Sheet>

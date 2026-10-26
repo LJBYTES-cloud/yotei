@@ -349,6 +349,37 @@ File-by-file changes (one new file, no files deleted):
 | `docs/VALIDATION.md` | Recorded regression evidence and remaining native verification. |
 | `docs/CHANGELOG.md` | Recorded this feature and every changed/created file. |
 
+### Subject-code spines, animated front covers, and typed durations (2026-10-26)
+
+- Added Subject.subject_code with a GEN-101 default and retryable transactional migration preserving existing IDs and relations. Codes normalize uppercase, allow 1–32 letters/numbers and common separators, and are editable in the shared form. Older update callers that omit the code retain it. Demo books have distinct MATH-2, BIO-101 and HIST-101 codes.
+- Replaced full-name default books with narrow gradient spines showing only the code rotated 90 degrees. Tapping reveals a front cover via standard Animated width/tilt/lift; OS reduced motion snaps directly. The cover shows full name, code, task count, a separate pencil action and return control. Revealing never filters; tapping the cover body selects/deselects, with visible selection indicators. Show All Tasks resets filtering and closes the cover. Both themes keep colored gradients, binding/page details and wrapping cover titles.
+- Added optional duration text beside the existing native date/time controls. 4h 30m, 45m, 2h, or bare whole minutes compute End from Start. Moving Start keeps length; editing End clears the shortcut. Invalid drafts cannot save prior dates, including keyboard submission. Elapsed-time calculations retain overnight/DST behavior, workload confirmation and exactly-once rescheduling.
+- Backups now export version 4 with validated subject codes. Versions 1–3 remain importable with GEN-101 codes; version-3 timers are preserved, and only versions 1/2 receive empty timer defaults.
+- Verification: lint/typecheck, 128 passing tests with one timezone skip, 61 passing New York database tests, and Android/iOS bundle exports. Native visual/motion checks remain manual. No dependencies added, no files created or deleted.
+
+| File changed | Summary |
+| --- | --- |
+| `db/database.js` | Added subject_code to fresh schema and in-place transactional migration with GEN-101 defaults. |
+| `db/SubjectService.js` | Added normalized code create/read/update support; omitted code retains its previous value on update. |
+| `utils/subjectFields.js` | Added default code and shared code normalization/validation. |
+| `components/EntrySheet.js` | Added prefilled, keyboard-aware subject-code input and code validation in subject save flow. |
+| `db/BackupService.js` | Added version-4 code export/validation/import and version-1/2/3 conversion without resetting version-3 timers. |
+| `db/seedData.js` | Added distinct demo subject codes. |
+| `components/SubjectBookshelf.js` | Implemented vertical code-only spines, animated front covers, separate filter/edit/return actions, selected state, and reduced-motion support. |
+| `screens/LibraryScreen.js` | Updated compact bookshelf interaction guidance. |
+| `utils/scheduling.js` | Added strict duration parser and immutable elapsed-time duration-to-End helper. |
+| `components/ScheduleSheet.js` | Added optional duration input, live End calculation, manual-End precedence and invalid-draft save protection; preserved pickers and workload/reschedule flow. |
+| `tests/database.test.cjs` | Added code CRUD/ownership, migration defaults, parser/overflow/DST and duration-based workload coverage. |
+| `tests/backup.test.cjs` | Updated export-version expectations and added code round trips/invalid-code preservation and version-3 timer compatibility checks. |
+| `tests/task-library.test.cjs` | Extended the component hook/native bridges and added subject-code, spine/cover selection/edit, duration/precedence/validation/warning/reschedule tests. |
+| `README.md` | Updated bookshelf, code migration, duration and version-4 backup overview. |
+| `docs/PROJECT_CONTEXT.md` | Updated schema, API contracts, code normalization/migration, shelf interaction, duration rules and backup compatibility. |
+| `docs/NEXT_SESSION_PROMPT.md` | Updated continuation context for codes, covers, typed durations and backup versions. |
+| `docs/DATA_BACKUP.md` | Documented version-4 code field and version-1/2/3 compatibility. |
+| `docs/DEMO_AND_TESTING.md` | Updated coded-book walkthrough, reveal/filter/edit steps, typed duration and migration/restore/device checks. |
+| `docs/VALIDATION.md` | Recorded test/timezone/native-export evidence and physical-device limits. |
+| `docs/CHANGELOG.md` | Recorded this implementation and every changed file. |
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |
@@ -361,16 +392,16 @@ File-by-file changes (one new file, no files deleted):
 | Now / In 1 hour only | Native full-date selection; service retains its no-options 1-hour reschedule default |
 | Temporary Review recovery screen | Real due-topic spaced-repetition queue; missed blocks remain in Home |
 | Editorial/marketing slogans | Functional app copy plus the explicitly requested Home motto |
-| User-entered duration and Now/custom start form | Native Start/End dates and times; background workload calculation |
+| User-entered duration and Now/custom start form | Native full-date Start/End controls plus optional typed hours/minutes that calculate End |
 | Typed clocks with Today/Tomorrow toggles | Native calendar/time pickers for any upcoming date |
 | Long inline instructional paragraphs | Small info icons with native guidance popups; errors/warnings stay visible |
-| Horizontal subject pills / wrapping book grid in Library | Horizontal gradient shelves grouped by field of study; pill selectors remain in forms |
+| Horizontal subject pills / wrapping book grid in Library | Field-grouped horizontal shelves of code-only spines, revealing front covers for task filtering/editing |
 | Non-editable estimated minutes on task cards | Removed from UI; SQLite/backup field retained |
 | Monochrome books / hidden light-mode color chooser | Colored gradient books in both themes; explicit one/two-color field swatches; monochrome light chrome and task/review markers |
 | Subject.color | Subject.field_of_study and comma-separated field_colors; legacy colors preserved under General |
 | Theme preference only in memory | AsyncStorage restoration before screens mount and ordered preference saves |
 | Mark Done directly from a scheduled card | Start Session, durable work/break timer, Finish Session with actual totals and optional review prompt |
-| Backup version 2 | Version 3 includes timer metadata; versions 1/2 still import |
+| Backup versions 1–3 | Version 4 adds subject_code; older versions still import with code defaults and compatible timer metadata |
 
 ## Git checkpoints present at handoff
 

@@ -584,6 +584,56 @@ test('subject fields normalize, persist, and supply the first gradient color acr
   assert.match(single[1], /^#[0-9A-F]{6}$/);
 });
 
+test('subject codes normalize, persist, edit safely and retain their value for older update callers', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Software Engineering', subject_code: ' se-101 ' });
+  assert.equal(subject.subject_code, 'SE-101');
+  const input = { name: subject.name, field_of_study: subject.field_of_study, field_colors: subject.field_colors };
+  let updated = await s.updateSubject('owner', subject.id, { ...input, subject_code: ' se-201 ' });
+  assert.equal(updated.subject_code, 'SE-201');
+  updated = await s.updateSubject('owner', subject.id, input);
+  assert.equal(updated.subject_code, 'SE-201');
+  assert.equal((await s.getSubjectsForUser('owner'))[0].subject_code, 'SE-201');
+  for (const subject_code of ['', ' ', null, 123, 'a'.repeat(33), 'ABC\nDEF', 'DROP; TABLE']) {
+    await assert.rejects(s.createSubject('owner', { name: 'Invalid', subject_code }));
+    await assert.rejects(s.updateSubject('owner', subject.id, { ...input, subject_code }));
+  }
+  await assert.rejects(s.updateSubject('other', subject.id, { ...input, subject_code: 'TAKEN' }));
+  assert.equal((await s.getSubjectsForUser('owner'))[0].subject_code, 'SE-201');
+  assert.equal((await s.createSubject('owner', { name: 'Default' })).subject_code, 'GEN-101');
+});
+
+test('typed durations accept hours/minutes, reject invalid drafts and preserve elapsed time across dates and DST', async t => {
+  const s = await loadServices(); t.after(s.close);
+  for (const [input, minutes] of [['4h 30m', 270], ['45m', 45], ['2h', 120], [' 2H 15M ', 135], ['4h30m', 270], ['45', 45], ['0h 5m', 5]]) {
+    assert.equal(s.parseStudyDuration(input), minutes);
+  }
+  for (const invalid of ['', ' ', '-5', '-5m', '1.5h', '0m', '0h', 'abc', '2h -1m', '1h 2h', '5m 1h', 'Infinity', '999999999999999999h']) {
+    assert.throws(() => s.parseStudyDuration(invalid), /positive duration/);
+  }
+  for (const start of ['2026-10-20T23:30:00+08:00', '2026-03-08T01:30:00-05:00', '2026-11-01T01:30:00-04:00']) {
+    const window = { start: new Date(start), end: new Date(Date.parse(start) + 60000) };
+    const originalEnd = window.end.getTime();
+    const updated = s.applyStudyDuration(window, '2h');
+    assert.equal(updated.end.getTime() - updated.start.getTime(), 120 * 60000);
+    assert.equal(window.end.getTime(), originalEnd);
+  }
+  assert.throws(() => s.applyStudyDuration({ start: new Date('invalid') }, '2h'), /valid start/);
+  assert.throws(() => s.applyStudyDuration({ start: new Date('2026-10-20') }, '150119987000m'), /too long/);
+});
+
+test('a typed 4h 30m session triggers the SQLite workload warning and saves only after override', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Math', subject_code: 'MATH-2' });
+  const task = await s.createTask('owner', { subject_id: subject.id, title: 'Revision' });
+  const window = s.applyStudyDuration({ start: new Date('2026-11-05T09:00:00Z') }, '4h 30m');
+  const times = s.buildStudyTimes(window, new Date('2026-11-01T08:00:00Z'));
+  await assert.rejects(s.createStudyBlock('owner', { task_id: task.id, ...times }), error => error.name === 'StudyLoadWarning');
+  assert.equal((await s.getStudyBlocksForUser('owner')).length, 0);
+  const block = await s.createStudyBlock('owner', { task_id: task.id, ...times }, { allowHeavyDay: true });
+  assert.equal((Date.parse(block.end_time) - Date.parse(block.start_time)) / 60000, 270);
+});
+
 test('editing a subject preserves its ID and linked records while refreshing joined names and colors', async t => {
   const s = await loadServices();
   t.after(s.close);
@@ -1045,6 +1095,7 @@ test('migrates legacy planned blocks without losing data and can reopen safely',
   const migrated = await first.getStudyBlocksForUser('user-a');
   const migratedSubject = (await first.getSubjectsForUser('user-a'))[0];
   assert.equal(migratedSubject.id, 1);
+  assert.equal(migratedSubject.subject_code, 'GEN-101');
   assert.equal(migratedSubject.field_of_study, 'General');
   assert.equal(migratedSubject.field_colors, '#B8A0F5');
   assert.equal(migrated[0].subject_color, '#B8A0F5');
