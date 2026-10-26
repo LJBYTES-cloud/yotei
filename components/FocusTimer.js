@@ -1,3 +1,4 @@
+import { fonts, typeScale, typeLeading } from './typography';
 import { useCallback, useState } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -32,16 +33,16 @@ export default function FocusTimer({ block }) {
   const working = workingBlock === block.id;
   return <View style={[s.card, t.card]}>
     <View style={s.cardTop}><View style={[s.dot, { backgroundColor: subjectColor(block.subject_color) }]} /><Text style={s.subject}>{block.subject_name}</Text>
-      <Text style={[s.badge, s.activeBadge]}>{onBreak ? 'On break' : 'Active'}</Text></View>
+      <Text style={[s.badge, s.activeBadge]}>{onBreak ? 'On Break' : 'Active'}</Text></View>
     <Text style={s.title}>{block.task_title}</Text>
     {timing.startedLate && <View style={t.lateRow}><Ionicons name="time-outline" size={14} color={p.warm} /><Text style={t.late}>{timing.lateMinutes === 0 ? 'Started less than a minute late' : `Started ${timing.lateMinutes} ${timing.lateMinutes === 1 ? 'minute' : 'minutes'} late`}</Text></View>}
     <View style={t.clock}>
-      <Text style={t.label}>{onBreak ? 'BREAK' : 'WORK'}</Text>
+      <Text style={t.label}>{onBreak ? 'Break' : 'Work'}</Text>
       <Text style={t.elapsed} accessibilityLabel={`${onBreak ? 'Break' : 'Work'} time ${formatElapsed(onBreak ? timing.currentBreakSeconds : timing.workSeconds)}`}>
         {formatElapsed(onBreak ? timing.currentBreakSeconds : timing.workSeconds)}</Text>
       <Text style={s.hint}>{onBreak ? `${formatElapsed(timing.workSeconds)} studied · work paused` : 'elapsed'}</Text>
     </View>
-    <Text style={t.breakTotal}>Total breaks: {formatElapsed(timing.breakSeconds)}</Text>
+    <Text style={t.breakTotal}>Total Breaks: {formatElapsed(timing.breakSeconds)}</Text>
     <View style={t.actions}>
       <Button label={onBreak ? 'Resume Work' : 'Take Break'} disabled={disabled} busy={working && workingTimerAction !== 'finish'}
         onPress={() => void controlTimer(block.id, onBreak ? 'resume' : 'break')} />
@@ -53,9 +54,9 @@ export default function FocusTimer({ block }) {
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
   card: { borderColor: p.accent },
-  lateRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16 }, late: { color: p.warm, fontSize: 12, flexShrink: 1 },
+  lateRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16 }, late: { fontFamily: fonts.body, color: p.warm, fontSize: typeScale.small, lineHeight: typeLeading.small, flexShrink: 1 },
   clock: { alignItems: 'center', paddingVertical: 28, gap: 8 },
-  label: { color: p.accent, fontSize: 11, fontWeight: '700', letterSpacing: 1.4 },
-  elapsed: { color: p.text, fontSize: 48, fontWeight: '700', letterSpacing: -1, fontVariant: ['tabular-nums'] },
-  breakTotal: { color: p.muted, fontSize: 12, textAlign: 'center', marginBottom: 24 }, actions: { gap: 16 },
+  label: { fontFamily: fonts.bold, color: p.accent, fontSize: typeScale.small, lineHeight: typeLeading.small, fontWeight: 'normal', letterSpacing: 1.4 },
+  elapsed: { fontFamily: fonts.bold, color: p.text, fontSize: typeScale.metric, lineHeight: typeLeading.metric, fontWeight: 'normal', letterSpacing: -1, fontVariant: ['tabular-nums'] },
+  breakTotal: { fontFamily: fonts.body, color: p.muted, fontSize: typeScale.small, lineHeight: typeLeading.small, textAlign: 'center', marginBottom: 24 }, actions: { gap: 16 },
 });

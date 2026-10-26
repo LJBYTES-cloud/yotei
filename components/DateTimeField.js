@@ -1,3 +1,4 @@
+import { fonts, typeScale, typeLeading } from './typography';
 import { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
@@ -65,7 +66,7 @@ const createStyles = p => StyleSheet.create({
   field: { marginBottom: 24 }, controls: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   dateButton: { flexGrow: 1, minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: p.input, borderWidth: 1, borderColor: p.line, borderRadius: 12, padding: 12 },
   timeButton: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: p.input, borderWidth: 1, borderColor: p.line, borderRadius: 12, padding: 12 },
-  value: { color: p.text, fontSize: 15, fontWeight: '600', flexShrink: 1, fontVariant: ['tabular-nums'] },
+  value: { fontFamily: fonts.semibold, color: p.text, fontSize: typeScale.body, lineHeight: typeLeading.body, fontWeight: 'normal', flexShrink: 1, fontVariant: ['tabular-nums'] },
   iosControls: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 8, paddingHorizontal: 4, backgroundColor: p.input, borderRadius: 12, borderWidth: 1, borderColor: p.line },
   pressed: { opacity: 0.7 }, disabled: { opacity: 0.5 },
 });

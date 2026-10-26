@@ -5,6 +5,7 @@ import { USE_REAL_AUTH } from '../auth';
 import { useSession } from '../auth/SessionContext';
 import { getLocalDateKey } from '../db/dateUtils';
 import { deleteTask } from '../db/TaskService';
+import { deleteSubject } from '../db/SubjectService';
 import { useTheme } from '../ThemeContext';
 import { finishStudyBlock, pauseStudyBlock, resumeStudyBlock, startStudyBlock } from '../db/StudyBlockService';
 import { seedDemoData } from '../db/seedData';
@@ -31,9 +32,11 @@ function useWorkspaceState(user) {
   const { blocks, refresh } = data;
   const [entry, setEntry] = useState(/** @type {'task' | 'subject' | null} */ (null));
   const [initialSubject, setInitialSubject] = useState(/** @type {number | null} */ (null));
+  const [initialField, setInitialField] = useState('');
   const [editingSubject, setEditingSubject] = useState(/** @type {import('../db/SubjectService').Subject | null} */ (null));
   const [editingTask, setEditingTask] = useState(/** @type {import('../db/TaskService').Task | null} */ (null));
   const [deletingTask, setDeletingTask] = useState(/** @type {number | null} */ (null));
+  const [deletingSubject, setDeletingSubject] = useState(/** @type {number | null} */ (null));
   const [schedule, setSchedule] = useState(/** @type {Schedule | null} */ (null));
   const [reviewPrompt, setReviewPrompt] = useState(/** @type {StudyBlock | null} */ (null));
   const [workingBlock, setWorkingBlock] = useState(/** @type {number | null} */ (null));
@@ -44,12 +47,17 @@ function useWorkspaceState(user) {
   const [backupAction, setBackupAction] = useState(/** @type {'export' | 'import' | null} */ (null));
   // Full data replacements invalidate subject selections and unfinished topics.
   const [demoRevision, setDemoRevision] = useState(0);
-  const [notice, setNotice] = useState('');
+  const [notice, setNoticeValue] = useState('');
+  const [noticeId, setNoticeId] = useState(0);
+  const setNotice = useCallback((/** @type {string} */ message) => {
+    setNoticeValue(message); setNoticeId(id => id + 1);
+  }, []);
+  const dismissNotice = useCallback(() => setNoticeValue(''), []);
   const [actionError, setActionError] = useState('');
   const mutation = useRef(false);
   const busyRef = useRef(false);
   const mounted = useRef(false);
-  const busy = signingOut || workingBlock !== null || deletingTask !== null || seeding || backupAction !== null || addingReview || workingReview !== null;
+  const busy = signingOut || workingBlock !== null || deletingTask !== null || deletingSubject !== null || seeding || backupAction !== null || addingReview || workingReview !== null;
   const disabled = busy || !data.ready || data.refreshing;
   const blocked = busy || entry !== null || schedule !== null || reviewPrompt !== null;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -164,7 +172,7 @@ function useWorkspaceState(user) {
       await data.refresh();
       if (mounted.current) {
         setDemoRevision(value => value + 1);
-        setNotice('Demo loaded: 3 subjects, 6 tasks, 3 due reviews, and 4 hours of study sessions today.');
+        setNotice('Demo loaded: 3 subjects, 6 tasks, 3 due reviews, 6 previous study days, and 4 hours planned today.');
         router.navigate('/');
       }
     } catch {
@@ -222,55 +230,69 @@ function useWorkspaceState(user) {
     setSchedule({ task: { id: block.task_id, title: block.task_title, subject_name: block.subject_name }, sourceBlock: block,
       initialDuration: Math.max(1, Math.round((Date.parse(block.end_time) - Date.parse(block.start_time)) / 60000)) });
   }
-  /** @param {'subject' | 'task'} kind @param {number | null} [subjectId] */
-  function openEntry(kind, subjectId = null) {
+  /** @param {'subject' | 'task'} kind @param {number | null} [subjectId] @param {string} [fieldOfStudy] */
+  function openEntry(kind, subjectId = null, fieldOfStudy = '') {
     if (disabled || busyRef.current) return;
-    busyRef.current = true; setEditingSubject(null); setEditingTask(null); setInitialSubject(subjectId); setEntry(kind); setActionError('');
+    busyRef.current = true; setEditingSubject(null); setEditingTask(null); setInitialSubject(subjectId); setInitialField(kind === 'subject' ? fieldOfStudy : ''); setEntry(kind); setActionError(''); setNotice('');
   }
   /** @param {import('../db/SubjectService').Subject} subject */
   function openEditSubject(subject) {
     if (disabled || busyRef.current || subject.user_id !== user.id) return;
-    busyRef.current = true; setEditingSubject(subject); setEditingTask(null); setInitialSubject(null); setEntry('subject'); setActionError('');
+    busyRef.current = true; setEditingSubject(subject); setEditingTask(null); setInitialSubject(null); setInitialField(''); setEntry('subject'); setActionError(''); setNotice('');
   }
   /** @param {import('../db/TaskService').Task} task */
   function openEditTask(task) {
     if (disabled || busyRef.current || task.user_id !== user.id) return;
-    busyRef.current = true; setEditingTask(task); setEditingSubject(null); setInitialSubject(null); setEntry('task'); setActionError('');
+    busyRef.current = true; setEditingTask(task); setEditingSubject(null); setInitialSubject(null); setInitialField(''); setEntry('task'); setActionError('');
   }
-  /** @param {import('../db/TaskService').Task} task */
-  function confirmDeleteTask(task) {
-    if (mutation.current || disabled || busyRef.current || task.user_id !== user.id) return;
-    mutation.current = true; busyRef.current = true; setDeletingTask(task.id); setActionError(''); setNotice('');
+  /** @param {import('../db/TaskService').Task | import('../db/SubjectService').Subject} record @param {'task' | 'subject'} kind */
+  function confirmDeleteRecord(record, kind) {
+    if (mutation.current || disabled || busyRef.current || record.user_id !== user.id) return;
+    const setDeleting = kind === 'task' ? setDeletingTask : setDeletingSubject;
+    const label = kind === 'task' ? 'Task' : 'Subject';
+    mutation.current = true; busyRef.current = true; setDeleting(record.id); setActionError(''); setNotice('');
     let started = false, settled = false;
     const release = () => {
       settled = true; mutation.current = false; busyRef.current = false;
-      if (mounted.current) setDeletingTask(null);
+      if (mounted.current) setDeleting(null);
     };
     const cancel = () => { if (!started && !settled) release(); };
     const remove = async () => {
       if (started || settled || !mounted.current) return;
       started = true;
       try {
-        await deleteTask(user.id, task.id);
+        await (kind === 'task' ? deleteTask(user.id, record.id) : deleteSubject(user.id, record.id));
         if (!mounted.current) return;
-        setNotice('Task deleted.');
+        setNotice(`${label} deleted.`);
         await data.refresh();
       } catch {
-        if (mounted.current) setActionError('Could not delete this task. Refresh and try again.');
+        if (mounted.current) setActionError(`Could not delete this ${kind}. Refresh and try again.`);
       } finally { release(); }
     };
-    Alert.alert('Delete Task', 'Are you sure you want to delete this task? All associated study blocks will also be permanently deleted. Subject reviews and materials will be kept.', [
+    const message = kind === 'task'
+      ? 'Are you sure you want to delete this task? All associated study blocks will also be permanently deleted. Subject reviews and materials will be kept.'
+      : 'Are you sure you want to delete this subject? All associated tasks and reviews will also be permanently deleted.';
+    Alert.alert(`Delete ${label}`, message, [
       { text: 'Cancel', style: 'cancel', onPress: cancel },
       { text: 'Delete', style: 'destructive', onPress: () => { void remove(); } },
     ], { cancelable: true, onDismiss: cancel, userInterfaceStyle: isDark ? 'dark' : 'light' });
   }
+  /** @param {import('../db/TaskService').Task} task */
+  function confirmDeleteTask(task) { confirmDeleteRecord(task, 'task'); }
+  /** @param {import('../db/SubjectService').Subject} subject */
+  function confirmDeleteSubject(subject) { confirmDeleteRecord(subject, 'subject'); }
+  function savedEntry() {
+    setEntry(null);
+    setNotice(entry === 'task' ? editingTask ? 'Task updated.' : 'Task created.' : '');
+    void data.refresh();
+  }
   return {
     user, data, clock, today, disabled, blocked, workingBlock, workingTimerAction, seeding, demoRevision, addingReview, workingReview, addReview, review,
-    notice, dismissNotice: () => setNotice(''), error: data.error || actionError,
+    notice, noticeId, dismissNotice, error: data.error || actionError,
     refresh: refreshData, refreshInBackground,
-    complete, controlTimer, loadDemoData, backupAction, manageBackup, openEntry, openEditSubject, openEditTask, confirmDeleteTask, deletingTask, openSchedule, openReschedule,
+    complete, controlTimer, loadDemoData, backupAction, manageBackup, openEntry, openEditSubject, openEditTask, confirmDeleteTask, deletingTask, confirmDeleteSubject, deletingSubject, savedEntry, openSchedule, openReschedule,
     signingOut, signOutError, signOut: () => { if (!busyRef.current) void signOut(); },
-    entry, initialSubject, editingSubject, editingTask, schedule, setEntry, setSchedule, setNotice, savedSession,
+    entry, initialSubject, initialField, editingSubject, editingTask, schedule, setEntry, setSchedule, setNotice, savedSession,
     reviewPrompt, addCompletedReview, dismissReviewPrompt,
   };
 }
@@ -288,12 +310,8 @@ function WorkspaceContent({ user, children }) {
   return (
     <StudyContext.Provider value={study}>
       {children}
-      {study.entry && <EntrySheet key={study.editingSubject ? `edit-subject-${study.editingSubject.id}` : study.editingTask ? `edit-task-${study.editingTask.id}` : study.entry} kind={study.entry} userId={study.user.id} subjects={study.data.subjects} initialSubject={study.initialSubject} editingSubject={study.editingSubject} editingTask={study.editingTask}
-        onClose={() => study.setEntry(null)} onSaved={() => {
-          study.setEntry(null);
-          study.setNotice(study.editingSubject ? 'Subject updated.' : study.editingTask ? 'Task updated.' : study.entry === 'subject' ? 'Subject created.' : 'Task created.');
-          void study.data.refresh();
-        }} onDeleted={() => {
+      {study.entry && <EntrySheet key={study.editingSubject ? `edit-subject-${study.editingSubject.id}` : study.editingTask ? `edit-task-${study.editingTask.id}` : study.entry} kind={study.entry} userId={study.user.id} subjects={study.data.subjects} initialSubject={study.initialSubject} initialField={study.initialField} editingSubject={study.editingSubject} editingTask={study.editingTask}
+        onClose={() => study.setEntry(null)} onSaved={study.savedEntry} onDeleted={() => {
           study.setEntry(null);
           study.setNotice('Subject deleted.');
           void study.data.refresh();

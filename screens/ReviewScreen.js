@@ -1,4 +1,5 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react';
+import { fonts, typeScale, typeLeading } from '../components/typography';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useScrollToTop } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,7 +22,7 @@ function DueReviewCard({ item }) {
   return <View style={s.card}>
     <View style={s.cardTop}><View style={[s.dot, { backgroundColor: subjectColor(item.subject_color) }]} /><Text style={s.subject}>{item.subject_name}</Text></View>
     <Text style={s.title}>{item.topic}</Text>
-    <Text style={r.dueDate}>{item.next_review_at ? `Due: ${new Date(item.next_review_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Not reviewed yet'}</Text>
+    <Text style={r.dueDate}>{item.next_review_at ? `Due: ${new Date(item.next_review_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Not Reviewed Yet'}</Text>
     <View style={r.ratings}>{difficulties.map(difficulty => <View key={difficulty} style={s.flex}>
       <Button label={difficulty} accessibilityLabel={`Rate ${item.topic} ${difficulty}`}
         compact tone="quiet" disabled={disabled}
@@ -67,9 +68,9 @@ export default function ReviewScreen() {
       <FlatList ref={list} data={data.reviews} contentContainerStyle={s.content} keyExtractor={item => String(item.id)}
         refreshing={data.refreshing && data.ready} onRefresh={refresh} initialNumToRender={6} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
         ListHeaderComponent={<>
-          <ScreenHeader title="Review" edition="SPACED REPETITION" subtitle="Add topics and rate your recall to schedule the next review." />
+          <ScreenHeader title="Review" edition="Spaced Repetition" subtitle="Add topics and rate your recall to schedule the next review." />
           <View style={s.card}>
-            <View style={s.section}><Text style={s.sectionTitle}>Add a review topic</Text></View>
+            <View style={s.section}><Text style={s.sectionTitle}>Add a Review Topic</Text></View>
             {data.subjects.length > 0 ? <>
               <FieldLabel label="Subject" help="Each review topic belongs to the selected subject." />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={r.subjects}>
@@ -78,7 +79,7 @@ export default function ReviewScreen() {
               <Input label="Topic" help="Add a concept you want to recall later. New topics are immediately due." placeholder="e.g. Cell division" value={topic} onChangeText={setTopic} maxLength={256} editable={!disabled} returnKeyType="done" onSubmitEditing={() => void submit()} />
               <Message text={error} />
               <Button label="Add to Queue" busy={addingReview} disabled={disabled} onPress={() => void submit()} />
-            </> : <View style={r.noSubjects}><Text style={s.hint}>{data.ready ? 'Create a subject before adding topics to the queue.' : 'Loading subjects…'}</Text><Button label="Create subject" disabled={disabled} onPress={() => openEntry('subject')} /></View>}
+            </> : <View style={r.noSubjects}><Text style={s.hint}>{data.ready ? 'Create a subject before adding topics to the queue.' : 'Loading subjects…'}</Text><Button label="Create Subject" disabled={disabled} onPress={() => openEntry('subject')} /></View>}
           </View>
           <Feedback />
           <View style={s.card}><View style={s.section}><Text style={s.sectionTitle}>Due Reviews</Text><Text style={s.sectionCount}>{data.reviews.length}</Text></View></View>
@@ -94,6 +95,6 @@ export default function ReviewScreen() {
 const createStyles = p => StyleSheet.create({
   keyboard: { flex: 1 },
   subjects: { gap: 12, paddingBottom: 16 }, noSubjects: { gap: 12 },
-  dueDate: { color: p.muted, fontSize: 12, lineHeight: 20, marginTop: 12 },
+  dueDate: { fontFamily: fonts.body, color: p.muted, fontSize: typeScale.small, lineHeight: typeLeading.small, marginTop: 12 },
   ratings: { flexDirection: 'row', gap: 8, marginTop: 16 },
 });

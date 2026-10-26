@@ -1,20 +1,23 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, useThemedStyles } from '../ThemeContext';
+import { fonts, typeScale, typeLeading } from './typography';
+import InfoModal from './InfoModal';
 
 const SheetInputContext = createContext(/** @type {((input: import('react-native').TextInput | null) => void) | null} */ (null));
 
 /** @param {{title: string, message: string}} props */
 export function InfoButton({ title, message }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const s = useThemedStyles(createStyles);
-  return <Pressable accessibilityRole="button" accessibilityLabel={`Information about ${title}`} hitSlop={6}
-    onPress={() => Alert.alert(title, message, [{ text: 'OK' }], { cancelable: true, userInterfaceStyle: isDark ? 'dark' : 'light' })}
+  const [open, setOpen] = useState(false);
+  return <><Pressable accessibilityRole="button" accessibilityLabel={`Information about ${title}`} hitSlop={6}
+    onPress={() => setOpen(true)}
     style={({ pressed }) => [s.infoButton, pressed && s.pressed]}>
     <Ionicons name="information-circle-outline" size={19} color={colors.muted} />
-  </Pressable>;
+  </Pressable>{open && <InfoModal title={title} message={message} onClose={() => setOpen(false)} />}</>;
 }
 
 /** @param {{label: string, help?: string, textStyle?: import('react-native').StyleProp<import('react-native').TextStyle>}} props */
@@ -26,7 +29,7 @@ export function FieldLabel({ label, help, textStyle }) {
   </View>;
 }
 
-/** @param {{ label: string, accessibilityLabel?: string, onPress: () => void, busy?: boolean, disabled?: boolean, tone?: 'primary' | 'quiet' | 'outline', compact?: boolean }} props */
+/** @param {{ label: string, accessibilityLabel?: string, onPress: () => void, busy?: boolean, disabled?: boolean, tone?: 'primary' | 'quiet' | 'outline' | 'danger', compact?: boolean }} props */
 export function Button({ label, accessibilityLabel = label, onPress, busy = false, disabled = false, tone = 'primary', compact = false }) {
   const { colors: p } = useTheme();
   const s = useThemedStyles(createStyles);
@@ -34,7 +37,7 @@ export function Button({ label, accessibilityLabel = label, onPress, busy = fals
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ disabled: blocked, busy }} disabled={blocked} onPress={onPress}
       style={({ pressed }) => [s.button, s[tone], compact && s.compact, pressed && s.pressed, blocked && s.disabled]}>
-      {busy ? <ActivityIndicator color={tone === 'primary' ? p.onAccent : p.accent} /> : <Text style={[s.buttonText, tone !== 'primary' && s.lightButtonText]}>{label}</Text>}
+      {busy ? <ActivityIndicator color={tone === 'danger' ? p.error : tone === 'primary' ? p.onAccent : p.accent} /> : <Text style={[s.buttonText, tone !== 'primary' && s.lightButtonText, tone === 'danger' && s.dangerText]}>{label}</Text>}
     </Pressable>
   );
 }
@@ -148,22 +151,23 @@ const createStyles = p => StyleSheet.create({
   pressed: { opacity: 0.7 }, disabled: { opacity: 0.5 },
   button: { minHeight: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, paddingHorizontal: 16 },
   primary: { backgroundColor: p.accent, width: '100%', alignSelf: 'stretch' }, quiet: { backgroundColor: p.raised }, outline: { borderWidth: 1, borderColor: p.line },
+  danger: { backgroundColor: p.errorSoft, borderWidth: 1, borderColor: p.errorLine }, dangerText: { color: p.error },
   compact: { minHeight: 44, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 13 },
-  buttonText: { color: p.onAccent, fontSize: 14, fontWeight: '700' }, lightButtonText: { color: p.text },
+  buttonText: { fontFamily: fonts.bold, color: p.onAccent, fontSize: typeScale.button, lineHeight: typeLeading.button, fontWeight: 'normal' }, lightButtonText: { color: p.text },
   pill: { flexDirection: 'row', gap: 8, alignItems: 'center', minHeight: 44, borderWidth: 1, borderColor: p.line, borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10 },
-  pillSelected: { borderColor: p.accent, backgroundColor: p.accentSoft }, pillText: { color: p.muted, fontSize: 13, fontWeight: '500' }, pillTextSelected: { color: p.accent },
+  pillSelected: { borderColor: p.accent, backgroundColor: p.accentSoft }, pillText: { fontFamily: fonts.medium, color: p.muted, fontSize: typeScale.body, lineHeight: typeLeading.body, fontWeight: 'normal' }, pillTextSelected: { color: p.accent },
   dot: { width: 7, height: 7, borderRadius: 4 }, field: { marginBottom: 24 },
   labelRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 1, gap: 4, marginBottom: 8 },
-  labelText: { color: p.muted, fontSize: 12, fontWeight: '600', flexShrink: 1 }, infoButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  input: { minHeight: 52, backgroundColor: p.input, borderWidth: 1, borderColor: p.line, borderRadius: 10, color: p.text, fontSize: 16, padding: 12 },
-  inputFocused: { borderColor: p.accent }, message: { color: p.error, fontSize: 13, lineHeight: 20, marginBottom: 16 }, notice: { color: p.green },
+  labelText: { fontFamily: fonts.semibold, color: p.muted, fontSize: typeScale.small, lineHeight: typeLeading.small, fontWeight: 'normal', flexShrink: 1 }, infoButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  input: { fontFamily: fonts.body, minHeight: 52, backgroundColor: p.input, borderWidth: 1, borderColor: p.line, borderRadius: 10, color: p.text, fontSize: typeScale.body, lineHeight: typeLeading.body, padding: 12 },
+  inputFocused: { borderColor: p.accent }, message: { fontFamily: fonts.body, color: p.error, fontSize: typeScale.body, lineHeight: typeLeading.body, marginBottom: 16 }, notice: { color: p.green },
   modalRoot: { flex: 1, justifyContent: 'flex-end' }, backdrop: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: p.overlay },
   sheetContainer: { flex: 1, justifyContent: 'flex-end', width: '100%', maxWidth: 600, alignSelf: 'center' },
   sheet: { maxHeight: '94%', minHeight: 0, backgroundColor: p.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32, borderWidth: 1, borderColor: p.line, flexShrink: 1 },
   sheetScroll: { minHeight: 0, flexGrow: 0, flexShrink: 1 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: p.line, alignSelf: 'center', marginTop: 12, marginBottom: 8 },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24 }, sheetHeading: { flex: 1 },
-  kicker: { color: p.accent, letterSpacing: 2, fontSize: 10, fontWeight: '700', marginBottom: 9 }, sheetTitle: { color: p.text, fontSize: 28, lineHeight: 34, fontWeight: '600', letterSpacing: -0.8 },
-  close: { width: 44, height: 44, borderRadius: 22, backgroundColor: p.raised, alignItems: 'center', justifyContent: 'center' }, closeText: { color: p.muted, fontSize: 28, lineHeight: 32 },
+  kicker: { fontFamily: fonts.bold, color: p.accent, letterSpacing: 2, fontSize: typeScale.small, lineHeight: typeLeading.small, fontWeight: 'normal', marginBottom: 9 }, sheetTitle: { fontFamily: fonts.serifBold, color: p.text, fontSize: typeScale.h1, lineHeight: typeLeading.h1, fontWeight: 'normal', letterSpacing: -0.8 },
+  close: { width: 44, height: 44, borderRadius: 22, backgroundColor: p.raised, alignItems: 'center', justifyContent: 'center' }, closeText: { fontFamily: fonts.body, color: p.muted, fontSize: typeScale.h1, lineHeight: typeLeading.h1 },
   sheetContent: { paddingBottom: 32 }, sheetBody: { paddingHorizontal: 24 },
 });

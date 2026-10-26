@@ -45,3 +45,29 @@ export function fieldGradient(fieldColors) {
   }).join('');
   return [first, `#${shade.toUpperCase()}`];
 }
+
+/** Theme-only tint; never changes the stored field colors.
+ * @param {string} fieldColors @param {string | null} [background] @returns {[string, string]}
+ */
+export function bookGradient(fieldColors, background = null) {
+  const colors = fieldGradient(fieldColors);
+  if (!background) return colors;
+  const base = [1, 3, 5].map(offset => parseInt(background.slice(offset, offset + 2), 16));
+  return /** @type {[string, string]} */ (colors.map(color => {
+    const channels = [1, 3, 5].map(offset => parseInt(color.slice(offset, offset + 2), 16));
+    const luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    return '#' + channels.map((channel, index) => Math.round((channel * 0.55 + luminance * 0.45) * 0.42 + base[index] * 0.58).toString(16).padStart(2, '0')).join('').toUpperCase();
+  }));
+}
+
+/** Existing field labels, normalized and deduplicated case-insensitively.
+ * @param {{field_of_study: string}[]} subjects @returns {string[]}
+ */
+export function getFieldsOfStudy(subjects) {
+  const fields = new Map();
+  for (const subject of subjects) {
+    const name = normalizeFieldOfStudy(subject.field_of_study);
+    if (!fields.has(name.toLowerCase())) fields.set(name.toLowerCase(), name);
+  }
+  return Array.from(fields.values()).sort((a, b) => a.localeCompare(b));
+}

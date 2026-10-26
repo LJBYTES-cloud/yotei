@@ -1,3 +1,4 @@
+import { cardShadow, fonts, typeScale, typeLeading } from '../components/typography';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable,
@@ -133,7 +134,7 @@ export default function AuthScreen() {
                   </View>
                 ) : (
                   <>
-                    <Text style={styles.cardTitle}>Session restore failed</Text>
+                    <Text style={styles.cardTitle}>Session Restore Failed</Text>
                     <ErrorMessage message={restoreError} />
                     <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={retryRestore}>
                       <Text style={styles.primaryText}>Retry</Text>
@@ -144,8 +145,8 @@ export default function AuthScreen() {
             ) : (
               <>
                 <View style={styles.intro}>
-                  <Text style={styles.eyebrow}>ACCOUNT</Text>
-                  <View style={styles.titleRow}><Text style={[styles.heading, styles.flex]}>{isSignUp ? 'Create account' : 'Sign in'}</Text><InfoButton title="Your account" message="Access your subjects, tasks, study sessions, and review queue." /></View>
+                  <Text style={styles.eyebrow}>Account</Text>
+                  <View style={styles.titleRow}><Text style={[styles.heading, styles.flex]}>{isSignUp ? 'Create Account' : 'Sign In'}</Text><InfoButton title="Your Account" message="Access your subjects, tasks, study sessions, and review queue." /></View>
                 </View>
                 <View style={styles.card}>
                   <View style={styles.tabs} accessibilityRole="tablist">
@@ -156,14 +157,14 @@ export default function AuthScreen() {
                         disabled={working} onPress={() => changeMode(signUp)}
                         style={[styles.tab, isSignUp === signUp && styles.activeTab]}
                       >
-                        <Text style={[styles.tabText, isSignUp === signUp && styles.activeTabText]}>{signUp ? 'Create account' : 'Sign in'}</Text>
+                        <Text style={[styles.tabText, isSignUp === signUp && styles.activeTabText]}>{signUp ? 'Create Account' : 'Sign In'}</Text>
                       </Pressable>
                     ))}
                   </View>
-                  <View style={styles.cardTitleRow}><Text style={[styles.cardTitle, styles.flex]}>{isSignUp ? 'Account details' : 'Credentials'}</Text><InfoButton title={isSignUp ? 'Account details' : 'Credentials'} message={isSignUp ? 'Enter your name, email address, and a password of at least 8 characters.' : 'Enter your email address and password. Remember me keeps the session after an app restart.'} /></View>
-                  {isSignUp && <Field label="Your name" placeholder="Alex Morgan" value={name} onChangeText={setName} autoComplete="name" textContentType="name" maxLength={128} editable={!working} />}
+                  <View style={styles.cardTitleRow}><Text style={[styles.cardTitle, styles.flex]}>{isSignUp ? 'Account Details' : 'Credentials'}</Text><InfoButton title={isSignUp ? 'Account Details' : 'Credentials'} message={isSignUp ? 'Enter your name, email address, and a password of at least 8 characters.' : 'Enter your email address and password. Remember me keeps the session after an app restart.'} /></View>
+                  {isSignUp && <Field label="Your Name" placeholder="Alex Morgan" value={name} onChangeText={setName} autoComplete="name" textContentType="name" maxLength={128} editable={!working} />}
                   <Field
-                    label="Email address" placeholder="you@example.com"
+                    label="Email Address" placeholder="you@example.com"
                     value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false}
                     keyboardType="email-address" autoComplete="email" textContentType="emailAddress"
                     maxLength={320} editable={!working}
@@ -183,7 +184,7 @@ export default function AuthScreen() {
                   />
                   <ErrorMessage message={error} />
                   <Pressable
-                    accessibilityRole="checkbox" accessibilityLabel="Remember me"
+                    accessibilityRole="checkbox" accessibilityLabel="Remember Me"
                     accessibilityState={{ checked: rememberMe, disabled: working }}
                     disabled={working} onPress={() => setRememberMe(value => !value)}
                     style={({ pressed }) => [styles.rememberRow, pressed && styles.pressed, working && styles.disabled]}
@@ -191,23 +192,23 @@ export default function AuthScreen() {
                     <View style={[styles.rememberCheckbox, rememberMe && styles.rememberCheckboxChecked]}>
                       {rememberMe && <Text style={styles.rememberCheck}>✓</Text>}
                     </View>
-                    <Text style={styles.rememberLabel}>Remember me</Text>
+                    <Text style={styles.rememberLabel}>Remember Me</Text>
                   </Pressable>
                   <Pressable
-                    accessibilityRole="button" accessibilityLabel={isSignUp ? 'Create account' : 'Sign in'}
+                    accessibilityRole="button" accessibilityLabel={isSignUp ? 'Create Account' : 'Sign In'}
                     accessibilityState={{ disabled: working, busy: working }} disabled={working}
                     onPress={() => void authenticate()}
                     style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, working && styles.disabled]}
                   >
                     {working ? <ActivityIndicator color={colors.onAccent} /> : (
-                      <><Text style={styles.primaryText}>{isSignUp ? 'Create account' : 'Sign in'}</Text><Text style={styles.buttonArrow}>↗</Text></>
+                      <><Text style={styles.primaryText}>{isSignUp ? 'Create Account' : 'Sign In'}</Text><Text style={styles.buttonArrow}>↗</Text></>
                     )}
                   </Pressable>
                   {!USE_REAL_AUTH && (
                     <>
-                      <View style={styles.divider}><View style={styles.dividerLine} /><Text style={styles.dividerText}>Mock authentication</Text><View style={styles.dividerLine} /></View>
+                      <View style={styles.divider}><View style={styles.dividerLine} /><Text style={styles.dividerText}>Mock Authentication</Text><View style={styles.dividerLine} /></View>
                       <Pressable accessibilityRole="button" disabled={working} accessibilityState={{ disabled: working }} onPress={() => void authenticate(true)} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed, working && styles.disabled]}>
-                        <Text style={styles.secondaryText}>Sign in to demo</Text>
+                        <Text style={styles.secondaryText}>Sign In to Demo</Text>
                       </Pressable>
                       <Text style={styles.demoNote}>New mock accounts reset when the app restarts.</Text>
                     </>
@@ -232,52 +233,52 @@ const createStyles = colors => StyleSheet.create({
   logo: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.accent, overflow: 'hidden' },
   logoLeft: { position: 'absolute', width: 5, height: 22, borderRadius: 3, backgroundColor: colors.background, left: 12, top: 7, transform: [{ rotate: '28deg' }] },
   logoRight: { position: 'absolute', width: 5, height: 14, borderRadius: 3, backgroundColor: colors.background, left: 21, top: 14, transform: [{ rotate: '-28deg' }] },
-  brandName: { fontSize: 31, fontWeight: '700', letterSpacing: -1.5, color: colors.text },
+  brandName: { fontFamily: fonts.serifBold, fontSize: typeScale.h1, lineHeight: typeLeading.h1, fontWeight: 'normal', letterSpacing: -1.5, color: colors.text },
   brandDot: { color: colors.accent },
   intro: { marginBottom: 28 },
-  eyebrow: { fontSize: 10, lineHeight: 16, fontWeight: '700', letterSpacing: 2, color: colors.accent, marginBottom: 14 },
-  heading: { fontSize: 38, lineHeight: 45, fontWeight: '700', letterSpacing: -1.6, color: colors.text, marginBottom: 14 },
+  eyebrow: { fontFamily: fonts.bold, fontSize: typeScale.small, lineHeight: typeLeading.small, fontWeight: 'normal', letterSpacing: 2, color: colors.accent, marginBottom: 14 },
+  heading: { fontFamily: fonts.serifBold, fontSize: typeScale.h1, lineHeight: typeLeading.h1, fontWeight: 'normal', letterSpacing: -1.6, color: colors.text, marginBottom: 14 },
   accentText: { color: colors.accent },
-  subtitle: { fontSize: 15, lineHeight: 23, color: colors.muted },
-  card: { backgroundColor: colors.surface, borderRadius: 24, borderWidth: 1, borderColor: colors.line, padding: 22, marginTop: 6 },
+  subtitle: { fontFamily: fonts.body, fontSize: typeScale.body, lineHeight: typeLeading.body, color: colors.muted },
+  card: { ...cardShadow, backgroundColor: colors.surface, borderRadius: 24, borderWidth: 1, borderColor: colors.line, padding: 22, marginTop: 6 },
   tabs: { flexDirection: 'row', borderRadius: 12, padding: 4, backgroundColor: colors.input, marginBottom: 26 },
   tab: { flex: 1, paddingVertical: 12, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 9, minHeight: 44 },
   activeTab: { backgroundColor: colors.raised },
-  tabText: { color: colors.muted, fontSize: 13, fontWeight: '600' },
+  tabText: { fontFamily: fonts.semibold, color: colors.muted, fontSize: typeScale.button, lineHeight: typeLeading.button, fontWeight: 'normal' },
   activeTabText: { color: colors.text },
-  cardTitle: { color: colors.text, fontSize: 22, lineHeight: 29, fontWeight: '600', letterSpacing: -0.5 },
+  cardTitle: { fontFamily: fonts.serifBold, color: colors.text, fontSize: typeScale.h2, lineHeight: typeLeading.h2, fontWeight: 'normal', letterSpacing: -0.5 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 24 },
   field: { marginBottom: 18 },
-  label: { color: colors.text, fontSize: 12, fontWeight: '600', marginBottom: 9 },
+  label: { fontFamily: fonts.semibold, color: colors.text, fontSize: typeScale.small, lineHeight: typeLeading.small, fontWeight: 'normal', marginBottom: 9 },
   inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.input },
   inputFocused: { borderColor: colors.accent },
-  input: { flex: 1, minWidth: 0, minHeight: 52, paddingHorizontal: 14, paddingVertical: 14, fontSize: 15, color: colors.text },
+  input: { fontFamily: fonts.body, flex: 1, minWidth: 0, minHeight: 52, paddingHorizontal: 14, paddingVertical: 14, fontSize: typeScale.body, lineHeight: typeLeading.body, color: colors.text },
   showPassword: { minHeight: 48, minWidth: 48, paddingHorizontal: 12, justifyContent: 'center' },
-  showPasswordText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+  showPasswordText: { fontFamily: fonts.semibold, color: colors.muted, fontSize: typeScale.small, lineHeight: typeLeading.small, fontWeight: 'normal' },
   primaryButton: { flexDirection: 'row', minHeight: 54, borderRadius: 12, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, paddingVertical: 14, marginTop: 6, gap: 14 },
-  primaryText: { color: colors.onAccent, fontSize: 15, fontWeight: '700' },
-  buttonArrow: { color: colors.onAccent, fontSize: 22, lineHeight: 24 },
+  primaryText: { fontFamily: fonts.bold, color: colors.onAccent, fontSize: typeScale.button, lineHeight: typeLeading.button, fontWeight: 'normal' },
+  buttonArrow: { fontFamily: fonts.body, color: colors.onAccent, fontSize: typeScale.h2, lineHeight: typeLeading.h2 },
   secondaryButton: { minHeight: 50, borderWidth: 1, borderColor: colors.line, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, paddingHorizontal: 16 },
-  secondaryText: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  secondaryText: { fontFamily: fonts.semibold, color: colors.text, fontSize: typeScale.button, lineHeight: typeLeading.button, fontWeight: 'normal' },
   pressed: { opacity: 0.8 },
   disabled: { opacity: 0.6 },
   divider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 22 },
   dividerLine: { flex: 1, height: 1, backgroundColor: colors.line },
-  dividerText: { color: colors.muted, fontSize: 11 },
-  demoNote: { color: colors.muted, fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 14 },
+  dividerText: { fontFamily: fonts.body, color: colors.muted, fontSize: typeScale.small, lineHeight: typeLeading.small },
+  demoNote: { fontFamily: fonts.body, color: colors.muted, fontSize: typeScale.small, lineHeight: typeLeading.small, textAlign: 'center', marginTop: 14 },
   errorBox: { backgroundColor: colors.errorSoft, borderColor: colors.errorLine, borderWidth: 1, padding: 12, borderRadius: 10, marginBottom: 16, marginTop: 6 },
-  errorText: { color: colors.error, fontSize: 13, lineHeight: 20 },
+  errorText: { fontFamily: fonts.body, color: colors.error, fontSize: typeScale.body, lineHeight: typeLeading.body },
   footer: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 28, flexWrap: 'wrap' },
   footerDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.accent },
-  footerText: { color: colors.muted, fontSize: 11, letterSpacing: 0.2 },
+  footerText: { fontFamily: fonts.body, color: colors.muted, fontSize: typeScale.small, lineHeight: typeLeading.small, letterSpacing: 0.2 },
   loading: { alignItems: 'center', gap: 20, paddingVertical: 40 },
   successIcon: { backgroundColor: colors.greenSoft, width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
-  check: { color: colors.accent, fontSize: 25 },
-  accountEmail: { color: colors.accent, fontSize: 15, marginTop: -12, marginBottom: 28 },
+  check: { fontFamily: fonts.body, color: colors.accent, fontSize: typeScale.h2, lineHeight: typeLeading.h2 },
+  accountEmail: { fontFamily: fonts.body, color: colors.accent, fontSize: typeScale.body, lineHeight: typeLeading.body, marginTop: -12, marginBottom: 28 },
   rememberRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44, marginBottom: 8, alignSelf: 'flex-start' },
   rememberCheckbox: { width: 20, height: 20, borderRadius: 6, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.input, alignItems: 'center', justifyContent: 'center' },
   rememberCheckboxChecked: { borderColor: colors.accent, backgroundColor: colors.accent },
-  rememberCheck: { color: colors.onAccent, fontSize: 13, fontWeight: '700' },
-  rememberLabel: { color: colors.muted, fontSize: 13, fontWeight: '500' },
+  rememberCheck: { fontFamily: fonts.bold, color: colors.onAccent, fontSize: typeScale.body, lineHeight: typeLeading.body, fontWeight: 'normal' },
+  rememberLabel: { fontFamily: fonts.medium, color: colors.muted, fontSize: typeScale.body, lineHeight: typeLeading.body, fontWeight: 'normal' },
 });

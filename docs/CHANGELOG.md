@@ -380,13 +380,178 @@ File-by-file changes (one new file, no files deleted):
 | `docs/VALIDATION.md` | Recorded test/timezone/native-export evidence and physical-device limits. |
 | `docs/CHANGELOG.md` | Recorded this implementation and every changed file. |
 
+### Academic journal styling and Opened Book navigation (2026-10-26)
+
+- Installed the requested Google fonts with Expo's compatible installer. App.js loads six local Merriweather/Inter faces before mounting screens; explicit face names avoid synthetic font-weight differences. Titles are serif, body/buttons/inputs are Inter, borders are softer, and cards have subtle shadows. Exact requested cream/forest and dark/sage palettes replace the old purple/monochrome chrome, with saved theme choice retained.
+- Library is now bookshelf-only. Spines still reveal covers; a cover opens a dedicated subject notebook through a nested Expo Router Library stack. Removed Show All Tasks and the inline task list. The ruled-paper notebook shows subject name/code, scoped task rows, New Task preselected to the book, and Edit/Delete Book controls. Invalid/unowned/missing books return to Library; shared workspace/data/sheets remain above tabs.
+- Subject creation/editing refreshes silently. Existing errors, major backup feedback and destructive-action confirmations remain. Direct book deletion uses the same guarded native confirmation/mutation flow as task deletion, preserving SQLite cascades and shared refresh.
+- Home uses serif headings and green progress bars. Existing custom durations, workload guardrails, focus timers, review loop, account isolation and backup format remain unchanged.
+- Checks: lint/typecheck, dependency compatibility, 133 passing tests (one timezone skip), and Android/iOS/web exports. Physical-device typography, transitions, navigation gestures and native sheets still need manual verification.
+
+File-by-file changelog (five created files, one deleted route wrapper):
+
+| File | Change |
+| --- | --- |
+| `App.js` | Load six bundled font faces before screens; use journal typography for the web notice. |
+| `ThemeContext.js` | Apply exact cream/forest and dark/sage palettes while preserving saved theme behavior. |
+| `components/typography.js` | Created: centralized Merriweather/Inter face names and soft card shadows. |
+| `components/studyStyles.js` | Serif screen/card titles, Inter body/actions, soft shadows, and flat notebook task-row styling. |
+| `components/ui.js` | Journal fonts for sheets/buttons/inputs and a themed destructive button tone; keyboard behavior retained. |
+| `components/StudyWorkspace.js` | Suppress Subject create/edit success notices; share guarded native task/book deletion and refresh. |
+| `components/StudyCards.js` | Add notebook task-card variant while retaining schedule/edit/delete/coaching/badge behavior. |
+| `components/SubjectBookshelf.js` | Open dedicated notebooks from covers; remove task-filter/reset/selected controls; use serif book titles. |
+| `components/EntrySheet.js` | Use Inter in field-color/delete controls; shared subject/task save behavior retained. |
+| `components/ScheduleSheet.js` | Use Merriweather titles and Inter instructional/workload text; scheduling behavior retained. |
+| `components/DateTimeField.js` | Use Inter for native date/time control labels and values. |
+| `components/FocusTimer.js` | Use Inter for timer/body labels; shared card title becomes serif. |
+| `screens/AuthScreen.js` | Apply serif headings/card title, Inter inputs/actions/body, and soft card shadow. |
+| `screens/HomeScreen.js` | Apply journal fonts/shadow, serif study-time heading, and green progress bars. |
+| `screens/LibraryScreen.js` | Replace task/filter list with bookshelf-only scrolling content, Add Subject and book-route navigation. |
+| `screens/OpenedBookScreen.js` | Created: subject-scoped notepad page with header/code/tasks, New Task, Edit/Delete Book and safe redirect/back behavior. |
+| `screens/ReviewScreen.js` | Apply Inter to review metadata alongside the shared serif card/title styles. |
+| `screens/SettingsScreen.js` | Apply journal typography, green switch colors and updated appearance guidance/preview labels. |
+| `src/app/(tabs)/_layout.tsx` | Use Inter in tab labels; existing Library tab hosts its nested stack. |
+| `src/app/(tabs)/library.tsx` | Deleted: replaced the flat Library wrapper with the nested Library route directory. |
+| `src/app/(tabs)/library/_layout.tsx` | Created: themed native Library stack with shelf and subject routes. |
+| `src/app/(tabs)/library/index.tsx` | Created: shelf screen wrapper preserving /library. |
+| `src/app/(tabs)/library/[subjectId].tsx` | Created: dynamic Opened Book screen wrapper. |
+| `package.json` | Add Merriweather and Inter Google font packages; retain SDK-compatible expo-font. |
+| `package-lock.json` | Lock the two installed font packages and metadata. |
+| `tests/task-library.test.cjs` | Cover shelf-only navigation, book-scoped tasks/actions/redirects, quiet Subject saves, backup feedback and book-delete guards. |
+| `tests/web-platform.test.cjs` | Verify font-load gating/fallback and preserved web/native roots with local face imports. |
+| `tests/theme.test.cjs` | Update neutral light-mode subject marker expectation for the journal palette. |
+| `tests/focus-timer.test.cjs` | Load the actual typography constants in the native UI bridge harness. |
+| `tests/subject-deletion.test.cjs` | Load the actual typography constants for the shared editor bridge tests. |
+| `README.md` | Update journal typography/palettes and bookshelf-to-notebook overview. |
+| `docs/PROJECT_CONTEXT.md` | Update route/provider map, theme/font contracts, notebook ownership/deletion behavior and quiet-save feedback. |
+| `docs/NEXT_SESSION_PROMPT.md` | Refresh continuation context for journal styling, nested Library routes and dedicated task notebooks. |
+| `docs/DEMO_AND_TESTING.md` | Update walkthrough and manual font/theme/book/task/delete/back-navigation checks. |
+| `docs/VALIDATION.md` | Record installation, tests, dependency compatibility, native/web exports and device verification limits. |
+| `docs/CHANGELOG.md` | Record final implementation and every changed/created/deleted file. |
+
+### Light fallback, strict type scale, reversible books and smart shelf adds (2026-10-27)
+
+- Theme now falls back to Light for missing, invalid or unreadable preferences; explicit saved Dark and ordered theme writes remain intact. Dark books derive desaturated gradients blended with the theme background and use dark labels/light ink/page details, without altering stored field colors.
+- All active screen, sheet, input, button and tab text uses one named scale: H1 28, H2 22, H3 18, body/button 14, small 12. Live timer/workload numerals use a single 36-point metric token. Matching line-height tokens replace local values; Merriweather/Inter and OS text scaling remain.
+- Both book faces stay mounted through the full forward/reverse transition. Close and switching books animate width, measured height, lift, tilt and crossfade back to the spine. Interrupted transitions stop/reverse the same value; hidden controls cannot receive touches or accessibility focus. Reduced motion snaps directly.
+- Each shelf has an accessible + action opening Add Subject with its field prefilled. The editor offers a filtered, case-insensitively deduplicated existing-field dropdown with show-all toggle, while allowing brand-new text. Presets reset between entry flows; failed saves retain drafts.
+- Verification: lint/typecheck, 138 passing regressions with one timezone skip, and Android/iOS/web exports. No dependency/schema changes or file creation/deletion in this pass. Prior uncommitted journal work was preserved. Physical-device rendering, gestures and keyboard selection still need manual checks.
+
+File-by-file summary for this pass:
+
+| File changed | Summary |
+| --- | --- |
+| `ThemeContext.js` | Default missing/invalid/unreadable preferences to Light, preserve saved Dark, and add theme-aware book paper/ink/page/rule colors. |
+| `components/typography.js` | Define the shared heading/body/small/button/metric size and line-height scale. |
+| `components/studyStyles.js` | Apply semantic type tokens to shared cards/headings/body/actions and allow long masthead captions to wrap. |
+| `components/ui.js` | Apply the shared scale to sheet titles, labels, buttons, inputs and feedback. |
+| `components/SubjectBookshelf.js` | Mute Dark gradients, retain both animated faces through Close/reversal, measure cover height, hide inactive controls, and add each shelf field-prefill + action. |
+| `utils/subjectFields.js` | Add presentation-only dark book tinting and normalized, case-insensitive existing-field collection. |
+| `components/EntrySheet.js` | Add initialField creation prefill and searchable/show-all existing-field dropdown with custom values; use shared text tokens. |
+| `components/StudyWorkspace.js` | Carry/reset the optional shelf field through guarded entry state into the shared editor. |
+| `screens/LibraryScreen.js` | Wire shelf + to Add Subject with its field prefilled. |
+| `components/CompletionReviewSheet.js` | Bring completion-to-review subject/title/prompt into the shared fonts and scale. |
+| `components/DateTimeField.js` | Use shared body size/leading for picker control values. |
+| `components/FocusTimer.js` | Use shared labels and the single 36-point metric size for elapsed time. |
+| `components/ScheduleSheet.js` | Use semantic heading/body/small tokens for the task and workload form. |
+| `screens/AuthScreen.js` | Use consistent H1/H2/body/small/button sizes and leading throughout authentication. |
+| `screens/HomeScreen.js` | Use shared headings, small metadata and 36-point workload numerals. |
+| `screens/ReviewScreen.js` | Use the shared small-text token for review metadata. |
+| `screens/SettingsScreen.js` | Use shared title/body/small tokens for account and settings cards. |
+| `screens/OpenedBookScreen.js` | Use shared heading/body/small/button tokens in the subject notepad. |
+| `src/app/(tabs)/_layout.tsx` | Use the shared small size/leading for tab labels. |
+| `App.js` | Use semantic heading/body tokens for the browser notice. |
+| `tests/theme.test.cjs` | Verify Light fallback, preserved explicit Dark, ordered toggles and write-failure recovery. |
+| `tests/task-library.test.cjs` | Verify retained/reversible/interruptible cover animation, reduced motion, Dark tint invariants, shelf prefill/reset and existing/custom field save/retry flows. |
+| `tests/subject-deletion.test.cjs` | Extend the shared editor test bridge with its memo hook. |
+| `README.md` | Update fallback, type scale, Dark book appearance, Close and field autocomplete overview. |
+| `docs/PROJECT_CONTEXT.md` | Document theme defaults, type tokens, animated face lifetime/measurement and shelf-prefill/dropdown contracts. |
+| `docs/NEXT_SESSION_PROMPT.md` | Update continuation context for Light fallback, muted books, reverse motion, strict scale and field picker behavior. |
+| `docs/DEMO_AND_TESTING.md` | Add native acceptance checks for defaults, sizes, keyboard/dropdown selection, Dark contrast and both animation directions. |
+| `docs/VALIDATION.md` | Record current regression/lint/type/bundle evidence and remaining physical-device limits. |
+| `docs/CHANGELOG.md` | Record this pass and every file changed during it. |
+
+### Weekly Progress and six-day demo history (2026-10-27)
+
+- Installed `react-native-svg` 15.15.4 and `react-native-chart-kit` 7.0.4 with Expo's SDK-compatible installer.
+- Added Home's Weekly Progress card before Today's Focus: seven local dates, a responsive forest-green/soft-green LineChart, cream/dark plot background, quiet axes, zero-minute dates and point inspection. The card uses existing serif headings, Inter labels, borders, shadows and theme tokens.
+- Added one account-scoped SQL aggregation for completed work. Timer sessions contribute saved actual studied seconds, preserving true zero-work sessions and excluding breaks. Untimed legacy completions contribute scheduled duration. Each session counts on its local completion date, with exact midnight and DST-safe boundaries. Planned/active/missed sessions do not inflate completed progress; the daily workload guardrail continues to use planned minutes separately.
+- Connected progress to the shared refresh flow, so completion, deletion, demo/import, foreground, refresh and local-date rollover update it with the existing lists.
+- Demo loading now creates ten blocks: today's existing four-hour fixture plus one completed session on each of the previous six days (60, 90, 75, 120, 105 and 150 minutes, oldest first). Existing three subjects, six tasks, coaching examples, due reviews and account-scoped transactional replacement are preserved.
+- Verification: lint/typecheck, dependency check and Android/iOS/web exports passed. Eight suites: 144 cases, 143 passed and one NY-specific skip; New York database run: all 64 passed. Native chart appearance and gestures remain device checks. No schema/backup-format changes and no files deleted.
+
+File-by-file changes for this feature (two new files):
+
+| File | Change |
+| --- | --- |
+| `package.json` | Added SDK-compatible SVG and Chart Kit dependencies. |
+| `package-lock.json` | Recorded the installed chart dependencies and resolved dependency tree. |
+| `db/ProgressService.js` | New validated, account-scoped seven-day completed-minute query with zero-filled local dates and actual/legacy timing rules. |
+| `components/WeeklyProgressCard.js` | New responsive themed LineChart card, totals, point readout, accessible seven-day summary and loading/error feedback. |
+| `hooks/useDashboardData.js` | Fetch and expose weekly results alongside existing data under the same request/refresh guards. |
+| `screens/HomeScreen.js` | Render Weekly Progress above Today's Focus using shared account data. |
+| `db/seedData.js` | Insert six previous completed timer sessions in the existing reset transaction; return ten total blocks while preserving today's 240-minute fixture. |
+| `components/StudyWorkspace.js` | Update demo-load confirmation to describe the six historical study dates. |
+| `screens/SettingsScreen.js` | Update demo info-popup text to include completed history. |
+| `tests/database.test.cjs` | Exercise the progress service with real SQLite; extend timer/seed tests for actual totals, isolation, local boundaries, DST and unchanged workload warnings. |
+| `tests/task-library.test.cjs` | Add chart/Home component checks for values, zeros, layout, point inspection, themes, loading/errors and placement; extend native/chart test bridges. |
+| `README.md` | Describe Weekly Progress and the expanded demo fixture. |
+| `docs/PROJECT_CONTEXT.md` | Document new modules/service contract, completed-minute attribution, refresh integration and demo counts. |
+| `docs/NEXT_SESSION_PROMPT.md` | Add continuation context for the chart dependencies, metric, fixtures and validation. |
+| `docs/DEMO_AND_TESTING.md` | Add chart walkthrough/acceptance steps, ten-block counts and the full eight-suite command. |
+| `docs/VALIDATION.md` | Record SQL/component/timezone checks, dependency/bundle results and remaining native checks. |
+| `docs/CHANGELOG.md` | Record this feature's decisions and complete file-by-file summary. |
+
+### Global success toasts, Title Case and themed info dialogs (2026-10-27)
+
+- Replaced duplicated inline success cards with one theme-aware Toast above the actual BottomTabBar. It slides/fades in, expires after three seconds even while hidden, and cannot block screen/tab touches. Repeated identical messages receive a fresh notice identity/lifetime. Settings hides and discards all shared success messages, including backup/demo messages, preventing replay on another tab. Keyboard/sheet/busy states hide the toast; errors remain inline.
+- Replaced InfoButton's native instructional Alert with InfoModal: themed surface/border/overlay, Merriweather heading, Inter body/buttons, scrollable long guidance and backdrop/close/OK/Android Back dismissal. Existing destructive confirmation alerts are preserved.
+- Applied Title Case to static screen/card headings, field/action labels, session badges, auth controls and notebook actions. User-entered names/topics, explanatory sentences, error/success sentences and the wordmark retain their casing.
+- Verification: lint/typecheck and final Android/iOS/web exports pass. Nine regression suites: 151 cases, 150 passed and one existing timezone skip. New notification tests cover expiry, replacement, Settings isolation, hidden-state behavior, cleanup and themed dialogs. No dependency, schema or storage-service changes; four new files, no files deleted.
+
+File-by-file summary for this pass:
+
+| File | Change |
+| --- | --- |
+| `components/Toast.js` | New nonblocking, themed slide/fade toast with three-second expiry and timer/animation cleanup. |
+| `components/ToastTabBar.js` | New single tab-bar host; discard Settings notices and hide while keyboard/sheets/busy states are active. |
+| `components/InfoModal.js` | New themed, scrollable Merriweather/Inter information dialog with all dismissal paths. |
+| `components/ui.js` | Open local InfoModal instances from InfoButton instead of native instructional alerts. |
+| `components/StudyWorkspace.js` | Add fresh notice identities and stable dismissal while retaining existing success/error producers. |
+| `src/app/(tabs)/_layout.tsx` | Attach the toast host through the navigator's custom tabBar property. |
+| `components/StudyCards.js` | Remove inline success cards; retain error/retry feedback and standardize card/action/status labels. |
+| `components/studyStyles.js` | Remove obsolete inline success-card/dismiss styles. |
+| `components/EntrySheet.js` | Title Case subject/task sheet headings, field labels, kicker and save/create actions. |
+| `components/ScheduleSheet.js` | Title Case schedule/reschedule headings, duration label and workload-confirmation actions. |
+| `components/CompletionReviewSheet.js` | Title Case completion heading, kicker and choice actions. |
+| `components/FocusTimer.js` | Title Case break/work status and total-break label. |
+| `components/SubjectBookshelf.js` | Standardize the shelf Add Subject action's accessible label. |
+| `components/WeeklyProgressCard.js` | Title Case the chart's static minute caption. |
+| `screens/AuthScreen.js` | Title Case authentication headings, form labels, tabs, Remember Me and demo action. |
+| `screens/HomeScreen.js` | Title Case daily-workload/coaching headings and session-planning action. |
+| `screens/LibraryScreen.js` | Title Case shelf edition, empty heading and Add Subject. |
+| `screens/OpenedBookScreen.js` | Title Case New Task/Edit Book/Delete Book actions and empty heading. |
+| `screens/ReviewScreen.js` | Title Case topic heading, subject action, edition and unreviewed status label. |
+| `screens/SettingsScreen.js` | Title Case account/appearance, preview, demo-data and Sign Out headings. |
+| `App.js` | Title Case the browser's mobile-only heading. |
+| `tests/notifications.test.cjs` | New controlled-clock/native-bridge tests for Toast, tab-bar isolation, InfoButton and InfoModal. |
+| `tests/task-library.test.cjs` | Add inline-feedback/notice-identity checks and update interaction labels to Title Case. |
+| `tests/subject-deletion.test.cjs` | Update editor field/save label selectors to Title Case. |
+| `tests/web-platform.test.cjs` | Update expected mobile-only heading. |
+| `README.md` | Describe themed info dialogs, global toast expiry and Settings suppression. |
+| `docs/PROJECT_CONTEXT.md` | Document new component roles, feedback ownership, casing and dialog behavior. |
+| `docs/NEXT_SESSION_PROMPT.md` | Add toast/dialog continuation contracts and SDK-compatible tab-bar imports. |
+| `docs/DEMO_AND_TESTING.md` | Add toast, Settings, casing and dialog acceptance checks plus the new test suite. |
+| `docs/VALIDATION.md` | Record regression/bundle evidence and remaining physical-device checks. |
+| `docs/CHANGELOG.md` | Record implementation decisions and this complete 31-file summary. |
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |
 | --- | --- |
 | Root registerRootComponent(App) bootstrap | Polyfill first, then expo-router/entry; App.js is reached through src/app/_layout.tsx |
 | Single App.js dashboard | Shared workspace, separate screens, four bottom tabs |
-| Mint accent | Dark purple accents and monochrome light mode |
+| Mint / purple / monochrome chrome | Cream and forest-green light journal; greenish-black and sage dark journal |
 | Schedule 30m | Schedule opens native Start/End calendar and time pickers |
 | 15/30/45/60 buttons | Duration is calculated from the selected start/end instants |
 | Now / In 1 hour only | Native full-date selection; service retains its no-options 1-hour reschedule default |
@@ -395,11 +560,11 @@ File-by-file changes (one new file, no files deleted):
 | User-entered duration and Now/custom start form | Native full-date Start/End controls plus optional typed hours/minutes that calculate End |
 | Typed clocks with Today/Tomorrow toggles | Native calendar/time pickers for any upcoming date |
 | Long inline instructional paragraphs | Small info icons with native guidance popups; errors/warnings stay visible |
-| Horizontal subject pills / wrapping book grid in Library | Field-grouped horizontal shelves of code-only spines, revealing front covers for task filtering/editing |
+| Inline task list and Show All Tasks | Bookshelf-only Library; covers open subject-scoped notepad routes with task and book actions |
 | Non-editable estimated minutes on task cards | Removed from UI; SQLite/backup field retained |
 | Monochrome books / hidden light-mode color chooser | Colored gradient books in both themes; explicit one/two-color field swatches; monochrome light chrome and task/review markers |
 | Subject.color | Subject.field_of_study and comma-separated field_colors; legacy colors preserved under General |
-| Theme preference only in memory | AsyncStorage restoration before screens mount and ordered preference saves |
+| Theme preference only in memory / dark fallback | AsyncStorage restoration and ordered saves; Light fallback with explicit Dark retained |
 | Mark Done directly from a scheduled card | Start Session, durable work/break timer, Finish Session with actual totals and optional review prompt |
 | Backup versions 1–3 | Version 4 adds subject_code; older versions still import with code defaults and compatible timer metadata |
 

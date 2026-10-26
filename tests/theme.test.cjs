@@ -93,16 +93,17 @@ test('restores light before mounting screens, without writing the default theme'
   const { value, children } = s.render().props;
   assert.equal(children, 'screens');
   assert.equal(value.isDark, false);
-  assert.equal(value.subjectColor('#2DD4BF'), '#000000');
+  assert.equal(value.subjectColor('#2DD4BF'), '#1F1F1F');
   assert.deepEqual(s.appearance, ['light']);
   assert.deepEqual(s.writes, []);
 });
 
-test('missing, invalid, or unavailable preferences safely use dark mode', async () => {
+test('missing, invalid, or unavailable preferences safely use light mode without overwriting storage', async () => {
   for (const options of [{}, { saved: 'invalid' }, { readError: true }]) {
     const s = await setup(options);
     s.render(); await s.flush();
-    assert.equal(s.render().props.value.isDark, true);
+    assert.equal(s.render().props.value.isDark, false);
+    assert.deepEqual(s.writes, []);
     assert.equal(s.warnings.length, options.readError ? 1 : 0);
   }
 });
@@ -112,23 +113,31 @@ test('rapid toggles serialize writes and the final preference survives provider 
   s.render(); await s.flush();
   const value = s.render().props.value;
   value.toggleTheme(); value.toggleTheme(); value.toggleTheme();
-  assert.equal(s.render().props.value.isDark, false);
+  assert.equal(s.render().props.value.isDark, true);
   await s.flush();
-  assert.deepEqual(s.writes, ['light'], 'second write waits for the first');
+  assert.deepEqual(s.writes, ['dark'], 'second write waits for the first');
   s.releaseWrite(); await s.flush();
-  assert.deepEqual(s.writes, ['light', 'dark', 'light']);
+  assert.deepEqual(s.writes, ['dark', 'light', 'dark']);
   s.remount(); assert.equal(s.render(), null); await s.flush();
-  assert.equal(s.render().props.value.isDark, false);
+  assert.equal(s.render().props.value.isDark, true);
 });
 
 test('a failed write keeps the current UI usable and does not block the next save', async () => {
   const s = await setup({ writeError: true });
   s.render(); await s.flush();
   s.render().props.value.toggleTheme(); await s.flush();
-  assert.equal(s.render().props.value.isDark, false);
+  assert.equal(s.render().props.value.isDark, true);
   assert.equal(s.warnings.length, 1);
   s.render().props.value.toggleTheme(); await s.flush();
-  assert.deepEqual(s.writes, ['light', 'dark']);
+  assert.deepEqual(s.writes, ['dark', 'light']);
   s.remount(); s.render(); await s.flush();
+  assert.equal(s.render().props.value.isDark, false);
+});
+
+test('an explicitly saved dark preference still restores before screens mount', async () => {
+  const s = await setup({ saved: 'dark', holdRead: true });
+  assert.equal(s.render(), null);
+  s.releaseRead(); await s.flush();
   assert.equal(s.render().props.value.isDark, true);
+  assert.deepEqual(s.appearance, ['dark']); assert.deepEqual(s.writes, []);
 });

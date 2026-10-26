@@ -23,12 +23,25 @@ src/app/. Diagnose that distinction before moving or deleting routes.
 There are four themed Ionicons tabs: Home, Library, Review, Settings.
 StudyWorkspace and useDashboardData share data/actions across them.
 Keep the current cards, borders, icons, 20px padding, and both themes.
-Dark defaults to #0C1117 with purple; light is monochrome #F5F5F5,
-white cards, gray borders, black text/actions. AsyncStorage saves theme selection
-under yotei.theme and restores it before screens mount (dark fallback).
-Use functional UI text only. Home's list footer includes
+Dark uses #121412 / #1C201D / #F0F0F0 / #7CB58F. Light uses warm cream
+#F8F6F2 / white / #1F1F1F / forest green #2D5A41, with #E0DCD3 borders.
+Merriweather screen/card/book headings and Inter body/inputs/buttons load as six
+local faces via expo-font in App.js; components/typography.js centralizes faces/shadows and the shared size/leading scale: H1 28/42, H2 22/32,
+H3 18/28, body/button 14/22, small 12/18; timer/workload metrics 36/44. AsyncStorage saves theme selection
+under yotei.theme and restores it before screens mount (light fallback; a saved dark choice still restores).
+Use functional UI text only. Static headings/labels/buttons use Title Case;
+preserve user-entered content and sentence casing. InfoButton opens a themed,
+scrollable InfoModal with Merriweather/Inter fonts, backdrop/OK/close/Back dismissal.
+Native alerts remain for destructive confirmations. Shared success feedback uses
+Toast.js through one ToastTabBar mounted via the Tabs tabBar prop. Import
+BottomTabBar and its types from expo-router/js-tabs, not external navigation peers.
+The toast slides above the actual tab bar, expires after three seconds even when
+hidden, and uses noticeId to restart repeated identical occurrences. No inline
+success Feedback remains. Settings hides AND discards notices, including backups,
+so they cannot replay on another tab. Keyboards/sheets/busy states hide the toast;
+errors remain inline. tests/notifications.test.cjs covers these interactions. Home's list footer includes
 "By students, for students." Settings labels the current Dark Mode/Light Mode;
-the light switch is monochrome, including its web active thumb. Subject creation
+the switch uses the journal green accent and white thumb. Subject creation
 has twelve visible circle swatches, including pure Black and White.
 App.js shows a mobile-only notice on web before mounting sessions/routes;
 db/database.web.js excludes SQLite/WASM from the browser bundle. Native storage
@@ -61,30 +74,42 @@ Add Subject takes field text and one/two choices from twelve color swatches in b
 Each book has an accessible pencil action that opens the same EntrySheet pre-filled.
 updateSubject(userId, subjectId, {name, field_of_study, field_colors}) validates metadata
 and updates only the owned row in place. Save refreshes all shared tabs without changing
-subject IDs or filter selection. Imported/legacy swatches remain available in the editor.
-The filter-reset button is labeled Show All Tasks.
+subject IDs. Subject create/edit saves refresh silently; errors remain. Imported/legacy swatches remain available in the editor.
+Library is bookshelf-only; there is no task list or Show All Tasks. The cover opens
+/library/[subjectId] into a subject-scoped notepad with New Task, Edit Book and
+Delete Book. New Task preselects that subject. Delete uses native confirmation.
+Routes now live under src/app/(tabs)/library/{_layout,index,[subjectId]}.tsx; the old
+library.tsx wrapper was replaced. Shared StudyWorkspace stays above the tab navigator.
 Task cards have Edit and Delete actions. The shared EntrySheet prefills title/subject;
 updateTask(userId, taskId, {title, subject_id}) changes only those owned fields.
 deleteTask(userId, taskId) requires native Cancel/Delete confirmation, cascades blocks,
 and keeps subject reviews/material notes (Material.task_id becomes null). All tabs refresh.
 getTasksForUser derives has_missed_session and latest_scheduled_start across all dates.
-Library hides Missed Session when any status=scheduled block starts in the future;
+Opened Book hides Missed Session when any status=scheduled block starts in the future;
 Home's missed history and postpone_count/coaching remain unchanged. Do not derive this
 badge from the Home date-filtered blocks. tests/task-library.test.cjs covers UI wiring.
 Edit Subject also has a red Delete Subject button at the bottom, with native
 Cancel/Delete confirmation. deleteSubject(userId, subjectId) uses an owned DELETE;
 SQLite cascades its tasks/blocks/reviews/materials. Success closes the sheet and
-refreshes shared data; Library clears a deleted subject's filter. Cancel/failure
+refreshes shared data; missing opened-book subjects redirect to Library. Cancel/failure
 keeps the editor/draft. Duplicate taps and competing saves are guarded.
 Run node --experimental-vm-modules --test tests/subject-deletion.test.cjs for
 the actual EntrySheet callback tests; SQL cascade coverage is in database.test.cjs.
 Closed gradient spines show only subject_code rotated 90 degrees, with bindings/pages.
 Tap a spine to animate out its cover using standard Animated with reduced-motion support.
-The cover shows full name/code/task count, Return, and separate Edit controls. Revealing
-never filters; tapping the cover body does, with selected indicators. Show All Tasks
-resets filtering and closes the cover. Book/swatch colors remain exceptions in light mode.
-One-color spines get a subtle shade; two-color spines blend the selected pair.
-Task/block/review subject_color results derive the first field color; light markers stay black.
+The cover shows full name/code/task count, Close, and separate Edit controls. Revealing
+never navigates; tapping the cover body opens the dedicated subject notebook.
+Close smoothly reverses the same width/height/tilt/lift/crossfade animation; the notebook has native Back navigation. Book colors remain.
+Invalid/unowned/deleted IDs redirect to the shelf; never show another subject's tasks.
+Both faces stay mounted during transitions; the hidden face is noninteractive and
+excluded from accessibility. Cover height is measured for long/scaled titles. Reduced
+motion snaps directly. Light shows the original colors; Dark uses bookGradient with
+a desaturated background blend plus dark paper/light ink. Stored colors stay intact.
+Each shelf has a + action calling openEntry('subject', null, fieldName). initialField
+travels through StudyWorkspace into EntrySheet, then resets for other entry flows.
+Field of Study is a searchable dropdown of getFieldsOfStudy(subjects) with normalized,
+case-insensitive deduplication and a show-all toggle; custom typed fields stay valid.
+Task/block/review subject_color results derive the first field color; light markers stay neutral.
 Task cards no longer display non-editable estimated_minutes.
 Shared Sheet has full-modal keyboard avoidance, a shrinkable scroll area,
 scrollable header, and focused-input reveal using viewport measurements;
@@ -108,7 +133,7 @@ instants retain offsets; unavailable local times after date changes fail.
 Frozen workload-warning times are validated again before Save anyway.
 Minutes are derived from actual elapsed instants for the existing guardrail.
 
-Instructions now live in FieldLabel/InfoButton native popups across headings,
+Instructions now live in FieldLabel/InfoButton themed InfoModal dialogs across headings,
 auth/study forms and cards; warnings/errors and decision prompts stay visible.
 The bookshelf has page/binding lines, shaded grooves and a themed shelf lip;
 long titles wrap fully rather than being cut to four lines.
@@ -144,8 +169,24 @@ or interval announcements; successful rating reports "Review saved."
 
 Mock-only Load Demo Data resets only that user's records in a transaction:
 3 subjects, 6 tasks with today/tomorrow/overdue deadlines, 2 coaching tasks,
-4 blocks totaling exactly 240 minutes today, and 3 due review topics.
+10 blocks: 4 totaling exactly 240 planned minutes today, plus 6 completed historical
+sessions (60/90/75/120/105/150 minutes), and 3 due review topics.
 Elapsed seeded blocks are done so missed detection preserves the total.
+
+Weekly Progress on Home uses components/WeeklyProgressCard.js and the root
+LineChart export from react-native-chart-kit 7.0.4 with react-native-svg 15.15.4.
+ProgressService.getWeeklyStudyMinutes(userId, endDate) returns seven ascending
+local-date/minutes buckets, including zeros. Count only done blocks: actual
+study seconds for timer sessions (breaks excluded, true zeros retained), scheduled
+elapsed minutes for untimed legacy completions. Credit the whole session to its
+local actual_end_time/end_time completion date. Calendar boundaries are DST-safe.
+The planned-workload guardrail remains separate. Shared useDashboardData refresh
+updates progress after completion/deletion/demo/import and foreground/date changes.
+No schema or backup-version change. Weekly Progress verification: lint/typecheck,
+SDK compatibility, Android/iOS/web exports pass; eight suites have 144 cases
+(143 pass, 1 NY-specific skip), and all 64 New York DB cases pass. Check chart
+layout, point taps, text scaling and both themes on native devices; bridge tests
+do not establish SVG appearance.
 
 Data backup: Settings > Data Management exports/imports the five study
 collections with db/BackupService.js. expo-file-system uses SDK 57 File/Paths;

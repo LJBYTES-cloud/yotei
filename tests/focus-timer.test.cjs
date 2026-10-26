@@ -31,7 +31,9 @@ async function setup() {
     compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 }, fileName: 'FocusTimer.jsx',
   }).outputText;
   const module = new vm.SourceTextModule(source, { context });
-  await module.link(name => name === '../utils/focusTimer' ? helpers : new vm.SyntheticModule(Object.keys(modules[name]), function () {
+  const typography = new vm.SourceTextModule(fs.readFileSync('components/typography.js', 'utf8'), { context });
+  await typography.link(() => { throw new Error('Unexpected typography import'); });
+  await module.link(name => name === './typography' ? typography : name === '../utils/focusTimer' ? helpers : new vm.SyntheticModule(Object.keys(modules[name]), function () {
     for (const [key, value] of Object.entries(modules[name])) this.setExport(key, value);
   }, { context })); await module.evaluate();
   const block = { id: 7, task_title: 'Cell cycle', subject_name: 'Biology', subject_color: '#123ABC', start_time: '2026-10-20T09:00:00Z',

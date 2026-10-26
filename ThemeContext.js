@@ -8,21 +8,23 @@ const THEME_KEY = 'yotei.theme';
 let themeWrites = Promise.resolve();
 
 export const darkPalette = {
-  background: '#0C1117', surface: '#151D27', raised: '#202A36', input: '#0E151E',
-  line: '#293442', text: '#F4F0E9', muted: '#AAB3C0', subtle: '#7F8B9C',
-  accent: '#C2ACF3', accentSoft: '#292338', onAccent: '#0C1117',
-  warm: '#EAC68D', warmSoft: '#302A24', green: '#B0CDBD', greenSoft: '#233029',
-  error: '#FFC2C9', errorSoft: '#352126', errorLine: '#6A3943',
-  hero: '#151D27', heroLine: '#293442', overlay: 'rgba(0,0,0,0.68)',
+  background: '#121412', surface: '#1C201D', raised: '#272E29', input: '#161B17',
+  line: '#343C35', text: '#F0F0F0', muted: '#B6C0B8', subtle: '#96A399',
+  accent: '#7CB58F', accentSoft: '#26392C', onAccent: '#102216',
+  warm: '#D6BA89', warmSoft: '#332D22', green: '#7CB58F', greenSoft: '#26392C',
+  error: '#E5A4A4', errorSoft: '#352525', errorLine: '#704747',
+  hero: '#1C201D', heroLine: '#343C35', overlay: 'rgba(0,0,0,0.68)',
+  bookPaper: '#272E29', bookInk: '#F0F0F0', bookPages: '#343C35', bookRule: 'rgba(240,240,240,0.18)',
 };
 
 export const lightPalette = {
-  background: '#F5F5F5', surface: '#FFFFFF', raised: '#EEEEEE', input: '#F5F5F5',
-  line: '#E0E0E0', text: '#000000', muted: '#000000', subtle: '#000000',
-  accent: '#000000', accentSoft: '#EDEDED', onAccent: '#FFFFFF',
-  warm: '#000000', warmSoft: '#EFEFEF', green: '#000000', greenSoft: '#ECECEC',
-  error: '#000000', errorSoft: '#EEEEEE', errorLine: '#777777',
-  hero: '#FFFFFF', heroLine: '#E0E0E0', overlay: 'rgba(0,0,0,0.4)',
+  background: '#F8F6F2', surface: '#FFFFFF', raised: '#F0EDE6', input: '#FAF9F6',
+  line: '#E0DCD3', text: '#1F1F1F', muted: '#5E685F', subtle: '#6D756E',
+  accent: '#2D5A41', accentSoft: '#E8F0E9', onAccent: '#FFFFFF',
+  warm: '#7C6030', warmSoft: '#F6EFDF', green: '#2D5A41', greenSoft: '#E8F0E9',
+  error: '#993F3F', errorSoft: '#F9ECE8', errorLine: '#DFC1B9',
+  hero: '#FFFFFF', heroLine: '#E0DCD3', overlay: 'rgba(18,20,18,0.4)',
+  bookPaper: '#FAF7F0', bookInk: '#111111', bookPages: '#E8E3DA', bookRule: 'rgba(0,0,0,0.25)',
 };
 
 /** @typedef {typeof darkPalette} ThemeColors */
@@ -31,9 +33,9 @@ const ThemeContext = createContext(/** @type {ThemeValue | null} */ (null));
 
 /** @param {{children: import('react').ReactNode}} props */
 export function ThemeProvider({ children }) {
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(false);
   const [ready, setReady] = useState(false);
-  const currentTheme = useRef(true);
+  const currentTheme = useRef(false);
   useEffect(() => {
     let active = true;
     async function restore() {
@@ -41,7 +43,7 @@ export function ThemeProvider({ children }) {
         await themeWrites;
         const saved = await AsyncStorage.getItem(THEME_KEY);
         if (active) {
-          currentTheme.current = saved !== 'light';
+          currentTheme.current = saved === 'dark';
           setIsDark(currentTheme.current);
         }
       } catch (error) {
@@ -68,7 +70,7 @@ export function ThemeProvider({ children }) {
     colors: isDark ? darkPalette : lightPalette,
     isDark,
     toggleTheme,
-    // Keep stored subject colors intact while presenting light mode in B&W.
+    // Keep book colors stored, with restrained markers on the cream pages.
     subjectColor: (/** @type {string} */ storedColor) => isDark ? storedColor : lightPalette.text,
   }), [isDark, toggleTheme]);
   // Mount screens only once the preference is read, avoiding a wrong-theme flash.

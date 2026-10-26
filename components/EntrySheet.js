@@ -1,11 +1,12 @@
-import { useRef, useState } from 'react';
+import { fonts, typeScale, typeLeading } from './typography';
+import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { createSubject, deleteSubject, updateSubject } from '../db/SubjectService';
 import { createTask, updateTask } from '../db/TaskService';
 import { Button, FieldLabel, Input, Message, Pill, Sheet } from './ui';
 import { useTheme, useThemedStyles } from '../ThemeContext';
-import { DEFAULT_SUBJECT_CODE, firstFieldColor, normalizeFieldColors, normalizeFieldOfStudy, normalizeSubjectCode } from '../utils/subjectFields';
+import { DEFAULT_SUBJECT_CODE, firstFieldColor, getFieldsOfStudy, normalizeFieldColors, normalizeFieldOfStudy, normalizeSubjectCode } from '../utils/subjectFields';
 
 const subjectColors = [
   { name: 'Iris', color: '#C2ACF3' },
@@ -22,15 +23,20 @@ const subjectColors = [
   { name: 'White', color: '#FFFFFF' },
 ];
 
-/** @param {{ kind: 'subject' | 'task', userId: string, subjects: import('../db/SubjectService').Subject[], initialSubject?: number | null, editingSubject?: import('../db/SubjectService').Subject | null, editingTask?: import('../db/TaskService').Task | null, onClose: () => void, onSaved: () => void, onDeleted: () => void }} props */
-export default function EntrySheet({ kind, userId, subjects, initialSubject, editingSubject = null, editingTask = null, onClose, onSaved, onDeleted }) {
+/** @param {{ kind: 'subject' | 'task', userId: string, subjects: import('../db/SubjectService').Subject[], initialSubject?: number | null, initialField?: string, editingSubject?: import('../db/SubjectService').Subject | null, editingTask?: import('../db/TaskService').Task | null, onClose: () => void, onSaved: () => void, onDeleted: () => void }} props */
+export default function EntrySheet({ kind, userId, subjects, initialSubject, initialField = '', editingSubject = null, editingTask = null, onClose, onSaved, onDeleted }) {
   const s = useThemedStyles(createStyles);
   const { colors: p, isDark } = useTheme();
   const subjectToEdit = kind === 'subject' ? editingSubject : null;
   const taskToEdit = kind === 'task' ? editingTask : null;
   const [name, setName] = useState(subjectToEdit?.name ?? taskToEdit?.title ?? '');
   const [subjectId, setSubjectId] = useState(taskToEdit?.subject_id ?? initialSubject ?? subjects[0]?.id ?? null);
-  const [field, setField] = useState(subjectToEdit?.field_of_study ?? '');
+  const [field, setField] = useState(subjectToEdit?.field_of_study ?? initialField);
+  const [fieldExpanded, setFieldExpanded] = useState(false);
+  const [showAllFields, setShowAllFields] = useState(false);
+  const existingFields = useMemo(() => getFieldsOfStudy(subjects), [subjects]);
+  const query = field.trim().toLowerCase();
+  const suggestions = showAllFields ? existingFields : existingFields.filter(option => option.toLowerCase().includes(query));
   const [code, setCode] = useState(subjectToEdit?.subject_code ?? DEFAULT_SUBJECT_CODE);
   const [colors, setColors] = useState(() => subjectToEdit ? normalizeFieldColors(subjectToEdit.field_colors).split(',') : [subjectColors[0].color]);
   // Imported/legacy colors must remain visible and selectable while editing.
@@ -85,18 +91,39 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, edi
     ], { cancelable: true, onDismiss: cancel, userInterfaceStyle: isDark ? 'dark' : 'light' });
   }
   return (
-    <Sheet kicker={kind === 'subject' ? 'SUBJECT' : 'TASK'} title={subjectToEdit ? 'Edit subject' : taskToEdit ? 'Edit task' : kind === 'subject' ? 'Add subject' : 'Add task'} onClose={onClose} busy={busy}>
-      <Input label={kind === 'subject' ? 'Subject name' : 'Task title'} help={kind === 'subject' ? 'Subjects group related tasks and review topics.' : 'After saving, select Schedule in Library to plan this task.'} value={name} onChangeText={setName} placeholder={kind === 'subject' ? 'e.g. Architecture' : 'e.g. Read chapter 3'} maxLength={kind === 'subject' ? 128 : 256} editable={!busy} returnKeyType="done" onSubmitEditing={() => void save()} />
+    <Sheet kicker={kind === 'subject' ? 'Subject' : 'Task'} title={subjectToEdit ? 'Edit Subject' : taskToEdit ? 'Edit Task' : kind === 'subject' ? 'Add Subject' : 'Add Task'} onClose={onClose} busy={busy}>
+      <Input label={kind === 'subject' ? 'Subject Name' : 'Task Title'} help={kind === 'subject' ? 'Subjects group related tasks and review topics.' : 'After saving, select Schedule in Library to plan this task.'} value={name} onChangeText={setName} onFocus={() => setFieldExpanded(false)} placeholder={kind === 'subject' ? 'e.g. Architecture' : 'e.g. Read chapter 3'} maxLength={kind === 'subject' ? 128 : 256} editable={!busy} returnKeyType="done" onSubmitEditing={() => void save()} />
       {kind === 'subject' ? <>
-        <Input label="Subject code" help="A short code identifies the book on its spine, for example SE-101 or MATH-2." value={code} onChangeText={setCode} placeholder="e.g. SE-101" maxLength={32} autoCapitalize="characters" autoCorrect={false} editable={!busy} />
-        <Input label="Field of Study" help="Subjects with the same field appear on the same shelf. You can combine fields, such as Biology, Chemistry." value={field} onChangeText={setField} placeholder="e.g. Biology, Chemistry" maxLength={128} editable={!busy} />
-        <FieldLabel label="Field colors" help="Choose one or two colors. Select a chosen color to remove it; at least one must remain." />
+        <Input label="Subject Code" help="A short code identifies the book on its spine, for example SE-101 or MATH-2." value={code} onChangeText={setCode} onFocus={() => setFieldExpanded(false)} placeholder="e.g. SE-101" maxLength={32} autoCapitalize="characters" autoCorrect={false} editable={!busy} />
+        <View style={s.fieldChoice}>
+          <View style={s.fieldInputRow}>
+            <View style={s.fieldInput}><Input label="Field of Study" help="Choose an existing field or type a new one. Subjects with the same field share a shelf." value={field}
+              onChangeText={value => { setField(value); setFieldExpanded(true); setShowAllFields(false); }}
+              onFocus={() => { setFieldExpanded(true); setShowAllFields(false); }} onSubmitEditing={() => setFieldExpanded(false)} returnKeyType="done"
+              placeholder="Choose or type a field" maxLength={128} editable={!busy} autoCorrect={false} /></View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Choose Field of Study" accessibilityState={{ expanded: fieldExpanded, disabled: busy }} disabled={busy}
+              onPress={() => { setFieldExpanded(current => !current); setShowAllFields(true); }} style={s.fieldToggle}>
+              <Ionicons name={fieldExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={p.text} />
+            </Pressable>
+          </View>
+          {fieldExpanded && <ScrollView style={s.fieldOptions} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            {suggestions.map(option => <Pressable key={option.toLowerCase()} accessibilityRole="button" accessibilityLabel={`Use field ${option}`} accessibilityState={{ selected: option.toLowerCase() === query, disabled: busy }} disabled={busy}
+              onPress={() => { setField(option); setFieldExpanded(false); }} style={({ pressed }) => [s.fieldOption, pressed && s.pressed]}>
+              <Text style={s.fieldOptionText}>{option}</Text>{option.toLowerCase() === query && <Ionicons name="checkmark" size={18} color={p.accent} />}
+            </Pressable>)}
+            {query && !existingFields.some(option => option.toLowerCase() === query) ? <Pressable accessibilityRole="button" accessibilityLabel={`Use new field ${field.trim()}`} disabled={busy}
+              onPress={() => { setField(field.trim()); setFieldExpanded(false); }} style={({ pressed }) => [s.fieldOption, pressed && s.pressed]}>
+              <Ionicons name="add" size={18} color={p.accent} /><Text style={s.fieldOptionText}>{field.trim()}</Text>
+            </Pressable> : suggestions.length === 0 && <Text style={s.fieldEmpty}>Type a new field</Text>}
+          </ScrollView>}
+        </View>
+        <FieldLabel label="Field Colors" help="Choose one or two colors. Select a chosen color to remove it; at least one must remain." />
         <View style={s.colorRow}>{colorOptions.map(option => {
           const selected = colors.includes(option.color);
           const unavailable = busy || (!selected && colors.length === 2);
           return <Pressable key={option.color} accessibilityRole="checkbox" accessibilityLabel={option.name}
             accessibilityState={{ checked: selected, disabled: unavailable }} disabled={unavailable}
-            onPress={() => setColors(current => selected ? (current.length > 1 ? current.filter(color => color !== option.color) : current) : [...current, option.color])}
+            onPress={() => { setFieldExpanded(false); setColors(current => selected ? (current.length > 1 ? current.filter(color => color !== option.color) : current) : [...current, option.color]); }}
             style={({ pressed }) => [s.colorChoice, selected && s.colorSelected, unavailable && s.unavailable, pressed && s.pressed]}>
             <View style={[s.swatch, { backgroundColor: option.color }]} /><Text style={s.colorName}>{option.name}</Text>
             {selected && <Ionicons name="checkmark" color={p.text} size={16} />}
@@ -107,7 +134,7 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, edi
         <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={s.subjects}>{subjects.map(subject => <Pill key={subject.id} label={subject.name} color={firstFieldColor(subject.field_colors)} selected={subjectId === subject.id} disabled={busy} onPress={() => setSubjectId(subject.id)} />)}</ScrollView>
       </>}
       <Message text={error} />
-      <Button label={subjectToEdit || taskToEdit ? 'Save changes' : kind === 'subject' ? 'Create subject ↗' : 'Add task'} disabled={busy} busy={saving} onPress={() => void save()} />
+      <Button label={subjectToEdit || taskToEdit ? 'Save Changes' : kind === 'subject' ? 'Create Subject ↗' : 'Add Task'} disabled={busy} busy={saving} onPress={() => void save()} />
       {subjectToEdit && <Pressable accessibilityRole="button" accessibilityLabel="Delete Subject" accessibilityState={{ disabled: busy, busy: deleting }}
         disabled={busy} onPress={confirmDelete} style={({ pressed }) => [s.deleteButton, busy && s.unavailable, pressed && s.pressed]}>
         {deleting ? <ActivityIndicator color="#FF4C4C" size="small" /> : <Ionicons name="trash-outline" size={18} color="#FF4C4C" />}
@@ -118,12 +145,18 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, edi
 }
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
+  fieldChoice: { marginBottom: 0 }, fieldInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 }, fieldInput: { flex: 1 },
+  fieldToggle: { minWidth: 44, height: 52, marginBottom: 24, borderWidth: 1, borderColor: p.line, borderRadius: 10, backgroundColor: p.input, alignItems: 'center', justifyContent: 'center' },
+  fieldOptions: { maxHeight: 200, marginTop: -16, marginBottom: 24, borderWidth: 1, borderColor: p.line, borderRadius: 10, backgroundColor: p.surface },
+  fieldOption: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingVertical: 12, paddingHorizontal: 14 },
+  fieldOptionText: { flex: 1, fontFamily: fonts.body, color: p.text, fontSize: typeScale.body, lineHeight: typeLeading.body },
+  fieldEmpty: { fontFamily: fonts.body, color: p.muted, fontSize: typeScale.small, lineHeight: typeLeading.small, padding: 14 },
   colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 32 }, subjects: { gap: 20, paddingBottom: 32 },
   colorChoice: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, padding: 12, borderWidth: 1, borderColor: p.line, borderRadius: 12 },
   colorSelected: { borderColor: p.text, backgroundColor: p.raised },
-  colorName: { color: p.text, fontSize: 13, fontWeight: '500' },
+  colorName: { fontFamily: fonts.medium, color: p.text, fontSize: typeScale.body, lineHeight: typeLeading.body, fontWeight: 'normal' },
   swatch: { width: 26, height: 26, flexShrink: 0, borderRadius: 13, borderWidth: 1, borderColor: '#888888' },
   unavailable: { opacity: 0.4 }, pressed: { opacity: 0.75 },
   deleteButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 52, marginTop: 24, padding: 12, borderWidth: 1, borderColor: p.line, borderRadius: 14 },
-  deleteText: { color: '#FF4C4C', fontSize: 14, fontWeight: '700' },
+  deleteText: { fontFamily: fonts.bold, color: '#FF4C4C', fontSize: typeScale.button, lineHeight: typeLeading.button, fontWeight: 'normal' },
 });

@@ -3,19 +3,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTheme } from '../../../ThemeContext';
 import { StudyWorkspace } from '../../../components/StudyWorkspace';
+import { fonts, typeScale, typeLeading } from '../../../components/typography';
+import ToastTabBar from '../../../components/ToastTabBar';
 
 export default function TabLayout() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   return <StudyWorkspace>
-    <Tabs screenOptions={{
+    <Tabs tabBar={props => <ToastTabBar {...props} />} screenOptions={{
       headerShown: false, tabBarHideOnKeyboard: true,
       tabBarActiveTintColor: colors.accent, tabBarInactiveTintColor: colors.muted,
       tabBarActiveBackgroundColor: colors.accentSoft,
       tabBarItemStyle: { borderRadius: 12, marginHorizontal: 4, paddingVertical: 3 },
       sceneStyle: { backgroundColor: colors.background },
       tabBarStyle: { backgroundColor: colors.background, borderTopColor: colors.line, borderTopWidth: 1, height: 70 + insets.bottom, paddingTop: 8, paddingBottom: Math.max(insets.bottom, 8), elevation: 0 },
-      tabBarLabelStyle: { fontSize: 11, fontWeight: '600', letterSpacing: 0.4 },
+      tabBarLabelStyle: { fontFamily: fonts.semibold, fontSize: typeScale.small, lineHeight: typeLeading.small, letterSpacing: 0.4 },
       tabBarLabelPosition: 'below-icon',
     }}>
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ color, focused }) => <Ionicons name={focused ? "home" : "home-outline"} size={23} color={color} /> }} />

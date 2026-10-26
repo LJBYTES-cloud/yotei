@@ -20,11 +20,10 @@ export function ScreenHeader({ title, edition, eyebrow, children, subtitle }) {
 }
 
 export function Feedback() {
-  const { error, notice, dismissNotice, data, refresh } = useStudy();
+  const { error, data, refresh } = useStudy();
   const s = useThemedStyles(createStudyStyles);
   return <>
-    {Boolean(error) && <View style={s.card}><Message text={error} />{data.error && <Button label="Try refreshing" tone="outline" onPress={refresh} />}</View>}
-    {Boolean(notice) && <View style={[s.card, s.notice]}><View style={s.flex}><Message text={notice} kind="notice" /></View><Pressable accessibilityRole="button" accessibilityLabel="Dismiss message" onPress={dismissNotice} style={s.dismiss}><Text style={s.dismissText}>×</Text></Pressable></View>}
+    {Boolean(error) && <View style={s.card}><Message text={error} />{data.error && <Button label="Try Refreshing" tone="outline" onPress={refresh} />}</View>}
   </>;
 }
 
@@ -33,21 +32,21 @@ export function CoachingCard({ task }) {
   const { disabled, openSchedule } = useStudy();
   const s = useThemedStyles(createStudyStyles);
   return <View style={s.coaching}>
-    <FieldLabel label="POSTPONED TASK" textStyle={s.coachingLabel} help="This task has been postponed at least twice. A short five-minute session can help you start." />
+    <FieldLabel label="Postponed Task" textStyle={s.coachingLabel} help="This task has been postponed at least twice. A short five-minute session can help you start." />
     <Text style={s.coachingText}>Try a 5-minute start.</Text>
     <Text style={[s.hint, { marginTop: 16 }]}>{task.title}</Text>
     <Pressable accessibilityRole="button" accessibilityLabel={`Schedule a 5-minute start for ${task.title}`} disabled={disabled} onPress={() => openSchedule(task, 5)} style={s.coachingAction}>
-      <Text style={s.coachingActionText}>Schedule 5 minutes</Text>
+      <Text style={s.coachingActionText}>Schedule 5 Minutes</Text>
     </Pressable>
   </View>;
 }
 
-/** @param {{task: import('../db/TaskService').Task, hasMissedSession?: boolean}} props */
-export function TaskCard({ task, hasMissedSession = false }) {
+/** @param {{task: import('../db/TaskService').Task, hasMissedSession?: boolean, notebook?: boolean}} props */
+export function TaskCard({ task, hasMissedSession = false, notebook = false }) {
   const { disabled, openSchedule, openEditTask, confirmDeleteTask, deletingTask } = useStudy();
   const { subjectColor, colors: p } = useTheme();
   const s = useThemedStyles(createStudyStyles);
-  return <View style={s.card}>
+  return <View style={[s.card, notebook && s.notebookTask]}>
     <View style={s.cardTop}><View style={[s.dot, { backgroundColor: subjectColor(task.subject_color) }]} /><Text style={s.subject}>{task.subject_name}</Text></View>
     <Text style={s.title}>{task.title}</Text>
     {hasMissedSession && <Text style={[s.badge, s.missedBadge, { alignSelf: 'flex-start', marginTop: 16 }]}>Missed Session</Text>}
@@ -74,14 +73,14 @@ export function FocusCard({ block }) {
   const s = useThemedStyles(createStudyStyles);
   const active = block.status === 'scheduled' && Date.parse(block.start_time) <= clock && Date.parse(block.end_time) >= clock;
   const missed = block.status === 'missed' && !block.rescheduled_to;
-  const status = block.rescheduled_to ? 'Replanned' : block.status === 'done' ? 'Done' : missed ? 'Missed' : active ? 'Ready to start' : 'Scheduled';
+  const status = block.rescheduled_to ? 'Replanned' : block.status === 'done' ? 'Done' : missed ? 'Missed' : active ? 'Ready to Start' : 'Scheduled';
   return <View style={s.card}>
     <View style={s.focusTop}><Text style={s.focusTime}>{formatTime(block.start_time)}</Text><Text style={[s.badge, active && s.activeBadge, missed && s.missedBadge, block.status === 'done' && s.doneBadge]}>{status}</Text></View>
     {getLocalDateKey(new Date(block.start_time)) !== today && <Text style={s.oldDate}>{new Date(block.start_time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>}
     <View style={s.focusBody}><View style={[s.timeline, { backgroundColor: subjectColor(block.subject_color) }]} /><View style={s.flex}><Text style={s.subject}>{block.subject_name}</Text><Text style={s.focusTitle}>{block.task_title}</Text><Text style={s.hint}>{formatMinutes((Date.parse(block.end_time) - Date.parse(block.start_time)) / 60000)} · until {formatTime(block.end_time)}</Text></View></View>
     {block.status === 'done' && block.actual_start_time !== null && <Text style={[s.hint, { marginBottom: 20 }]}>{formatElapsed(block.actual_study_seconds)} studied · {block.break_time_minutes} min breaks</Text>}
     {active && <Button label="Start Session" tone="quiet" busy={workingBlock === block.id} disabled={disabled || data.blocks.some(item => item.status === 'active')} onPress={() => void controlTimer(block.id, 'start')} />}
-    {missed && <View style={s.recovery}><FieldLabel label="Missed session" textStyle={s.coachingText} help="Reschedule with new dates and times. Each reschedule increases this task's postponement count once." /><Button label="Reschedule" tone="quiet" disabled={disabled} onPress={() => openReschedule(block)} /></View>}
+    {missed && <View style={s.recovery}><FieldLabel label="Missed Session" textStyle={s.coachingText} help="Reschedule with new dates and times. Each reschedule increases this task's postponement count once." /><Button label="Reschedule" tone="quiet" disabled={disabled} onPress={() => openReschedule(block)} /></View>}
   </View>;
 }
 

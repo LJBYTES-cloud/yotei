@@ -85,6 +85,18 @@ export async function seedDemoData(userId) {
         SELECT id, ?, ?, ? FROM Task WHERE id = ? AND user_id = ?
       `, new Date(begins).toISOString(), new Date(ends).toISOString(), status, sessionTasks[index], userId);
     }
+    // Six completed local dates showcase the progress chart. Today's planning
+    // fixture stays at exactly 240 minutes and keeps its original statuses.
+    const historyMinutes = [60, 90, 75, 120, 105, 150];
+    for (let index = 0; index < historyMinutes.length; index += 1) {
+      const begins = new Date(now);
+      begins.setDate(begins.getDate() - (6 - index)); begins.setHours(10, 0, 0, 0);
+      const ends = new Date(begins.getTime() + historyMinutes[index] * minute);
+      await transaction.runAsync(`
+        INSERT INTO StudyBlock (task_id, start_time, end_time, status, actual_start_time, actual_end_time, actual_study_seconds)
+        SELECT id, ?, ?, 'done', ?, ?, ? FROM Task WHERE id = ? AND user_id = ?
+      `, begins.toISOString(), ends.toISOString(), begins.toISOString(), ends.toISOString(), historyMinutes[index] * 60, taskIds[index], userId);
+    }
   });
-  return { subjects: 3, tasks: 6, studyBlocks: 4, reviewItems: 3, totalMinutes: 240 };
+  return { subjects: 3, tasks: 6, studyBlocks: 10, reviewItems: 3, totalMinutes: 240 };
 }

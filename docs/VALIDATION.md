@@ -1,5 +1,45 @@
 # Validation snapshot
 
+## Global success toasts, Title Case and themed information dialogs (2026-10-27)
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed. The tab-bar host uses `BottomTabBar` and its types from `expo-router/js-tabs`, matching SDK 57's navigation context. The dialog uses RN 0.86's StyleSheet.absoluteFill.
+- Nine regression suites: 151 cases, 150 passed, 0 failed, 1 existing New York-only DST case skipped in Asia/Singapore. Command: `node --experimental-vm-modules --test tests/database.test.cjs tests/backup.test.cjs tests/task-library.test.cjs tests/subject-deletion.test.cjs tests/focus-timer.test.cjs tests/auth.test.cjs tests/theme.test.cjs tests/web-platform.test.cjs tests/notifications.test.cjs`.
+- New actual-component checks use a controlled clock to exercise slide animation, exact three-second expiry, repeated identical notices, hidden expiry and unmount cleanup. Host checks cover tab-bar placement wiring, existing/new Settings-message discard, no replay, keyboard/sheet hiding and listener cleanup. Feedback/workspace checks verify inline errors without success cards and fresh notice identities.
+- Dialog checks exercise InfoButton opening/closing without Alert.alert; actual InfoModal uses theme colors and Merriweather/Inter fonts, scrollable content and native Back/backdrop/close/OK dismissal. Existing editor/deletion/notebook/web tests now use Title Case labels. The final hidden-expiry refinement was rechecked with all five notification tests plus lint/typecheck.
+- `npx.cmd expo export --platform android --platform ios --platform web --output-dir .expo/notifications-verification`: passed for final source using src/app/. No dependencies, SQLite services/schema, backup format or authentication logic changed.
+- Native toast alignment/motion, platform accessibility announcements/focus, large text/long guidance, nested sheet dialogs and keyboard behavior still require physical-device checks. Native component/animation bridges are substituted in the tests; bundling does not establish their rendered appearance.
+
+## Weekly Progress chart and completed demo history (2026-10-27)
+
+- Installed with `npx.cmd expo install react-native-svg react-native-chart-kit`: SDK-compatible SVG 15.15.4 and Chart Kit 7.0.4. `npx.cmd expo install --check` reports dependencies up to date.
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.
+- All eight regression suites: 144 cases, 143 passed, 0 failed, 1 New York-specific DST case skipped in Asia/Singapore. Command: `node --experimental-vm-modules --test tests/database.test.cjs tests/backup.test.cjs tests/task-library.test.cjs tests/subject-deletion.test.cjs tests/focus-timer.test.cjs tests/auth.test.cjs tests/theme.test.cjs tests/web-platform.test.cjs`.
+- Database suite under `TZ=America/New_York`: 64 passed, 0 failed/skipped. New production-SQL checks cover seven zero-filled buckets, year/leap boundaries, invalid input, account isolation, timed actual/zero work versus legacy duration, exact local-midnight completion boundaries, actual versus planned completion dates, excluded unfinished/missed sessions and DST elapsed minutes. The timer lifecycle test verifies 25 actual minutes after a two-minute break reaches weekly progress. Repeated demo reset and all-times/DST fixtures verify six historical totals while today's workload remains 240 minutes.
+- Actual-component bridge tests verify measured/resized chart width, seven values including zeros, all-zero y-axis bounds, point inspection, theme-aware chart colors, loading/error feedback, and Home placement/data wiring. Native chart rendering is substituted by a bridge; these checks do not establish its rendered appearance.
+- `npx.cmd expo export --platform android --platform ios --platform web --output-dir .expo/weekly-progress-verification`: passed using src/app/. Web remains the mobile-only notice; exported web output contains no WASM assets or SQLite loader signatures.
+- No SQLite schema, backup version, authentication or scheduling-modal changes. Check native SVG chart appearance, narrow/rotated layouts, accessibility text scaling, point targets, account changes, completion/import refresh and both themes on a physical device using DEMO_AND_TESTING.md.
+
+## Light fallback, consistent type scale, reversible books and field autocomplete (2026-10-27)
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.
+- All eight regression suites: 139 cases, 138 passed, 0 failed, 1 timezone-specific DST skip. Command: `node --experimental-vm-modules --test tests/database.test.cjs tests/backup.test.cjs tests/task-library.test.cjs tests/subject-deletion.test.cjs tests/focus-timer.test.cjs tests/auth.test.cjs tests/theme.test.cjs tests/web-platform.test.cjs`.
+- Theme tests verify Light fallback for missing/invalid/unreadable preferences without overwriting storage, explicit saved Dark restoration, serialized toggles and write-error recovery.
+- Actual-component tests hold animations before completion to verify covers remain mounted on Close, hidden controls become inaccessible, the reverse targets the same Animated.Value, rapid reopening stops/reverses the previous animation, and reduced motion avoids tweening. Dark gradients are checked for reduced luminance, restored Light colors, and unchanged subject metadata.
+- Shelf/entry tests verify field + callbacks, initialField plumbing/reset, case-insensitive option deduplication, filtered/show-all suggestions, existing/custom-field saves and retained drafts on failure. Existing confirmation tests now provide the editor's memo hook bridge.
+- All active app/component/screen/tab fontSize and lineHeight declarations use the shared scale/leading tokens; the completion-to-review sheet now participates too. Native accessibility scaling and rotated-code fitting remain enabled.
+- `npx.cmd expo export --platform android --platform ios --platform web --output-dir .expo/shelf-polish-verification`: passed, using src/app/. No dependencies or storage-schema changes were needed.
+- Physical-device motion quality, contrast, OS text scaling, keyboard/dropdown touch handling and native picker/share/Alert behavior remain manual checks in DEMO_AND_TESTING.md. Bridge tests and bundle exports do not establish their rendered appearance.
+
+## Academic journal theme and dedicated subject notebooks (2026-10-26)
+
+- Installed `expo-font @expo-google-fonts/merriweather @expo-google-fonts/inter` with `npx.cmd expo install`. Existing expo-font remains ~57.0.4; both Google font packages are ^0.4.2. Only six chosen font faces are imported by weight subpath and loaded locally in App.js.
+- `npx.cmd expo lint`, `npx.cmd tsc --noEmit`, and `npx.cmd expo install --check`: passed.
+- All eight suites: 134 cases, 133 passed, 0 failed, 1 New York-specific DST case skipped in Asia/Singapore. Run `node --experimental-vm-modules --test tests/database.test.cjs tests/backup.test.cjs tests/task-library.test.cjs tests/subject-deletion.test.cjs tests/focus-timer.test.cjs tests/auth.test.cjs tests/theme.test.cjs tests/web-platform.test.cjs`.
+- Component tests verify Library has no task list/New Task/reset action; cover navigation uses the correct route ID; Opened Book scopes tasks, preselects New Task, exposes Edit/Delete, and redirects missing/unowned/invalid IDs. Missed-badge rules are tested in their new book location. Shared mutation tests cover quiet Subject saves, retained backup feedback, and confirmed/guarded book deletion with refresh.
+- Root tests verify waiting for six font faces, recovery after a font error, and preserved web/native route mounting. Existing theme restoration, timers, authentication, backup and production-SQL lifecycle regressions remain passing.
+- `npx.cmd expo export --platform android --platform ios --platform web --output-dir .expo/journal-verification`: passed using src/app/. Assets include the selected Merriweather/Inter faces; the active Library is now a nested stack. Web remains a mobile-only notice, with SQLite excluded.
+- No schema, study-data service, backup-format or authentication changes. New source files: typography, Opened Book and three Library route wrappers. The old flat library.tsx route wrapper was replaced. Native back gestures, rendered font metrics, offline loading, keyboard sheets, accessible text scaling, notepad appearance and native Alert/share/picker interactions still require device checks; exports and bridge tests do not establish their visual behavior.
+
 ## Subject-code spines, animated covers, and typed durations (2026-10-26)
 
 - `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.

@@ -1,3 +1,4 @@
+import { fonts, typeScale, typeLeading } from './typography';
 import { useRef, useState } from 'react';
 import { Keyboard, StyleSheet, Text, View } from 'react-native';
 import { createStudyBlock, rescheduleStudyBlock } from '../db/StudyBlockService';
@@ -79,27 +80,27 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const firstEndDay = new Date(window.start); firstEndDay.setHours(0, 0, 0, 0);
   return (
-    <Sheet title={sourceBlock ? 'Reschedule session' : 'Schedule session'} kicker="STUDY SESSION" onClose={onClose} busy={busy}>
+    <Sheet title={sourceBlock ? 'Reschedule Session' : 'Schedule Session'} kicker="Study Session" onClose={onClose} busy={busy}>
       <View style={s.task}><Text style={s.subject}>{task.subject_name}</Text><Text style={s.taskTitle}>{task.title}</Text></View>
       {warning ? (
         <View accessibilityRole="alert" style={s.warning}>
           <Text style={s.warningKicker}>WORKLOAD WARNING</Text>
-          <FieldLabel label="Daily study time exceeds 4 hours" textStyle={s.warningTitle} help="This includes scheduled and completed sessions. Adjust the selected dates/times to reduce the workload, or choose Schedule anyway to continue." />
+          <FieldLabel label="Daily Study Time Exceeds 4 Hours" textStyle={s.warningTitle} help="This includes scheduled and completed sessions. Adjust the selected dates/times to reduce the workload, or choose Schedule Anyway to continue." />
           {warning.days.map(day => <Text key={day.date} style={s.warningDetail}>{day.date} · {formatMinutes(day.current_minutes)} already planned + {formatMinutes(day.added_minutes)} = {formatMinutes(day.total_minutes)}</Text>)}
           <Message text={error} />
-          <Button label="Schedule anyway" busy={busy} onPress={() => void submit(true)} />
-          <View style={s.gap} /><Button label="Adjust session" tone="quiet" disabled={busy} onPress={() => { setWarning(null); setError(''); }} />
+          <Button label="Schedule Anyway" busy={busy} onPress={() => void submit(true)} />
+          <View style={s.gap} /><Button label="Adjust Session" tone="quiet" disabled={busy} onPress={() => { setWarning(null); setError(''); }} />
         </View>
       ) : (
         <>
           <DateTimeField label="Start" help="Choose any upcoming date and local time. Changing the start keeps the current session length."
             value={window.start} minimumDate={today} disabled={busy} onChange={(picked, part) => changeWindow('start', picked, part)} />
-          <Input label="Duration (optional)" help="Type 4h 30m, 45m, 2h, or a whole number of minutes to calculate End from Start. Moving Start keeps that duration; editing End clears this shortcut."
+          <Input label="Duration (Optional)" help="Type 4h 30m, 45m, 2h, or a whole number of minutes to calculate End from Start. Moving Start keeps that duration; editing End clears this shortcut."
             value={duration} onChangeText={changeDuration} placeholder="e.g. 4h 30m" autoCapitalize="none" autoCorrect={false} maxLength={40} editable={!busy} returnKeyType="done" onSubmitEditing={() => void submit()} />
           <DateTimeField label="End" help="Choose a date/time after the start. Overnight sessions can end on a later calendar date."
             value={window.end} minimumDate={firstEndDay} disabled={busy} onChange={(picked, part) => changeWindow('end', picked, part)} />
           <Message text={durationError || error} />
-          <Button label={sourceBlock ? 'Reschedule session ↗' : 'Save session'} disabled={Boolean(durationError)} busy={busy} onPress={() => void submit()} />
+          <Button label={sourceBlock ? 'Reschedule Session ↗' : 'Save Session'} disabled={Boolean(durationError)} busy={busy} onPress={() => void submit()} />
         </>
       )}
     </Sheet>
@@ -108,7 +109,7 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
-  task: { borderLeftWidth: 2, borderLeftColor: p.accent, paddingLeft: 16, marginBottom: 36 }, subject: { color: p.muted, fontSize: 12, marginBottom: 7 }, taskTitle: { color: p.text, fontSize: 20, lineHeight: 28, fontWeight: '500' },
-  warning: { padding: 20, borderRadius: 20, backgroundColor: p.warmSoft, borderWidth: 1, borderColor: p.line }, warningKicker: { color: p.warm, fontSize: 9, letterSpacing: 1.5, fontWeight: '700', marginBottom: 20 },
-  warningTitle: { color: p.text, fontSize: 22, lineHeight: 29, letterSpacing: -0.6 }, warningDetail: { color: p.warm, fontSize: 12, lineHeight: 21, marginBottom: 20 }, gap: { height: 20 },
+  task: { borderLeftWidth: 2, borderLeftColor: p.accent, paddingLeft: 16, marginBottom: 36 }, subject: { fontFamily: fonts.body, color: p.muted, fontSize: typeScale.small, lineHeight: typeLeading.small, marginBottom: 7 }, taskTitle: { fontFamily: fonts.serifBold, color: p.text, fontSize: typeScale.h3, lineHeight: typeLeading.h3, fontWeight: 'normal' },
+  warning: { padding: 20, borderRadius: 20, backgroundColor: p.warmSoft, borderWidth: 1, borderColor: p.line }, warningKicker: { fontFamily: fonts.bold, color: p.warm, fontSize: typeScale.small, lineHeight: typeLeading.small, letterSpacing: 1.5, fontWeight: 'normal', marginBottom: 20 },
+  warningTitle: { fontFamily: fonts.serifBold, color: p.text, fontSize: typeScale.h2, lineHeight: typeLeading.h2, letterSpacing: -0.6 }, warningDetail: { fontFamily: fonts.body, color: p.warm, fontSize: typeScale.small, lineHeight: typeLeading.small, marginBottom: 20 }, gap: { height: 20 },
 });

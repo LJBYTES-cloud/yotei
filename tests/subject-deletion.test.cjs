@@ -19,6 +19,7 @@ async function setup({ fail = false, pending = false, editing = true } = {}) {
         return [slots[index].value, value => { slots[index].value = typeof value === 'function' ? value(slots[index].value) : value; }];
       },
       useRef(initial) { const index = cursor++; if (!slots[index]) slots[index] = { current: initial }; return slots[index]; },
+      useMemo(callback) { return callback(); },
     },
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }), Fragment: 'Fragment' },
     'react-native': { ActivityIndicator: 'Spinner', Alert: { alert: (...args) => alerts.push(args) }, Pressable: 'Pressable', ScrollView: 'ScrollView', StyleSheet: { create: value => value }, Text: 'Text', View: 'View' },
@@ -37,7 +38,9 @@ async function setup({ fail = false, pending = false, editing = true } = {}) {
     compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 }, fileName: 'EntrySheet.jsx',
   }).outputText;
   const module = new vm.SourceTextModule(source, { context });
-  await module.link(name => name === '../utils/subjectFields' ? fields : new vm.SyntheticModule(Object.keys(modules[name]), function () {
+  const typography = new vm.SourceTextModule(fs.readFileSync('components/typography.js', 'utf8'), { context });
+  await typography.link(() => { throw new Error('Unexpected typography import'); });
+  await module.link(name => name === './typography' ? typography : name === '../utils/subjectFields' ? fields : new vm.SyntheticModule(Object.keys(modules[name]), function () {
     for (const [key, value] of Object.entries(modules[name])) this.setExport(key, value);
   }, { context }));
   await module.evaluate();
@@ -80,7 +83,7 @@ test('confirmation deletes the original subject once, prevents overlapping saves
   const confirm = s.alerts[0][2][1].onPress;
   confirm(); confirm();
   s.alerts[0][3].onDismiss();
-  s.find(s.render(), 'Button', props => props.label === 'Save changes').props.onPress();
+  s.find(s.render(), 'Button', props => props.label === 'Save Changes').props.onPress();
   assert.deepEqual(s.deletions, [{ userId: 'owner', id: 7 }]);
   assert.equal(s.saved, 0); assert.equal(s.deleted, 0);
   assert.equal(s.deleteButton().props.disabled, true);
@@ -93,7 +96,7 @@ test('deletion failure keeps the edit sheet and draft available for retry; dismi
   s.deleteButton().props.onPress(); s.alerts[0][2][1].onPress(); await s.flush();
   assert.equal(s.deleted, 0);
   assert.match(s.find(s.render(), 'Message').props.text, /Could not delete/);
-  assert.equal(s.find(s.render(), 'Input', props => props.label === 'Subject name').props.value, 'Biology');
+  assert.equal(s.find(s.render(), 'Input', props => props.label === 'Subject Name').props.value, 'Biology');
   assert.equal(s.deleteButton().props.disabled, false);
   s.deleteButton().props.onPress(); s.alerts[1][3].onDismiss(); await s.flush();
   assert.equal(s.deletions.length, 1);

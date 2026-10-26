@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Keyboard, StyleSheet, Text, View } from 'react-native';
 import { useThemedStyles } from '../ThemeContext';
+import { fonts, typeScale, typeLeading } from './typography';
 import { Button, Input, Message, Sheet } from './ui';
 
 /** @param {{block: import('../db/StudyBlockService').StudyBlock, busy: boolean, onClose: () => void, onAdd: (topic: string) => Promise<boolean>}} props */
@@ -21,7 +22,7 @@ export default function CompletionReviewSheet({ block, busy, onClose, onAdd }) {
   }
 
   return (
-    <Sheet title="Add review topic" kicker="SESSION COMPLETED" busy={busy} onClose={onClose}>
+    <Sheet title="Add Review Topic" kicker="Session Completed" busy={busy} onClose={onClose}>
       <View style={s.task}>
         <Text style={s.subject}>{block.subject_name}</Text>
         <Text style={s.taskTitle}>{block.task_title}</Text>
@@ -35,8 +36,8 @@ export default function CompletionReviewSheet({ block, busy, onClose, onAdd }) {
           <Button label="Skip" tone="outline" disabled={busy} onPress={onClose} />
         </View>
       </> : <View style={s.actions}>
-        <Button label="Yes, add a topic" disabled={busy} onPress={() => setEditing(true)} />
-        <Button label="No, finish" tone="outline" disabled={busy} onPress={onClose} />
+        <Button label="Yes, Add a Topic" disabled={busy} onPress={() => setEditing(true)} />
+        <Button label="No, Finish" tone="outline" disabled={busy} onPress={onClose} />
       </View>}
     </Sheet>
   );
@@ -45,8 +46,8 @@ export default function CompletionReviewSheet({ block, busy, onClose, onAdd }) {
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
   task: { borderWidth: 1, borderColor: p.line, backgroundColor: p.input, borderRadius: 16, padding: 16, marginBottom: 20 },
-  subject: { color: p.muted, fontSize: 12, marginBottom: 8 },
-  taskTitle: { color: p.text, fontSize: 19, lineHeight: 27, fontWeight: '600' },
-  prompt: { color: p.text, fontSize: 15, lineHeight: 23, marginBottom: 20 },
+  subject: { fontFamily: fonts.body, color: p.muted, fontSize: typeScale.small, lineHeight: typeLeading.small, marginBottom: 8 },
+  taskTitle: { fontFamily: fonts.serifBold, color: p.text, fontSize: typeScale.h3, lineHeight: typeLeading.h3 },
+  prompt: { fontFamily: fonts.body, color: p.text, fontSize: typeScale.body, lineHeight: typeLeading.body, marginBottom: 20 },
   actions: { gap: 12 },
 });

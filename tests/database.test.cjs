@@ -94,12 +94,14 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
   await demo.evaluate();
   const reviews = await load('./db/ReviewService.js', parent);
   await reviews.evaluate();
+  const progress = await load('./db/ProgressService.js', parent);
+  await progress.evaluate();
   const database = modules.get(path.resolve('db/database.js')).namespace;
   const subjectFields = modules.get(path.resolve('utils/subjectFields.js')).namespace;
   const timer = await load('./utils/focusTimer.js', parent);
   await timer.evaluate();
   return {
-    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace, ...reviews.namespace, ...subjectFields, ...timer.namespace,
+    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace, ...reviews.namespace, ...subjectFields, ...timer.namespace, ...progress.namespace,
     setNow: value => { now = value; },
     get opens() { return opens; },
     close: async () => { for (const connection of connections) await connection.closeAsync(); },
@@ -107,6 +109,67 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
 }
 
 const plain = value => JSON.parse(JSON.stringify(value));
+
+test('weekly progress fills seven local calendar dates across year/leap boundaries and validates input', async t => {
+  const s = await loadServices(); t.after(s.close);
+  assert.deepEqual(plain(await s.getWeeklyStudyMinutes('empty-account', '2027-01-03')), [
+    '2026-12-28', '2026-12-29', '2026-12-30', '2026-12-31', '2027-01-01', '2027-01-02', '2027-01-03',
+  ].map(date => ({ date, minutes: 0 })));
+  const leap = await s.getWeeklyStudyMinutes('empty-account', '2028-03-02');
+  assert.equal(leap[4].date, '2028-02-29');
+  await assert.rejects(s.getWeeklyStudyMinutes(' ', '2026-10-20'), /Sign in/i);
+  await assert.rejects(s.getWeeklyStudyMinutes('student', '2026-02-30'), /valid calendar date/i);
+});
+
+test('weekly progress isolates accounts, uses actual work including zero, and credits the local completion day', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const db = await s.getDatabase();
+  const subject = await s.createSubject('student', { name: 'Biology' });
+  const task = await s.createTask('student', { subject_id: subject.id, title: 'Cells' });
+  const otherSubject = await s.createSubject('other', { name: 'History' });
+  const otherTask = await s.createTask('other', { subject_id: otherSubject.id, title: 'Essay' });
+  async function insert(start, end, { status = 'done', actualStart = null, actualEnd = null, seconds = 0, taskId = task.id } = {}) {
+    await db.runAsync(`INSERT INTO StudyBlock (task_id, start_time, end_time, status, actual_start_time, actual_end_time, actual_study_seconds)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`, taskId, new Date(start).toISOString(), new Date(end).toISOString(), status,
+    actualStart && new Date(actualStart).toISOString(), actualEnd && new Date(actualEnd).toISOString(), seconds);
+  }
+  // Completion is exactly the inclusive first midnight; all 30 minutes belong to that day.
+  await insert('2026-10-13T23:30:00', '2026-10-14T00:00:00');
+  await insert('2026-10-13T22:00:00', '2026-10-13T23:00:00'); // outside the week
+  await insert('2026-10-20T23:30:00', '2026-10-21T00:00:00'); // exclusive end boundary
+  await insert('2026-10-15T10:00:00', '2026-10-15T10:45:00'); // legacy untimed completion
+  await insert('2026-10-15T12:00:00', '2026-10-15T13:00:00', {
+    actualStart: '2026-10-15T12:00:00', actualEnd: '2026-10-15T12:25:30', seconds: 1230,
+  }); // actual 20.5 minutes, not the planned hour
+  await insert('2026-10-15T14:00:00', '2026-10-15T15:00:00', {
+    actualStart: '2026-10-15T14:00:00', actualEnd: '2026-10-15T14:05:00', seconds: 0,
+  }); // all-break session must stay zero
+  await insert('2026-10-16T23:00:00', '2026-10-17T00:00:00', {
+    actualStart: '2026-10-16T23:00:00', actualEnd: '2026-10-18T00:00:00', seconds: 600,
+  }); // completion date, not the original planned date
+  for (const status of ['scheduled', 'active', 'missed']) {
+    await insert('2026-10-19T10:00:00', '2026-10-19T11:00:00', { status });
+  }
+  await insert('2026-10-19T12:00:00', '2026-10-19T13:00:00', { taskId: otherTask.id });
+  const progress = await s.getWeeklyStudyMinutes('student', '2026-10-20');
+  assert.deepEqual(plain(progress.map(day => day.minutes)), [30, 65.5, 0, 0, 10, 0, 0]);
+  assert.deepEqual(plain((await s.getWeeklyStudyMinutes('other', '2026-10-20')).map(day => day.minutes)), [0, 0, 0, 0, 0, 60, 0]);
+});
+
+test('weekly calendar aggregation preserves elapsed minutes through local daylight-saving changes', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const db = await s.getDatabase();
+  const subject = await s.createSubject('student', { name: 'Biology' });
+  const task = await s.createTask('student', { subject_id: subject.id, title: 'Cells' });
+  for (const date of ['2026-03-08', '2026-11-01']) {
+    const start = new Date(`${date}T01:30:00`);
+    const end = new Date(`${date}T03:30:00`);
+    await db.runAsync("INSERT INTO StudyBlock (task_id, start_time, end_time, status) VALUES (?, ?, ?, 'done')", task.id, start.toISOString(), end.toISOString());
+    const result = await s.getWeeklyStudyMinutes('student', date);
+    assert.equal(result[6].minutes, (end.getTime() - start.getTime()) / 60000);
+    assert.equal(result.length, 7);
+  }
+});
 
 async function focusFixture(s, user = 'student', start = '2026-10-20T09:00:00Z', end = '2026-10-20T09:30:00Z') {
   const subject = await s.createSubject(user, { name: 'Biology' });
@@ -120,6 +183,7 @@ test('focus timer tracks lateness, freezes work on breaks, survives scheduled en
   const block = await focusFixture(s);
   const active = await s.startStudyBlock('student', block.id);
   assert.equal(active.status, 'active');
+  assert.equal((await s.getWeeklyStudyMinutes('student', '2026-10-20')).reduce((sum, day) => sum + day.minutes, 0), 0, 'unfinished work is not completed progress');
   assert.equal(active.actual_start_time, '2026-10-20T09:13:00.000Z');
   assert.equal(s.getFocusTiming(active, Date.parse('2026-10-20T09:18:00Z')).lateMinutes, 13);
   assert.equal(await s.getDailyStudyMinutes('student', s.getLocalDateKey(new Date(block.start_time))), 30, 'active sessions retain their planned workload');
@@ -134,6 +198,8 @@ test('focus timer tracks lateness, freezes work on breaks, survives scheduled en
   const finished = await s.finishStudyBlock('student', block.id, '2026-10-20T09:40:00Z');
   assert.equal(finished.status, 'done'); assert.equal(finished.actual_study_seconds, 25 * 60);
   assert.equal(finished.actual_end_time, '2026-10-20T09:40:00.000Z');
+  const progress = await s.getWeeklyStudyMinutes('student', s.getLocalDateKey(new Date(finished.actual_end_time)));
+  assert.equal(progress[6].minutes, 25, 'weekly progress uses actual work and excludes the two-minute break');
   const retry = await s.finishStudyBlock('student', block.id, '2026-10-20T10:00:00Z');
   assert.deepEqual(plain(retry), plain(finished));
   assert.equal(s.getFocusTiming(finished, Date.parse('2026-10-21T10:00:00Z')).workSeconds, 1500);
@@ -437,7 +503,7 @@ test('demo reset replaces only the selected account and can be repeated', async 
     snapshots[user] = { subject, task: (await services.getTasksForUser(user))[0], blocks: plain(await services.getStudyBlocksForUser(user)) };
   }
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    assert.deepEqual(plain(await services.seedDemoData('demo-user')), { subjects: 3, tasks: 6, studyBlocks: 4, reviewItems: 3, totalMinutes: 240 });
+    assert.deepEqual(plain(await services.seedDemoData('demo-user')), { subjects: 3, tasks: 6, studyBlocks: 10, reviewItems: 3, totalMinutes: 240 });
     const subjects = await services.getSubjectsForUser('demo-user');
     const tasks = await services.getTasksForUser('demo-user');
     assert.deepEqual(subjects.map(subject => subject.name).sort(), ['Biology', 'History', 'Mathematics']);
@@ -447,7 +513,13 @@ test('demo reset replaces only the selected account and can be repeated', async 
     assert.equal(tasks.filter(task => task.deadline === '2026-10-20').length, 2);
     assert.equal(tasks.filter(task => task.deadline === '2026-10-21').length, 3);
     assert.equal(tasks.filter(task => task.deadline === '2026-10-19').length, 1);
-    assert.equal((await services.getStudyBlocksForUser('demo-user')).length, 4);
+    assert.equal((await services.getStudyBlocksForUser('demo-user')).length, 10);
+    const history = await services.getWeeklyStudyMinutes('demo-user', '2026-10-20');
+    assert.deepEqual(plain(history).slice(0, 6), [
+      { date: '2026-10-14', minutes: 60 }, { date: '2026-10-15', minutes: 90 },
+      { date: '2026-10-16', minutes: 75 }, { date: '2026-10-17', minutes: 120 },
+      { date: '2026-10-18', minutes: 105 }, { date: '2026-10-19', minutes: 150 },
+    ]);
     const reviews = await services.getDueReviews('demo-user');
     assert.equal(reviews.length, 3);
     assert.deepEqual(reviews.map(review => review.subject_name).sort(), ['Biology', 'History', 'Mathematics']);
@@ -500,6 +572,9 @@ test('demo sessions stay at 240 minutes and trigger the guardrail at all times o
       const { start, end } = services.getLocalDayRange(today);
       const blocks = await services.getStudyBlocksForUser('demo-user', { date: today });
       assert.equal(blocks.length, 4);
+      const progress = await services.getWeeklyStudyMinutes('demo-user', today);
+      assert.deepEqual(plain(progress.map(day => day.minutes)).slice(0, 6), [60, 90, 75, 120, 105, 150]);
+      assert.equal(progress[6].minutes, blocks.filter(block => block.status === 'done').length * 60);
       assert.equal(blocks.reduce((sum, block) => sum + (Date.parse(block.end_time) - Date.parse(block.start_time)) / 60000, 0), 240);
       for (const block of blocks) {
         assert.ok(Date.parse(block.start_time) >= Date.parse(start));
@@ -519,7 +594,7 @@ test('demo sessions stay at 240 minutes and trigger the guardrail at all times o
         assert.ok(error.days[0].total_minutes > 240);
         return true;
       });
-      assert.equal((await services.getStudyBlocksForUser('demo-user')).length, 4, 'warning inserts no data');
+      assert.equal((await services.getStudyBlocksForUser('demo-user')).length, 10, 'warning inserts no data');
       const confirmed = await services.createStudyBlock('demo-user', input, { allowHeavyDay: true });
       assert.equal(confirmed.status, 'scheduled');
     });
