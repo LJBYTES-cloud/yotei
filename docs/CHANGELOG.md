@@ -322,6 +322,33 @@ File-by-file changes (two new files, no files deleted):
 | `docs/VALIDATION.md` | Recorded this pass's checks and manual verification limits. |
 | `docs/CHANGELOG.md` | Recorded implementation and every changed/created file. |
 
+### Task editing/deletion and future-session missed badge (2026-10-26)
+
+- Added validated, parameter-bound `updateTask` and `deleteTask` scoped to the signed-in user. Updates preserve IDs, deadlines, estimates, status, postponement counts, and block history. Deletion cascades blocks; existing `ON DELETE SET NULL` preserves material notes under their subject. Subject-linked reviews remain unchanged.
+- Task cards have themed Edit and red Delete icon/text actions. Edit reuses EntrySheet with prefilled title/subject, Save changes, draft retention on failure, and shared refresh. Delete requires native Cancel/Delete confirmation and guards duplicate taps, competing edits, and other workspace mutations; cancel/dismiss makes no writes.
+- Task queries derive unresolved-miss existence and latest scheduled start across all dates. Library hides Missed Session if any scheduled block starts in the future, even next week and even when created independently of the old miss. Database history and Home missed cards remain; postponement coaching is unchanged. Derived flags are not stored or added to backups.
+- Verification: lint/typecheck and all regression suites passed (121 passing cases, one timezone-specific skip). No dependencies or schema changes; physical-device interaction remains a manual check.
+
+File-by-file changes (one new file, no files deleted):
+
+| File | Change |
+| --- | --- |
+| `db/TaskService.js` | Added owned update/delete, safe title validation, and all-date missed/scheduled summary fields on task reads. |
+| `components/EntrySheet.js` | Added prefilled task edit mode, owned update call, and Save changes. |
+| `components/StudyWorkspace.js` | Added guarded task editor state, native delete confirmation/loading/error handling, and shared refresh/notifications. |
+| `components/StudyCards.js` | Added accessible Edit/Delete actions and conditional Missed Session badge. |
+| `components/studyStyles.js` | Added wrapping task-action layout and themed/destructive control styles. |
+| `screens/LibraryScreen.js` | Used all-date task summaries and shared clock for badge visibility; updated task help. |
+| `tests/database.test.cjs` | Added update/ownership/validation, cascade/rollback/material preservation, and all-date summaries; captured current derived summaries in persistence/isolation snapshots. |
+| `tests/task-library.test.cjs` | New actual-component tests for editing, confirmation/retry/duplicate guards, card actions, and future-session badge suppression. |
+| `tests/subject-deletion.test.cjs` | Extended the existing TaskService bridge with updateTask for the shared editor import. |
+| `README.md` | Updated Library overview and task lifecycle/history behavior. |
+| `docs/PROJECT_CONTEXT.md` | Added service contracts, delete semantics, and derived badge rules. |
+| `docs/NEXT_SESSION_PROMPT.md` | Added task continuation context and corrected the palette count. |
+| `docs/DEMO_AND_TESTING.md` | Added manual edit/delete/badge acceptance checks. |
+| `docs/VALIDATION.md` | Recorded regression evidence and remaining native verification. |
+| `docs/CHANGELOG.md` | Recorded this feature and every changed/created file. |
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |

@@ -30,11 +30,13 @@ Sign in, open Settings, and select **Load Demo Data**. It replaces only the curr
 | Tab | Features |
 | --- | --- |
 | Home | Today's Focus, commitment timer, work/break tracking, lateness, actual studied totals, daily workload, coaching, missed-session rescheduling, small student motto footer |
-| Library | Subject/task creation, fields of study, grouped horizontal gradient bookshelves, task list, native calendar/time scheduling |
+| Library | Subject/task creation and editing, confirmed deletion, fields of study, grouped horizontal gradient bookshelves, task list, native calendar/time scheduling |
 | Review | Topic creation by subject; due queue; Hard / Good / Easy ratings |
 | Settings | Current-mode label and monochrome light-theme switch, JSON data export/import, mock-only demo loader, Sign Out |
 
 Completing a study block prompts the user to add a review topic under the same subject. Rescheduling a missed block increments the task's postponement count once. Coaching appears at a count of 2 or more.
+
+Task cards offer Edit and Delete. Editing keeps the task ID and study history; deleting removes its study blocks while preserving subject reviews and material notes. A future scheduled block hides the task's Missed Session badge, including sessions next week, without removing missed history from Home.
 
 Subject forms offer twelve outlined color swatches, including pure Black and White. Browser startup shows a themed mobile-only notice; the web database module excludes SQLite/WASM entirely. Use Android/iOS for authentication and study features.
 

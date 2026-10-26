@@ -27,7 +27,7 @@ async function setup({ fail = false, pending = false, editing = true } = {}) {
       createSubject: async () => { saved++; }, updateSubject: async () => { saved++; },
       deleteSubject: async (userId, id) => { deletions.push({ userId, id }); await gate; if (fail) throw new Error('Storage failed'); },
     },
-    '../db/TaskService': { createTask: async () => { saved++; } },
+    '../db/TaskService': { createTask: async () => { saved++; }, updateTask: async () => { saved++; } },
     './ui': Object.fromEntries(['Button', 'FieldLabel', 'Input', 'Message', 'Pill', 'Sheet'].map(name => [name, name])),
     '../ThemeContext': { useTheme: () => ({ colors: { text: '#000000', line: '#E0E0E0' }, isDark: false }), useThemedStyles: () => ({}) },
   };

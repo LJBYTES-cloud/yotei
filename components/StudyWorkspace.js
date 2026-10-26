@@ -1,9 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import { router } from 'expo-router';
 import { USE_REAL_AUTH } from '../auth';
 import { useSession } from '../auth/SessionContext';
 import { getLocalDateKey } from '../db/dateUtils';
+import { deleteTask } from '../db/TaskService';
+import { useTheme } from '../ThemeContext';
 import { finishStudyBlock, pauseStudyBlock, resumeStudyBlock, startStudyBlock } from '../db/StudyBlockService';
 import { seedDemoData } from '../db/seedData';
 import { createReviewItem, markReviewed } from '../db/ReviewService';
@@ -22,6 +24,7 @@ const StudyContext = createContext(/** @type {ReturnType<typeof useWorkspaceStat
 /** @param {import('../auth/AuthService').AuthUser} user */
 function useWorkspaceState(user) {
   const { signingOut, signOut, signOutError } = useSession();
+  const { isDark } = useTheme();
   const [clock, setClock] = useState(() => Date.now());
   const [today, setToday] = useState(() => getLocalDateKey());
   const data = useDashboardData(user.id, today);
@@ -29,6 +32,8 @@ function useWorkspaceState(user) {
   const [entry, setEntry] = useState(/** @type {'task' | 'subject' | null} */ (null));
   const [initialSubject, setInitialSubject] = useState(/** @type {number | null} */ (null));
   const [editingSubject, setEditingSubject] = useState(/** @type {import('../db/SubjectService').Subject | null} */ (null));
+  const [editingTask, setEditingTask] = useState(/** @type {import('../db/TaskService').Task | null} */ (null));
+  const [deletingTask, setDeletingTask] = useState(/** @type {number | null} */ (null));
   const [schedule, setSchedule] = useState(/** @type {Schedule | null} */ (null));
   const [reviewPrompt, setReviewPrompt] = useState(/** @type {StudyBlock | null} */ (null));
   const [workingBlock, setWorkingBlock] = useState(/** @type {number | null} */ (null));
@@ -44,7 +49,7 @@ function useWorkspaceState(user) {
   const mutation = useRef(false);
   const busyRef = useRef(false);
   const mounted = useRef(false);
-  const busy = signingOut || workingBlock !== null || seeding || backupAction !== null || addingReview || workingReview !== null;
+  const busy = signingOut || workingBlock !== null || deletingTask !== null || seeding || backupAction !== null || addingReview || workingReview !== null;
   const disabled = busy || !data.ready || data.refreshing;
   const blocked = busy || entry !== null || schedule !== null || reviewPrompt !== null;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -220,20 +225,52 @@ function useWorkspaceState(user) {
   /** @param {'subject' | 'task'} kind @param {number | null} [subjectId] */
   function openEntry(kind, subjectId = null) {
     if (disabled || busyRef.current) return;
-    busyRef.current = true; setEditingSubject(null); setInitialSubject(subjectId); setEntry(kind); setActionError('');
+    busyRef.current = true; setEditingSubject(null); setEditingTask(null); setInitialSubject(subjectId); setEntry(kind); setActionError('');
   }
   /** @param {import('../db/SubjectService').Subject} subject */
   function openEditSubject(subject) {
     if (disabled || busyRef.current || subject.user_id !== user.id) return;
-    busyRef.current = true; setEditingSubject(subject); setInitialSubject(null); setEntry('subject'); setActionError('');
+    busyRef.current = true; setEditingSubject(subject); setEditingTask(null); setInitialSubject(null); setEntry('subject'); setActionError('');
+  }
+  /** @param {import('../db/TaskService').Task} task */
+  function openEditTask(task) {
+    if (disabled || busyRef.current || task.user_id !== user.id) return;
+    busyRef.current = true; setEditingTask(task); setEditingSubject(null); setInitialSubject(null); setEntry('task'); setActionError('');
+  }
+  /** @param {import('../db/TaskService').Task} task */
+  function confirmDeleteTask(task) {
+    if (mutation.current || disabled || busyRef.current || task.user_id !== user.id) return;
+    mutation.current = true; busyRef.current = true; setDeletingTask(task.id); setActionError(''); setNotice('');
+    let started = false, settled = false;
+    const release = () => {
+      settled = true; mutation.current = false; busyRef.current = false;
+      if (mounted.current) setDeletingTask(null);
+    };
+    const cancel = () => { if (!started && !settled) release(); };
+    const remove = async () => {
+      if (started || settled || !mounted.current) return;
+      started = true;
+      try {
+        await deleteTask(user.id, task.id);
+        if (!mounted.current) return;
+        setNotice('Task deleted.');
+        await data.refresh();
+      } catch {
+        if (mounted.current) setActionError('Could not delete this task. Refresh and try again.');
+      } finally { release(); }
+    };
+    Alert.alert('Delete Task', 'Are you sure you want to delete this task? All associated study blocks will also be permanently deleted. Subject reviews and materials will be kept.', [
+      { text: 'Cancel', style: 'cancel', onPress: cancel },
+      { text: 'Delete', style: 'destructive', onPress: () => { void remove(); } },
+    ], { cancelable: true, onDismiss: cancel, userInterfaceStyle: isDark ? 'dark' : 'light' });
   }
   return {
     user, data, clock, today, disabled, blocked, workingBlock, workingTimerAction, seeding, demoRevision, addingReview, workingReview, addReview, review,
     notice, dismissNotice: () => setNotice(''), error: data.error || actionError,
     refresh: refreshData, refreshInBackground,
-    complete, controlTimer, loadDemoData, backupAction, manageBackup, openEntry, openEditSubject, openSchedule, openReschedule,
+    complete, controlTimer, loadDemoData, backupAction, manageBackup, openEntry, openEditSubject, openEditTask, confirmDeleteTask, deletingTask, openSchedule, openReschedule,
     signingOut, signOutError, signOut: () => { if (!busyRef.current) void signOut(); },
-    entry, initialSubject, editingSubject, schedule, setEntry, setSchedule, setNotice, savedSession,
+    entry, initialSubject, editingSubject, editingTask, schedule, setEntry, setSchedule, setNotice, savedSession,
     reviewPrompt, addCompletedReview, dismissReviewPrompt,
   };
 }
@@ -251,10 +288,10 @@ function WorkspaceContent({ user, children }) {
   return (
     <StudyContext.Provider value={study}>
       {children}
-      {study.entry && <EntrySheet key={study.editingSubject ? `edit-${study.editingSubject.id}` : study.entry} kind={study.entry} userId={study.user.id} subjects={study.data.subjects} initialSubject={study.initialSubject} editingSubject={study.editingSubject}
+      {study.entry && <EntrySheet key={study.editingSubject ? `edit-subject-${study.editingSubject.id}` : study.editingTask ? `edit-task-${study.editingTask.id}` : study.entry} kind={study.entry} userId={study.user.id} subjects={study.data.subjects} initialSubject={study.initialSubject} editingSubject={study.editingSubject} editingTask={study.editingTask}
         onClose={() => study.setEntry(null)} onSaved={() => {
           study.setEntry(null);
-          study.setNotice(study.editingSubject ? 'Subject updated.' : study.entry === 'subject' ? 'Subject created.' : 'Task created.');
+          study.setNotice(study.editingSubject ? 'Subject updated.' : study.editingTask ? 'Task updated.' : study.entry === 'subject' ? 'Subject created.' : 'Task created.');
           void study.data.refresh();
         }} onDeleted={() => {
           study.setEntry(null);

@@ -1,5 +1,13 @@
 # Validation snapshot
 
+## Task editing/deletion and Library missed badge (2026-10-26)
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.
+- `node --experimental-vm-modules --test tests/database.test.cjs tests/task-library.test.cjs tests/subject-deletion.test.cjs tests/backup.test.cjs tests/focus-timer.test.cjs tests/theme.test.cjs tests/auth.test.cjs tests/web-platform.test.cjs`: 122 total, 121 passed, 0 failed, 1 timezone-specific DST case skipped in Asia/Singapore.
+- Production SQLite tests cover bound/owned task updates, invalid IDs/fields, cross-account rejection, preservation of task metadata/history, cascade deletion/rollback, kept review topics/material notes, and all-date session summaries independent of Home's day query.
+- Actual-component bridge tests verify prefilled edit fields, failure drafts/retry, deletion Cancel/dismiss, duplicate confirmation guards, competing edit exclusion, deletion refresh/error feedback, Library badge suppression for a next-week commitment, and card actions/badge visibility. Existing subject tests now expose the newly imported updateTask mock.
+- No dependency or schema changes. Native Alert gestures, keyboard, theme rendering, and cross-tab behavior still need the manual checks in DEMO_AND_TESTING.md. Native exports were not rerun for this pass.
+
 ## Swatches, appearance controls, motto, and web guard (2026-10-24)
 
 - `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.

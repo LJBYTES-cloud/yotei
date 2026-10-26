@@ -10,7 +10,7 @@ import { Button, FieldLabel } from '../components/ui';
 import SubjectBookshelf from '../components/SubjectBookshelf';
 
 export default function LibraryScreen() {
-  const { data, disabled, openEntry, openEditSubject, refresh, demoRevision } = useStudy();
+  const { data, clock, disabled, openEntry, openEditSubject, refresh, demoRevision } = useStudy();
   const [subjectId, setSubjectId] = useState(/** @type {number | null} */ (null));
   const list = useRef(/** @type {FlatList<import('../db/TaskService').Task> | null} */ (null));
   useScrollToTop(list);
@@ -43,9 +43,9 @@ export default function LibraryScreen() {
             {data.subjects.length ? <SubjectBookshelf subjects={data.subjects} taskCounts={taskCounts} selectedId={subjectId}
               disabled={disabled} onSelect={setSubjectId} onEdit={openEditSubject} /> : <Text style={s.hint}>No subjects added.</Text>}
           </View>
-          <View style={s.card}><View style={s.section}><FieldLabel label="Your tasks" textStyle={s.sectionTitle} help="Select Schedule on a task to choose its start and end dates/times." /><Text style={s.sectionCount}>{String(tasks.length).padStart(2, '0')}</Text></View></View>
+          <View style={s.card}><View style={s.section}><FieldLabel label="Your tasks" textStyle={s.sectionTitle} help="Schedule study sessions, edit a task's title or subject, or delete a task and its linked sessions." /><Text style={s.sectionCount}>{String(tasks.length).padStart(2, '0')}</Text></View></View>
         </>}
-        renderItem={({ item }) => <TaskCard task={item} />}
+        renderItem={({ item }) => <TaskCard task={item} hasMissedSession={Boolean(item.has_missed_session) && !(Date.parse(item.latest_scheduled_start ?? '') > clock)} />}
         ListEmptyComponent={<EmptyState title={subjectId ? 'No tasks in this subject' : 'No tasks added'} text={subjectId ? 'Add a task to this subject.' : 'Create a subject and add a task to start scheduling.'} />} />
     </SafeAreaView>
   );

@@ -1,4 +1,5 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { getLocalDateKey } from '../db/dateUtils';
 import { useStudy } from './StudyWorkspace';
@@ -41,18 +42,27 @@ export function CoachingCard({ task }) {
   </View>;
 }
 
-/** @param {{task: import('../db/TaskService').Task}} props */
-export function TaskCard({ task }) {
-  const { disabled, openSchedule } = useStudy();
-  const { subjectColor } = useTheme();
+/** @param {{task: import('../db/TaskService').Task, hasMissedSession?: boolean}} props */
+export function TaskCard({ task, hasMissedSession = false }) {
+  const { disabled, openSchedule, openEditTask, confirmDeleteTask, deletingTask } = useStudy();
+  const { subjectColor, colors: p } = useTheme();
   const s = useThemedStyles(createStudyStyles);
   return <View style={s.card}>
     <View style={s.cardTop}><View style={[s.dot, { backgroundColor: subjectColor(task.subject_color) }]} /><Text style={s.subject}>{task.subject_name}</Text></View>
     <Text style={s.title}>{task.title}</Text>
+    {hasMissedSession && <Text style={[s.badge, s.missedBadge, { alignSelf: 'flex-start', marginTop: 16 }]}>Missed Session</Text>}
     {task.postpone_count >= 2 && <CoachingCard task={task} />}
     <View style={s.cardBottom}>
       {task.postpone_count > 0 && <Text style={s.hint}>{`Postponed ${task.postpone_count} ${task.postpone_count === 1 ? 'time' : 'times'}`}</Text>}
       <Button label="Schedule ↗" compact tone="quiet" disabled={disabled} onPress={() => openSchedule(task)} />
+      <View style={s.taskActions}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${task.title}`} disabled={disabled} onPress={() => openEditTask(task)} style={({ pressed }) => [s.taskAction, pressed && s.pressed, disabled && { opacity: 0.4 }]}>
+          <Ionicons name="pencil-outline" size={16} color={p.text} /><Text style={s.taskActionText}>Edit</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${task.title}`} accessibilityState={{ disabled, busy: deletingTask === task.id }} disabled={disabled} onPress={() => confirmDeleteTask(task)} style={({ pressed }) => [s.taskAction, pressed && s.pressed, disabled && { opacity: 0.4 }]}>
+          {deletingTask === task.id ? <ActivityIndicator size="small" color="#FF4C4C" /> : <Ionicons name="trash-outline" size={16} color="#FF4C4C" />}<Text style={s.taskDeleteText}>Delete</Text>
+        </Pressable>
+      </View>
     </View>
   </View>;
 }

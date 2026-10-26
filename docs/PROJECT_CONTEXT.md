@@ -136,6 +136,7 @@ erDiagram
 
 - Task uses the composite `(subject_id, user_id)` foreign key to prevent linking another user's subject.
 - Subject deletion cascades through its related tables; Task deletion cascades blocks and clears Material.task_id.
+- Task cards offer Edit and Delete. `updateTask` validates the account, task ID, title and owned target subject, then changes only title/subject_id using a bound owned UPDATE. IDs, deadlines, estimated_minutes, status, postpone_count, and linked blocks are preserved. Block titles/subject labels follow the edited task; existing subject-level review topics/materials keep their subject. `deleteTask` uses one owned DELETE, cascades all block history, and leaves materials as subject notes with task_id null. Native Cancel/Delete confirmation prevents duplicate submissions and competing actions; failure unlocks retry, success refreshes all tabs.
 - `deleteSubject` validates the account and integer ID and executes one owned DELETE. Foreign keys atomically remove its tasks, blocks (including replacement history), review items and materials. Missing/unowned IDs reject; a cascade failure rolls back the statement. The edit sheet offers a red Delete Subject action with native Cancel/Delete confirmation. Confirmation locks competing save/delete actions; success closes the sheet and refreshes shared tab data. Library clears a filter whose subject no longer exists; cancel/dismiss preserves the draft, and failure leaves the editor available to retry.
 - `rescheduled_from` references the original block; a unique partial index permits one direct replacement for each original.
 - Initialization adds `rescheduled_from` for older databases, converts legacy `planned` status to `scheduled`, installs the postponement trigger, and backfills counts without reducing existing demo/coaching values.
@@ -147,7 +148,7 @@ erDiagram
 | Module | Public functions / values |
 | --- | --- |
 | SubjectService | `createSubject(userId, {name, field_of_study?, field_colors?})`, `updateSubject(userId, subjectId, {name, field_of_study, field_colors})`, `deleteSubject(userId, subjectId)`, `getSubjectsForUser(userId)` |
-| TaskService | `createTask(userId, {subject_id, title, deadline?, estimated_minutes?})`, `getTasksForUser(userId, {date?, hasDeadline?})`, `getTasksWithDeadlines`, `getTasksForDate` |
+| TaskService | `createTask(userId, {subject_id, title, deadline?, estimated_minutes?})`, `updateTask(userId, taskId, {title, subject_id})`, `deleteTask(userId, taskId)`, `getTasksForUser(userId, {date?, hasDeadline?})`, `getTasksWithDeadlines`, `getTasksForDate` |
 | StudyBlockService | `createStudyBlock`, `getStudyBlocksForUser`, `getMissedBlocksForUser`, `markExpiredStudyBlocks`, `updateStudyBlockStatus`, `rescheduleStudyBlock`, `startStudyBlock`, `pauseStudyBlock`, `resumeStudyBlock`, `finishStudyBlock` |
 | StudyLoadService | `DAILY_STUDY_LIMIT = 240`, `StudyLoadWarning`, `getDailyStudyMinutes`, `checkStudyLoad` |
 | ReviewService | `REVIEW_INTERVAL_DAYS`, `createReviewItem`, `getDueReviews`, `markReviewed` |
@@ -155,7 +156,9 @@ erDiagram
 | dateUtils | `getLocalDateKey`, `getLocalDayRange` |
 | utils/scheduling | `buildStudyTimes({start: Date, end: Date}, now)`, `getInitialStudyWindow(now, initialDuration)`, `updateStudyWindow(window, field, part, pickedDate)` |
 
-These services provide the requested creation/query/status operations, not a complete edit/delete CRUD interface.
+Subjects and tasks support create/read/update/delete; other services expose their feature-specific creation/query/status operations.
+
+Task list queries also return `has_missed_session` (an unresolved missed block exists) and `latest_scheduled_start` (the latest scheduled start across all dates). Library shows Missed Session only when the former is true and the latter is not later than the shared clock. Summaries come from owned SQLite task queries rather than Home's day-filtered block array, so next-week scheduling hides the badge too. Missed history, Home recovery cards, and postponement coaching remain unchanged. The summary fields are derived rather than stored or backed up.
 
 ## Scheduling, workload, and recommitment
 

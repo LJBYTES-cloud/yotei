@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { createSubject, deleteSubject, updateSubject } from '../db/SubjectService';
-import { createTask } from '../db/TaskService';
+import { createTask, updateTask } from '../db/TaskService';
 import { Button, FieldLabel, Input, Message, Pill, Sheet } from './ui';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { firstFieldColor, normalizeFieldColors, normalizeFieldOfStudy } from '../utils/subjectFields';
@@ -22,13 +22,14 @@ const subjectColors = [
   { name: 'White', color: '#FFFFFF' },
 ];
 
-/** @param {{ kind: 'subject' | 'task', userId: string, subjects: import('../db/SubjectService').Subject[], initialSubject?: number | null, editingSubject?: import('../db/SubjectService').Subject | null, onClose: () => void, onSaved: () => void, onDeleted: () => void }} props */
-export default function EntrySheet({ kind, userId, subjects, initialSubject, editingSubject = null, onClose, onSaved, onDeleted }) {
+/** @param {{ kind: 'subject' | 'task', userId: string, subjects: import('../db/SubjectService').Subject[], initialSubject?: number | null, editingSubject?: import('../db/SubjectService').Subject | null, editingTask?: import('../db/TaskService').Task | null, onClose: () => void, onSaved: () => void, onDeleted: () => void }} props */
+export default function EntrySheet({ kind, userId, subjects, initialSubject, editingSubject = null, editingTask = null, onClose, onSaved, onDeleted }) {
   const s = useThemedStyles(createStyles);
   const { colors: p, isDark } = useTheme();
   const subjectToEdit = kind === 'subject' ? editingSubject : null;
-  const [name, setName] = useState(subjectToEdit?.name ?? '');
-  const [subjectId, setSubjectId] = useState(initialSubject ?? subjects[0]?.id ?? null);
+  const taskToEdit = kind === 'task' ? editingTask : null;
+  const [name, setName] = useState(subjectToEdit?.name ?? taskToEdit?.title ?? '');
+  const [subjectId, setSubjectId] = useState(taskToEdit?.subject_id ?? initialSubject ?? subjects[0]?.id ?? null);
   const [field, setField] = useState(subjectToEdit?.field_of_study ?? '');
   const [colors, setColors] = useState(() => subjectToEdit ? normalizeFieldColors(subjectToEdit.field_colors).split(',') : [subjectColors[0].color]);
   // Imported/legacy colors must remain visible and selectable while editing.
@@ -56,6 +57,7 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, edi
         if (subjectToEdit) await updateSubject(userId, subjectToEdit.id, { name, .../** @type {{field_of_study: string, field_colors: string}} */ (subjectFields) });
         else await createSubject(userId, { name, ...subjectFields });
       }
+      else if (taskToEdit) await updateTask(userId, taskToEdit.id, { title: name, subject_id: /** @type {number} */ (subjectId) });
       else await createTask(userId, { title: name, subject_id: /** @type {number} */ (subjectId) });
       onSaved();
     } catch { setError('We couldn’t save that yet. Your draft is still here; try again.'); }
@@ -82,7 +84,7 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, edi
     ], { cancelable: true, onDismiss: cancel, userInterfaceStyle: isDark ? 'dark' : 'light' });
   }
   return (
-    <Sheet kicker={kind === 'subject' ? 'SUBJECT' : 'TASK'} title={subjectToEdit ? 'Edit subject' : kind === 'subject' ? 'Add subject' : 'Add task'} onClose={onClose} busy={busy}>
+    <Sheet kicker={kind === 'subject' ? 'SUBJECT' : 'TASK'} title={subjectToEdit ? 'Edit subject' : taskToEdit ? 'Edit task' : kind === 'subject' ? 'Add subject' : 'Add task'} onClose={onClose} busy={busy}>
       <Input label={kind === 'subject' ? 'Subject name' : 'Task title'} help={kind === 'subject' ? 'Subjects group related tasks and review topics.' : 'After saving, select Schedule in Library to plan this task.'} value={name} onChangeText={setName} placeholder={kind === 'subject' ? 'e.g. Architecture' : 'e.g. Read chapter 3'} maxLength={kind === 'subject' ? 128 : 256} editable={!busy} returnKeyType="done" onSubmitEditing={() => void save()} />
       {kind === 'subject' ? <>
         <Input label="Field of Study" help="Subjects with the same field appear on the same shelf. You can combine fields, such as Biology, Chemistry." value={field} onChangeText={setField} placeholder="e.g. Biology, Chemistry" maxLength={128} editable={!busy} />
@@ -103,7 +105,7 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, edi
         <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={s.subjects}>{subjects.map(subject => <Pill key={subject.id} label={subject.name} color={firstFieldColor(subject.field_colors)} selected={subjectId === subject.id} disabled={busy} onPress={() => setSubjectId(subject.id)} />)}</ScrollView>
       </>}
       <Message text={error} />
-      <Button label={subjectToEdit ? 'Save changes' : kind === 'subject' ? 'Create subject ↗' : 'Add task'} disabled={busy} busy={saving} onPress={() => void save()} />
+      <Button label={subjectToEdit || taskToEdit ? 'Save changes' : kind === 'subject' ? 'Create subject ↗' : 'Add task'} disabled={busy} busy={saving} onPress={() => void save()} />
       {subjectToEdit && <Pressable accessibilityRole="button" accessibilityLabel="Delete Subject" accessibilityState={{ disabled: busy, busy: deleting }}
         disabled={busy} onPress={confirmDelete} style={({ pressed }) => [s.deleteButton, busy && s.unavailable, pressed && s.pressed]}>
         {deleting ? <ActivityIndicator color="#FF4C4C" size="small" /> : <Ionicons name="trash-outline" size={18} color="#FF4C4C" />}

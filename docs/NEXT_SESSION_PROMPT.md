@@ -54,12 +54,20 @@ Latest UX: shared cards have 24px vertical separation and 20px internal
 padding. Library uses horizontal shelves grouped by field_of_study (case-insensitive).
 Subject replaces color with field_of_study and comma-separated field_colors.
 Migration preserves IDs and dependencies, maps legacy colors to General, and drops color.
-Add Subject takes field text and one/two choices from ten color swatches in both themes.
+Add Subject takes field text and one/two choices from twelve color swatches in both themes.
 Each book has an accessible pencil action that opens the same EntrySheet pre-filled.
 updateSubject(userId, subjectId, {name, field_of_study, field_colors}) validates metadata
 and updates only the owned row in place. Save refreshes all shared tabs without changing
 subject IDs or filter selection. Imported/legacy swatches remain available in the editor.
 The filter-reset button is labeled Show All Tasks.
+Task cards have Edit and Delete actions. The shared EntrySheet prefills title/subject;
+updateTask(userId, taskId, {title, subject_id}) changes only those owned fields.
+deleteTask(userId, taskId) requires native Cancel/Delete confirmation, cascades blocks,
+and keeps subject reviews/material notes (Material.task_id becomes null). All tabs refresh.
+getTasksForUser derives has_missed_session and latest_scheduled_start across all dates.
+Library hides Missed Session when any status=scheduled block starts in the future;
+Home's missed history and postpone_count/coaching remain unchanged. Do not derive this
+badge from the Home date-filtered blocks. tests/task-library.test.cjs covers UI wiring.
 Edit Subject also has a red Delete Subject button at the bottom, with native
 Cancel/Delete confirmation. deleteSubject(userId, subjectId) uses an owned DELETE;
 SQLite cascades its tasks/blocks/reviews/materials. Success closes the sheet and
