@@ -14,7 +14,9 @@ function scheduleMutation(action) {
 
 /**
  * @typedef {{ id: number, task_id: number, start_time: string, end_time: string,
- * status: 'scheduled' | 'done' | 'missed', rescheduled_from: number | null,
+ * status: 'scheduled' | 'active' | 'done' | 'missed', rescheduled_from: number | null,
+ * actual_start_time: string | null, break_time_minutes: number, break_started_at: string | null,
+ * break_time_ms: number, actual_end_time: string | null, actual_study_seconds: number,
  * rescheduled_to: number | null, task_title: string, subject_id: number, subject_name: string, subject_color: string }} StudyBlock
  */
 
@@ -95,6 +97,7 @@ async function createBlock(userId, { task_id, start_time, end_time }, allowHeavy
   return {
     id: result.lastInsertRowId, task_id, start_time: startTime, end_time: endTime,
     status: 'scheduled', rescheduled_from: null, rescheduled_to: null, task_title: task.title,
+    actual_start_time: null, break_time_minutes: 0, break_started_at: null, break_time_ms: 0, actual_end_time: null, actual_study_seconds: 0,
     subject_id: task.subject_id, subject_name: task.subject_name, subject_color: task.subject_color,
   };
 }
@@ -112,10 +115,89 @@ export async function getStudyBlocksForUser(userId, { date, includeUnresolvedMis
   return database.getAllAsync(`
     ${BLOCK_SELECT}
     WHERE task.user_id = ?
-      ${range ? `AND ((julianday(block.start_time) < julianday(?) AND julianday(block.end_time) > julianday(?))
+      ${range ? `AND (block.status = 'active' OR (julianday(block.start_time) < julianday(?) AND julianday(block.end_time) > julianday(?))
         ${includeUnresolvedMissed ? "OR (block.status = 'missed' AND replacement.id IS NULL)" : ''})` : ''}
     ORDER BY julianday(block.start_time) ASC, block.id ASC
   `, ...(range ? [userId, range.end, range.start] : [userId]));
+}
+
+/** @param {string} userId @param {number} blockId @param {string} [now] */
+export function startStudyBlock(userId, blockId, now = new Date().toISOString()) {
+  return scheduleMutation(() => changeTimer(userId, blockId, 'start', now));
+}
+
+/** @param {string} userId @param {number} blockId @param {string} [now] */
+export function pauseStudyBlock(userId, blockId, now = new Date().toISOString()) {
+  return scheduleMutation(() => changeTimer(userId, blockId, 'break', now));
+}
+
+/** @param {string} userId @param {number} blockId @param {string} [now] */
+export function resumeStudyBlock(userId, blockId, now = new Date().toISOString()) {
+  return scheduleMutation(() => changeTimer(userId, blockId, 'resume', now));
+}
+
+/** @param {string} userId @param {number} blockId @param {string} [now] */
+export function finishStudyBlock(userId, blockId, now = new Date().toISOString()) {
+  return scheduleMutation(() => changeTimer(userId, blockId, 'finish', now));
+}
+
+/** Timer transitions and their timing fields commit together. Retrying an
+ * already-applied transition preserves the original timestamps/totals.
+ * @param {string} userId @param {number} blockId
+ * @param {'start' | 'break' | 'resume' | 'finish'} action @param {string} now
+ * @returns {Promise<StudyBlock>}
+ */
+async function changeTimer(userId, blockId, action, now) {
+  requireUserId(userId); requireBlockId(blockId);
+  const reference = parseNow(now);
+  const timestamp = new Date(reference).toISOString();
+  const database = await getDatabase();
+  let result = /** @type {StudyBlock | null} */ (null);
+  await database.withExclusiveTransactionAsync(async transaction => {
+    const block = /** @type {StudyBlock | null} */ (await transaction.getFirstAsync(
+      `${BLOCK_SELECT} WHERE block.id = ? AND task.user_id = ?`, blockId, userId,
+    ));
+    if (!block) throw new Error('Choose a study block belonging to your account.');
+    if ((action === 'start' && block.status === 'active') || (action === 'finish' && block.status === 'done' && block.actual_start_time !== null)) {
+      result = block; return;
+    }
+    const next = { ...block };
+    if (action === 'start') {
+      if (block.status !== 'scheduled' || Date.parse(block.start_time) > reference || Date.parse(block.end_time) <= reference) {
+        throw new Error('Start this session during its scheduled time. Reschedule a missed session first.');
+      }
+      const active = await transaction.getFirstAsync(`SELECT block.id FROM StudyBlock block JOIN Task task ON task.id = block.task_id
+        WHERE task.user_id = ? AND block.status = 'active' AND block.id <> ? LIMIT 1`, userId, blockId);
+      if (active) throw new Error('Finish your active session before starting another.');
+      next.status = 'active'; next.actual_start_time = timestamp;
+    } else {
+      if (block.status !== 'active' || block.actual_start_time === null) throw new Error('Start this session before using the focus timer.');
+      if (reference < Date.parse(block.actual_start_time) || (block.break_started_at !== null && reference < Date.parse(block.break_started_at))) {
+        throw new Error('The device clock moved backwards. Check the time before continuing.');
+      }
+      if (action === 'break') {
+        next.break_started_at = block.break_started_at ?? timestamp;
+      } else {
+        if (block.break_started_at !== null) next.break_time_ms += reference - Date.parse(block.break_started_at);
+        next.break_started_at = null;
+        next.break_time_minutes = Math.floor(next.break_time_ms / 60000);
+        if (action === 'finish') {
+          next.status = 'done'; next.actual_end_time = timestamp;
+          next.actual_study_seconds = Math.max(0, Math.floor((reference - Date.parse(block.actual_start_time) - next.break_time_ms) / 1000));
+        }
+      }
+      if (next.break_time_ms > reference - Date.parse(block.actual_start_time)) {
+        throw new Error('The device clock moved backwards. Check the time before continuing.');
+      }
+    }
+    await transaction.runAsync(`UPDATE StudyBlock SET status = ?, actual_start_time = ?, break_time_minutes = ?,
+      break_started_at = ?, break_time_ms = ?, actual_end_time = ?, actual_study_seconds = ?
+      WHERE id = ? AND task_id IN (SELECT id FROM Task WHERE user_id = ?)`,
+    next.status, next.actual_start_time, next.break_time_minutes, next.break_started_at, next.break_time_ms,
+    next.actual_end_time, next.actual_study_seconds, blockId, userId);
+    result = next;
+  });
+  return /** @type {StudyBlock} */ (result);
 }
 
 /** Fetch expired sessions still awaiting a status update. @param {string} userId @param {string} [now] @returns {Promise<StudyBlock[]>} */

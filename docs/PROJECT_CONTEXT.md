@@ -10,7 +10,10 @@ Yotei is a mobile study planner. Its implemented academic loop is:
 flowchart LR
   Subject[Subject] --> Task[Task]
   Task --> Schedule[Schedule study block]
-  Schedule --> Done[Mark Done]
+  Schedule --> Active[Start Session]
+  Active --> Break[Take Break]
+  Break --> Active
+  Active --> Done[Finish Session]
   Done --> Prompt[Optional review topic prompt]
   Prompt --> Queue[Subject-linked ReviewItem]
   Queue --> Rating[Hard / Good / Easy]
@@ -73,6 +76,8 @@ References: [Expo custom entry setup](https://docs.expo.dev/router/installation/
 | `components/DateTimeField.js` | iOS compact native pickers and Android native calendar/clock dialogs |
 | `components/SubjectBookshelf.js` | Horizontal field-grouped gradient shelves, paper title labels, page/binding detail, counts/filter/reset |
 | `components/EntrySheet.js` | Subject and task forms |
+| `components/FocusTimer.js` | Active work/break timer, lateness, foreground ticking, pause/resume/finish actions |
+| `utils/focusTimer.js` | Timestamp-derived work/break/lateness calculations and elapsed formatting |
 | `components/CompletionReviewSheet.js` | Yes/no prompt and quick topic form after marking a block done |
 | `components/theme.js` | Time and minute formatting helpers; palettes now live in ThemeContext |
 | `db/` | SQLite schema, services, workload/date helpers, demo seed |
@@ -113,7 +118,7 @@ Database: `yotei.db`. Initialization enables WAL and foreign keys, creates index
 | --- | --- |
 | Subject | `id`, `user_id`, `name`, `field_of_study`, `field_colors` |
 | Task | `id`, `user_id`, `subject_id`, `title`, `deadline`, `estimated_minutes`, `status`, `postpone_count` |
-| StudyBlock | `id`, `task_id`, `start_time`, `end_time`, `status`, `rescheduled_from` |
+| StudyBlock | `id`, `task_id`, `start_time`, `end_time`, `status`, `rescheduled_from`, `actual_start_time`, `break_time_minutes`, `break_started_at`, `break_time_ms`, `actual_end_time`, `actual_study_seconds` |
 | ReviewItem | `id`, `subject_id`, `topic`, `last_reviewed_at`, `next_review_at` |
 | Material | `id`, `subject_id`, nullable `task_id`, `title`, `url_or_note`, `local_file_path` |
 
@@ -143,7 +148,7 @@ erDiagram
 | --- | --- |
 | SubjectService | `createSubject(userId, {name, field_of_study?, field_colors?})`, `updateSubject(userId, subjectId, {name, field_of_study, field_colors})`, `deleteSubject(userId, subjectId)`, `getSubjectsForUser(userId)` |
 | TaskService | `createTask(userId, {subject_id, title, deadline?, estimated_minutes?})`, `getTasksForUser(userId, {date?, hasDeadline?})`, `getTasksWithDeadlines`, `getTasksForDate` |
-| StudyBlockService | `createStudyBlock`, `getStudyBlocksForUser`, `getMissedBlocksForUser`, `markExpiredStudyBlocks`, `updateStudyBlockStatus`, `rescheduleStudyBlock` |
+| StudyBlockService | `createStudyBlock`, `getStudyBlocksForUser`, `getMissedBlocksForUser`, `markExpiredStudyBlocks`, `updateStudyBlockStatus`, `rescheduleStudyBlock`, `startStudyBlock`, `pauseStudyBlock`, `resumeStudyBlock`, `finishStudyBlock` |
 | StudyLoadService | `DAILY_STUDY_LIMIT = 240`, `StudyLoadWarning`, `getDailyStudyMinutes`, `checkStudyLoad` |
 | ReviewService | `REVIEW_INTERVAL_DAYS`, `createReviewItem`, `getDueReviews`, `markReviewed` |
 | seedData | `seedDemoData(userId)` |
@@ -160,7 +165,7 @@ These services provide the requested creation/query/status operations, not a com
 - Native clock edits preserve the selected calendar; native calendar edits preserve local hours/minutes and reject nonexistent local times. Moving Start shifts End by the currently selected duration. Editing End is independent. Native repeated-hour instants keep their original UTC offset. Workload confirmation revalidates its frozen instants against now before writing, so an expired start cannot be saved after waiting in the warning view.
 - Store instants as ISO timestamps; calendar/date-only task deadlines remain date keys where appropriate.
 - Task date queries can include tasks due on a date or with a block overlapping that local date.
-- Workload includes `scheduled` and `done` minutes; missed history is excluded. Cross-midnight blocks contribute only their overlap with each local day.
+- Workload includes planned minutes for `scheduled`, `active`, and `done` blocks; missed history is excluded. Cross-midnight blocks contribute only their overlap with each local day. Actual focused time is stored separately and does not replace this planning guardrail.
 - A proposed total strictly greater than 240 minutes raises StudyLoadWarning. Exactly 240 is permitted. The user may explicitly confirm the warning; no block is inserted before confirmation.
 - Scheduling writes are serialized so simultaneous submissions cannot both check an outdated workload total.
 - Expired blocks with status `scheduled` are changed to `missed` on data refresh. Workspace checks every 30 seconds and on foreground activation, subject to mutation/modal locks; this is not an OS background notification service.
@@ -170,9 +175,19 @@ These services provide the requested creation/query/status operations, not a com
 - The service's no-options reschedule default is one hour from the supplied reference time. The current UI supplies the user's selected start/end instants instead.
 - The shared data refresh after saving exposes the new task count immediately. Coaching appears when `postpone_count >= 2`, with an action to schedule 5 minutes.
 
+## Commitment Focus Timer
+
+- A scheduled block displays Start Session during its scheduled window. `startStudyBlock(userId, blockId)` stamps actual_start_time and changes status to `active`. Future/expired/missed/resolved blocks cannot start; reschedule a miss first. At most one active block is allowed per account, including while on break. Different accounts remain isolated.
+- An active block replaces the normal card with FocusTimer, sorted first in Home. It shows work elapsed, lateness (including starts less than one minute late), total breaks, and Take Break/Finish Session. During a break it shows current break elapsed, frozen work time, Resume Work, and Finish Session.
+- `break_started_at` identifies an open break while status remains active. `break_time_ms` preserves exact completed break durations; `break_time_minutes` is their floored whole-minute projection, updated on resume/finish. `actual_end_time` and `actual_study_seconds` freeze the result on finish. Required fields and auxiliary timing fields migrate in place with null/zero defaults; historical done blocks receive no invented actual study time.
+- Finish closes an open break, subtracts all break milliseconds from actual wall-clock duration, floors once to whole studied seconds, and marks done. Scheduled start/end times remain unchanged. Completed timer cards show actual studied time and break minutes.
+- Start/pause/resume/finish serialize with scheduling writes and use exclusive transactions. Retrying a transition does not restart the clock or add a break twice. Ownership, state and backwards-clock checks run before committing; failure leaves stored timing intact. No fallible read follows a committed transition.
+- Work/break timing derives from stored timestamps, not tick counts. The view ticks once per second only while Home is focused and the app is active, then catches up on foreground. Backgrounding, changing tabs, signing out or restarting does not implicitly pause: the selected work/break mode continues until changed. This does not require background JS or an OS timer service.
+- Active blocks are excluded from automatic missed detection and remain in Home's date-filtered query even after midnight or the scheduled end, so users can resume/finish them. Expired unstarted scheduled blocks still become missed normally.
+
 ## Completion-to-review flow
 
-1. Home's Mark Done action calls `updateStudyBlockStatus(user.id, id, 'done')`.
+1. Home's Finish Session action calls `finishStudyBlock(user.id, id)`, persisting actual timing and done status together. The legacy `updateStudyBlockStatus` service remains available for untimed scheduled-block status operations.
 2. The returned block includes `subject_id`, `subject_name`, and `task_title` from the owned Task/Subject join.
 3. StudyWorkspace opens CompletionReviewSheet with the exact requested question about adding a topic to the Review Queue.
 4. No/Skip leaves the block done and creates no review item.
@@ -209,7 +224,7 @@ The seed returns `{ subjects: 3, tasks: 6, studyBlocks: 4, reviewItems: 3, total
 
 ## Study data export/import
 
-Settings > Data Management is available with both authentication adapters. `exportBackup(userId)` reads all five owned collections in one exclusive transaction, writes formatted version-2 JSON with SDK 57's `File`/`Paths` APIs, and opens the native share sheet. Subjects contain `field_of_study` and `field_colors`. Version-1 imports remain supported: legacy colors become single-color fields under General. Successful exports remain in cache for receiving applications; the user must save/share a copy through that sheet.
+Settings > Data Management is available with both authentication adapters. `exportBackup(userId)` reads all five owned collections in one exclusive transaction, writes formatted version-3 JSON with SDK 57's `File`/`Paths` APIs, and opens the native share sheet. Subjects contain field metadata; StudyBlocks include all timer columns. Version-1/2 imports remain supported with empty timer defaults; version-1 colors become single-color fields under General. Timer state, totals and the single-active-session rule are validated before replacement. Active/open-break timestamps and completed actual totals survive restoration. Successful exports remain in cache for receiving applications; the user must save/share a copy through that sheet.
 
 `importBackup(userId)` opens a single-file JSON picker with `copyToCacheDirectory: true`. Cancel returns null. Format/version, collections, field types, dates, unique IDs, foreign references, time ranges, and rescheduling history/counts are validated before any deletion. A 20 MB file limit bounds parsing on mobile.
 
@@ -222,15 +237,16 @@ The JSON contains study records only: no passwords, sessions, theme preference, 
 ## UI constraints that remain in force
 
 - Keep functional text; the early marketing/editorial slogans were removed.
-- Settings permanently displays **By students, for students.** in a small footer beneath its scrolling content.
+- Home displays **By students, for students.** in a small, subtle footer after the study list or empty state. Settings has no motto footer.
 - Retain the four Ionicons tabs, subtle tab top border, cards, visible input backgrounds/borders, and full-width primary actions.
 - Shared screen horizontal padding is 20px. Standard cards use 20px internal padding, 16px radius, a 1px border, and 24px separation. Section/action/form spacing increased by roughly 8–12px in the UX pass.
 - Dark: `#0C1117` background, `#151D27` cards, `#293442` borders, purple accent.
 - Light: `#F5F5F5` background, `#FFFFFF` cards, `#E0E0E0` borders, black text/accent and white primary-button text. Bookshelf spines and explicit field-color swatches are the scoped color exceptions; task/review markers and selectors stay monochrome.
 - Library groups subjects by normalized field name (case-insensitive) into horizontally scrolling shelves. Each book has a one/two-color LinearGradient, shaded grooves, double binding rules, lined page edges, and a full black title on a light paper label. Natural content height avoids clipping long/scaled titles. Tap to filter tasks; tap again or **Show All Tasks** to reset. Each book has a separate, accessible pencil button that opens the existing EntrySheet pre-filled for editing. Save updates the owned row in place and refreshes all shared tab data, preserving its ID and task filter selection; changing field moves the book to its new shelf. Existing non-palette colors remain selectable in the editor. Cancel leaves storage unchanged; save errors retain the draft. Demo/import revisions clear selection.
-- Add Subject requires a name and Field of Study, including combined labels like `Biology, Chemistry`. Choose one or two distinct colors from ten swatches in either theme. `utils/subjectFields.js` trims comma-separated labels, validates lengths/hex colors, and supplies a subtle single-color highlight. Services default omitted fields to General / Iris; UI requires explicit field text. Task/block/review results retain `subject_color` as the first stored color for existing marker consumers.
+- Add Subject requires a name and Field of Study, including combined labels like `Biology, Chemistry`. Choose one or two distinct colors from twelve named swatches in either theme, including pure Black/White. Each swatch has a fixed-size colored circle with a gray outline so both extremes remain visible. `utils/subjectFields.js` trims comma-separated labels, validates lengths/hex colors, and supplies a subtle single-color highlight. Services default omitted fields to General / Iris; UI requires explicit field text. Task/block/review results retain `subject_color` as the first stored color for existing marker consumers.
 - Theme is stored under AsyncStorage key `yotei.theme` as `dark` or `light`, device-wide and independent of sign-out. The provider waits for restoration before mounting screens, defaults to dark for missing/invalid/unreadable values, serializes rapid writes, and logs storage failures without blocking the current UI. Theme preferences are excluded from study backups.
-- General instructional paragraphs across screen headings, auth/study forms, and cards are behind small information icons. `FieldLabel` accepts `help`; `InfoButton` opens a brief native Alert with the selected theme. Errors, workload totals/confirmation, import-overwrite warning, demo replacement notice, decision prompts, and the permanent Settings motto remain directly visible.
+- Settings labels the current appearance Dark Mode or Light Mode. Light mode uses a black enabled switch track, gray disabled track, and white thumb; the web-specific active-thumb override prevents React Native Web's default green thumb.
+- General instructional paragraphs across screen headings, auth/study forms, and cards are behind small information icons. `FieldLabel` accepts `help`; `InfoButton` opens a brief native Alert with the selected theme. Errors, workload totals/confirmation, import-overwrite warning, demo replacement notice, decision prompts, and the Home motto remain directly visible.
 - Keep inputs within keyboard-aware layouts. AuthScreen and inline Review use KeyboardAvoidingView. The shared Sheet places KeyboardAvoidingView at the full native Modal viewport, with a shrinking scroll area, scrollable header, and safe-area handling. Shared Input reports focus to Sheet; after focus, keyboard-show, or layout changes, Sheet measures input and scroll viewport in window coordinates and scrolls the field into view. EntrySheet, ScheduleSheet, and CompletionReviewSheet all inherit this behavior.
 
 ## Known boundaries and next-session checks
@@ -241,7 +257,7 @@ The JSON contains study records only: no passwords, sessions, theme preference, 
 - `deadline` and `estimated_minutes` are service/schema fields; the current task creation form primarily exposes title and subject.
 - Review topics have no edit/delete screen; Material has no user flow; study data has no cloud sync or scheduled background notifications.
 - There is no `eas.json` in this snapshot, and no store-release validation has been performed.
-- Expo SQLite browser setup and web demo seeding are not validated. The seed relies on native exclusive transactions; focus on the native app unless web support is explicitly requested.
+- Browser study storage is intentionally disabled. App.js checks Platform.OS before mounting sessions/routes and shows a themed mobile-only notice. Metro resolves db/database.web.js instead of database.js, excluding SQLite/WASM from web builds; its storage API rejects explicitly. Native database migrations and study services are unchanged. Full web study support would need a separate implementation.
 - Native generated `ios/` and `android/` directories are absent/ignored; configure native behavior through app config/plugins per AGENTS.md.
 
 See [VALIDATION.md](VALIDATION.md) for the dated evidence and [NEXT_SESSION_PROMPT.md](NEXT_SESSION_PROMPT.md) for a concise handoff.

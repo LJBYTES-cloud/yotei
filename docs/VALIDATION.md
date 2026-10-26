@@ -1,5 +1,31 @@
 # Validation snapshot
 
+## Swatches, appearance controls, motto, and web guard (2026-10-24)
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.
+- `node --experimental-vm-modules --test tests/web-platform.test.cjs tests/database.test.cjs tests/subject-deletion.test.cjs`: 60 total, 59 passed, 0 failed, 1 timezone-specific DST check skipped.
+- New web tests verify that the browser database imports no native/WASM dependencies, rejects unsupported storage, and validates account IDs. Root-component checks confirm the web notice renders before sessions/routes mount while Android/iOS retain the existing session/route tree.
+- `npx.cmd expo export --platform web --output-dir .expo/web-guard-verification`: passed, active routes `src/app/`. The output contains no `.wasm` assets or `sqlite3.wasm`, `wa-sqlite`, or `ExpoSQLite` loader signatures.
+- `git diff --check`: passed. No dependency or native schema changes. Existing native database/timer work was preserved.
+- Tests and bundling do not verify visual rendering. Check circle visibility (especially Black/White), switch appearance, Home footer, and the browser notice manually; browser study storage remains intentionally unavailable.
+
+## Commitment Focus Timer (2026-10-22)
+
+| Check | Result |
+| --- | --- |
+| `npx.cmd expo lint` | Passed |
+| `npx.cmd tsc --noEmit` | Passed |
+| Combined database/auth/backup/theme/subject-deletion/focus-timer suites | 111 tests: 110 passed, 0 failed, 1 NY-only DST case skipped in Asia/Singapore |
+| Database suite with `TZ=America/New_York` | 54 passed, 0 failed, 0 skipped |
+| Android/iOS native bundle export | Passed; `.expo/focus-verification`, active routes `src/app/` |
+| `git diff --check` | Passed |
+
+Production SQL verifies start/break/resume/finish transitions, precise short-break accumulation, finishing during a break, lateness, frozen completion totals, duplicate retries, one active session per account, ownership/state checks, transaction rollback, and reopen restoration during work and breaks. Migration tests verify null/zero defaults for old rows. Active sessions remain reachable on later date queries, are excluded from missed detection, and retain planned workload. The existing full academic-loop test now starts, pauses, resumes and finishes a timer before creating/rating its subject-linked review and testing subsequent recommitments.
+
+Backup tests cover version-3 active/open-break and completed-time round trips, versions 1/2 defaults, invalid timer state/totals, multiple-active rejection, and unchanged existing records on invalid import. Actual FocusTimer component tests substitute native bridges to check ticking, full/subminute/no lateness, frozen work, pause/resume/finish wiring, foreground catch-up, background interval cleanup, and action-specific loading feedback. The final subminute-lateness addition was checked by the focused component suite, lint/typecheck, and both native exports after the full regression run.
+
+No dependency changes were needed. Bundle exports verify compilation, not physical device rendering or OS process behavior. Check both themes, actual cold restarts/backgrounding, native gestures and the Finish Session review prompt on a device using `DEMO_AND_TESTING.md`. Timer mode intentionally continues while away; there is no background JS service, automatic pause, notification, or automatic finish.
+
 ## Subject deletion (2026-10-22)
 
 - `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed.

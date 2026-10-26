@@ -26,8 +26,13 @@ Keep the current cards, borders, icons, 20px padding, and both themes.
 Dark defaults to #0C1117 with purple; light is monochrome #F5F5F5,
 white cards, gray borders, black text/actions. AsyncStorage saves theme selection
 under yotei.theme and restores it before screens mount (dark fallback).
-Use functional UI text only. Settings permanently includes
-"By students, for students."
+Use functional UI text only. Home's list footer includes
+"By students, for students." Settings labels the current Dark Mode/Light Mode;
+the light switch is monochrome, including its web active thumb. Subject creation
+has twelve visible circle swatches, including pure Black and White.
+App.js shows a mobile-only notice on web before mounting sessions/routes;
+db/database.web.js excludes SQLite/WASM from the browser bundle. Native storage
+continues using db/database.js. Browser study functionality is not implemented.
 
 Auth uses AuthService with Mock and Appwrite adapters; public users are
 {id,name,email}. USE_REAL_AUTH is currently true for real login diagnostics.
@@ -89,7 +94,7 @@ Instructions now live in FieldLabel/InfoButton native popups across headings,
 auth/study forms and cards; warnings/errors and decision prompts stay visible.
 The bookshelf has page/binding lines, shaded grooves and a themed shelf lip;
 long titles wrap fully rather than being cut to four lines.
-Warn only when a local day's scheduled+done study time would exceed
+Warn only when a local day's scheduled+active+done planned study time would exceed
 240 minutes; explicit confirmation can override. Missed history is
 excluded; cross-midnight workload is split by local day.
 Expired scheduled blocks become missed. Reschedule retains the original
@@ -97,7 +102,18 @@ and creates one replacement via rescheduled_from. A SQLite trigger
 increments task.postpone_count once; DO NOT add a second increment.
 Coaching appears when that count is at least 2.
 
-Mark Done opens CompletionReviewSheet. Yes creates a ReviewItem under the
+Commitment Focus Timer: Start Session is available inside a scheduled window.
+startStudyBlock stamps actual_start_time and status active; pauseStudyBlock sets
+break_started_at; resumeStudyBlock adds the break to break_time_ms, updates floored
+break_time_minutes, and clears its anchor. finishStudyBlock sets done, actual_end_time,
+and actual_study_seconds (wall time minus breaks, floored once). All six fields
+migrate in place with null/zero defaults and survive restart/backup.
+One active session per account; retries preserve timestamps/totals. Active blocks
+remain visible past midnight/end and are not marked missed. FocusTimer replaces
+their normal Home card, shows lateness/work/current+total breaks, and updates each
+second while focused/foreground. Work/break mode continues while away; timestamps
+ensure correct catch-up without background JS. Planned workload stays unchanged.
+Finish Session opens CompletionReviewSheet. Yes creates a ReviewItem under the
 completed block's subject_id; No/Skip keeps the block done without adding
 a topic. Creation errors preserve the topic for retry. ReviewService
 returns a composed created item to avoid a fallible post-insert read.
@@ -116,8 +132,9 @@ Elapsed seeded blocks are done so missed detection preserves the total.
 Data backup: Settings > Data Management exports/imports the five study
 collections with db/BackupService.js. expo-file-system uses SDK 57 File/Paths;
 expo-sharing and expo-document-picker provide native share/pick UI.
-JSON format is yotei.study-backup, exports version 2 (subject field metadata),
-imports versions 1 and 2, with a 20 MB limit. Version 1 colors migrate to General.
+JSON format is yotei.study-backup, exports version 3 (fields plus timer metadata),
+imports versions 1, 2 and 3, with a 20 MB limit. Old files get empty timer defaults;
+version 1 colors migrate to General. Validate timer states/totals and one active block.
 Validate before deletion; replace only the signed-in account atomically;
 allocate fresh IDs and remap every relation. Set rescheduled_from by UPDATE
 after block insertion so historical postponements are not counted again.
@@ -143,9 +160,17 @@ all 45 New York DB cases pass. npm run test:theme runs the new provider tests.
 Native picker/alert gestures and styling still need a phone check; rebuild an
 existing custom development client for the newly added native picker module.
 Earlier DB tests also passed in America/New_York.
+The latest focus-timer pass: lint/typecheck and Android/iOS exports pass;
+111 combined cases (110 pass, one NY-only skip); all 54 NY DB cases pass.
+tests/focus-timer.test.cjs exercises the actual timer component with native bridges
+substituted; production SQL covers persistence, precision, retries and review flow.
 The full SQLite schedule->done->review->miss->reschedule/count loop is
 tested. Native UI gestures, keyboard/modal appearance, live Appwrite,
 web storage, and release builds have not been validated by those checks.
+The 2026-10-24 UI/web-guard pass passes lint/typecheck and a web export with
+no WASM assets or SQLite loader signatures. Database/subject-deletion/web suites:
+60 total, 59 pass, one NY-only skip. Browser study storage is intentionally
+disabled; native visual checks remain manual.
 The native backup picker/share sheet still needs a physical-device check.
 
 Use npx expo install for packages; fetch matching SDK docs before Expo/RN

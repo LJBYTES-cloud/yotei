@@ -265,6 +265,63 @@ File-by-file changes (two new files, no files deleted):
 
 One test file created; no files deleted.
 
+### Commitment Focus Timer (2026-10-22)
+
+- Added StudyBlock `actual_start_time` and integer `break_time_minutes`, plus `break_started_at`, precise `break_time_ms`, `actual_end_time`, and `actual_study_seconds` to persist mode and final totals accurately. Existing rows migrate in place with null/zero defaults; no historical actual times are invented.
+- Added account-scoped, transactional Start/Take Break/Resume/Finish services with retry guards and one active session per account. Work equals actual wall-clock duration minus all breaks; short breaks retain millisecond precision and studied seconds are floored once at completion. Finishing during a break closes it correctly.
+- Home replaces active cards with a themed FocusTimer showing live work/current-break time, total breaks, and lateness. The old timed-window Mark Done button becomes Start Session; Finish Session stores done/actual totals and opens the existing CompletionReviewSheet. Done cards display saved actual totals.
+- Active sessions remain accessible past midnight/scheduled end, are not auto-missed, and retain their planned contribution to the existing workload guardrail. Timer mode survives app restarts and continues while away; the view ticks only while focused and foreground, deriving elapsed time from persisted instants.
+- Backups export version 3 with all timer fields and validated states/totals. Versions 1/2 remain importable with empty timer defaults. Active/open-break anchors and completed results survive restoration.
+- Lint/typecheck, both native exports, 110 combined test cases (one additional timezone-specific skip), and all 54 New York database cases passed. Physical-device timer/modal/background behavior still needs manual checking. No dependencies were changed.
+
+File-by-file changes (three new files, no files deleted):
+
+| File | Change |
+| --- | --- |
+| `db/database.js` | Added six timer columns and retryable migrations with null/zero defaults. |
+| `db/StudyBlockService.js` | Added start/pause/resume/finish transitions, timing persistence, ownership/retry/one-active guards, and active-session visibility across dates. |
+| `db/StudyLoadService.js` | Included active sessions in planned daily workload. |
+| `db/BackupService.js` | Added version-3 timer fields, state/arithmetic validation, and version-1/2 conversion defaults. |
+| `utils/focusTimer.js` | New timestamp-derived work/break/lateness calculations and elapsed formatter. |
+| `components/FocusTimer.js` | New themed live focus/break card with foreground ticking, lateness, total breaks, and timer controls. |
+| `components/StudyCards.js` | Replaced Mark Done with Start Session and added actual completion totals. |
+| `components/StudyWorkspace.js` | Connected timer mutations/loading/errors and Finish Session to the existing review prompt and shared refresh. |
+| `screens/HomeScreen.js` | Rendered active timer cards first; clarified planning-workload guidance. |
+| `tests/database.test.cjs` | Added lifecycle/precision/retry/ownership/rollback/restart tests; updated academic loop and migration checks. |
+| `tests/backup.test.cjs` | Added timer round trips and invalid-state protection; updated version and legacy conversion assertions. |
+| `tests/focus-timer.test.cjs` | New actual-component tests for live/break displays, lateness, actions, foreground catch-up and interval cleanup. |
+| `README.md` | Updated timer flow, background behavior, backup versions and UI-test commands. |
+| `docs/PROJECT_CONTEXT.md` | Updated architecture diagram, schema, service APIs, timer semantics, workload/review integration and backup contracts. |
+| `docs/NEXT_SESSION_PROMPT.md` | Updated continuation context and latest verification. |
+| `docs/DEMO_AND_TESTING.md` | Updated walkthrough and manual checks for timer actions, persistence and actual completion. |
+| `docs/DATA_BACKUP.md` | Documented version-3 timer fields, invariants and older-format support. |
+| `docs/VALIDATION.md` | Recorded regression/build results, bridge-test scope and physical-device limits. |
+| `docs/CHANGELOG.md` | Recorded this implementation, current decisions and every changed/created file. |
+
+### Swatches, appearance controls, Home motto, and web guard (2026-10-24)
+
+- Enlarged named color circles, added a visible gray outline, and added pure Black/White to the twelve-color subject palette. Existing two-color selection and subject editing remain unchanged.
+- Settings now labels the current Dark Mode/Light Mode. Its light-mode switch uses a black enabled track, gray disabled track, and white thumb. A web active-thumb override removes React Native Web's green default.
+- Moved the requested small motto from Settings to the bottom of Home's list, including its empty state.
+- App.js checks Platform.OS and shows a themed mobile-only notice on web before mounting authentication or study routes. A platform-specific database.web.js excludes the static SQLite/WASM import entirely; native storage continues using database.js with existing migrations.
+
+File-by-file changes (two new files, no files deleted):
+
+| File | Change |
+| --- | --- |
+| `components/EntrySheet.js` | Larger outlined color circles plus Black/White palette choices. |
+| `screens/SettingsScreen.js` | Dynamic theme label, explicit monochrome switch colors/web thumb, and removal of motto/footer styles. |
+| `screens/HomeScreen.js` | Added subtle motto as the final list footer. |
+| `App.js` | Added themed browser notice and Platform.OS guard before sessions/routes mount. |
+| `db/database.web.js` | New import-free web storage boundary; rejects unsupported database access without loading SQLite. |
+| `tests/web-platform.test.cjs` | New regression tests for excluded native imports, browser notice, and preserved Android/iOS route mounting. |
+| `README.md` | Updated screen overview, swatch palette, and browser/mobile boundary. |
+| `docs/PROJECT_CONTEXT.md` | Updated palette, appearance controls, motto placement, and web boundary. |
+| `docs/NEXT_SESSION_PROMPT.md` | Updated continuation context for this pass. |
+| `docs/DEMO_AND_TESTING.md` | Added swatch/theme/motto/browser acceptance checks and web verification commands. |
+| `docs/VALIDATION.md` | Recorded this pass's checks and manual verification limits. |
+| `docs/CHANGELOG.md` | Recorded implementation and every changed/created file. |
+
 ## Superseded decisions
 
 | Earlier state/request | Current accepted implementation |
@@ -276,7 +333,7 @@ One test file created; no files deleted.
 | 15/30/45/60 buttons | Duration is calculated from the selected start/end instants |
 | Now / In 1 hour only | Native full-date selection; service retains its no-options 1-hour reschedule default |
 | Temporary Review recovery screen | Real due-topic spaced-repetition queue; missed blocks remain in Home |
-| Editorial/marketing slogans | Functional app copy plus the explicitly requested Settings motto |
+| Editorial/marketing slogans | Functional app copy plus the explicitly requested Home motto |
 | User-entered duration and Now/custom start form | Native Start/End dates and times; background workload calculation |
 | Typed clocks with Today/Tomorrow toggles | Native calendar/time pickers for any upcoming date |
 | Long inline instructional paragraphs | Small info icons with native guidance popups; errors/warnings stay visible |
@@ -285,6 +342,8 @@ One test file created; no files deleted.
 | Monochrome books / hidden light-mode color chooser | Colored gradient books in both themes; explicit one/two-color field swatches; monochrome light chrome and task/review markers |
 | Subject.color | Subject.field_of_study and comma-separated field_colors; legacy colors preserved under General |
 | Theme preference only in memory | AsyncStorage restoration before screens mount and ordered preference saves |
+| Mark Done directly from a scheduled card | Start Session, durable work/break timer, Finish Session with actual totals and optional review prompt |
+| Backup version 2 | Version 3 includes timer metadata; versions 1/2 still import |
 
 ## Git checkpoints present at handoff
 

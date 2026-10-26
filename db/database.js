@@ -38,6 +38,12 @@ async function initializeDatabase() {
           start_time TEXT NOT NULL,
           end_time TEXT NOT NULL,
           status TEXT NOT NULL DEFAULT 'scheduled',
+          actual_start_time TEXT,
+          break_time_minutes INTEGER NOT NULL DEFAULT 0 CHECK (break_time_minutes >= 0),
+          break_started_at TEXT,
+          break_time_ms INTEGER NOT NULL DEFAULT 0 CHECK (break_time_ms >= 0),
+          actual_end_time TEXT,
+          actual_study_seconds INTEGER NOT NULL DEFAULT 0 CHECK (actual_study_seconds >= 0),
           rescheduled_from INTEGER REFERENCES StudyBlock (id) ON DELETE SET NULL
         );
 
@@ -89,6 +95,14 @@ async function initializeDatabase() {
       const columns = /** @type {{ name: string }[]} */ (await database.getAllAsync('PRAGMA table_info(StudyBlock)'));
       if (!columns.some(column => column.name === 'rescheduled_from')) {
         await database.execAsync('ALTER TABLE StudyBlock ADD COLUMN rescheduled_from INTEGER REFERENCES StudyBlock (id) ON DELETE SET NULL');
+      }
+      const timerColumns = [
+        ['actual_start_time', 'TEXT'], ['break_time_minutes', 'INTEGER NOT NULL DEFAULT 0 CHECK (break_time_minutes >= 0)'],
+        ['break_started_at', 'TEXT'], ['break_time_ms', 'INTEGER NOT NULL DEFAULT 0 CHECK (break_time_ms >= 0)'],
+        ['actual_end_time', 'TEXT'], ['actual_study_seconds', 'INTEGER NOT NULL DEFAULT 0 CHECK (actual_study_seconds >= 0)'],
+      ];
+      for (const [name, definition] of timerColumns) {
+        if (!columns.some(column => column.name === name)) await database.execAsync(`ALTER TABLE StudyBlock ADD COLUMN ${name} ${definition}`);
       }
       await database.execAsync(`
         UPDATE StudyBlock SET status = 'scheduled' WHERE status = 'planned';

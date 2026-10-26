@@ -96,8 +96,10 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
   await reviews.evaluate();
   const database = modules.get(path.resolve('db/database.js')).namespace;
   const subjectFields = modules.get(path.resolve('utils/subjectFields.js')).namespace;
+  const timer = await load('./utils/focusTimer.js', parent);
+  await timer.evaluate();
   return {
-    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace, ...reviews.namespace, ...subjectFields,
+    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace, ...reviews.namespace, ...subjectFields, ...timer.namespace,
     setNow: value => { now = value; },
     get opens() { return opens; },
     close: async () => { for (const connection of connections) await connection.closeAsync(); },
@@ -105,6 +107,110 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
 }
 
 const plain = value => JSON.parse(JSON.stringify(value));
+
+async function focusFixture(s, user = 'student', start = '2026-10-20T09:00:00Z', end = '2026-10-20T09:30:00Z') {
+  const subject = await s.createSubject(user, { name: 'Biology' });
+  const task = await s.createTask(user, { subject_id: subject.id, title: 'Cell cycle' });
+  return s.createStudyBlock(user, { task_id: task.id, start_time: start, end_time: end });
+}
+
+test('focus timer tracks lateness, freezes work on breaks, survives scheduled end, and finishes once', async t => {
+  const s = await loadServices(':memory:', false, '2026-10-20T09:13:00Z');
+  t.after(s.close);
+  const block = await focusFixture(s);
+  const active = await s.startStudyBlock('student', block.id);
+  assert.equal(active.status, 'active');
+  assert.equal(active.actual_start_time, '2026-10-20T09:13:00.000Z');
+  assert.equal(s.getFocusTiming(active, Date.parse('2026-10-20T09:18:00Z')).lateMinutes, 13);
+  assert.equal(await s.getDailyStudyMinutes('student', s.getLocalDateKey(new Date(block.start_time))), 30, 'active sessions retain their planned workload');
+  const paused = await s.pauseStudyBlock('student', block.id, '2026-10-20T09:18:00Z');
+  assert.equal(s.getFocusTiming(paused, Date.parse('2026-10-20T09:24:00Z')).workSeconds, 300);
+  assert.equal(s.getFocusTiming(paused, Date.parse('2026-10-20T09:24:00Z')).currentBreakSeconds, 360);
+  const resumed = await s.resumeStudyBlock('student', block.id, '2026-10-20T09:20:00Z');
+  assert.equal(resumed.break_time_ms, 120000); assert.equal(resumed.break_time_minutes, 2);
+  await s.markExpiredStudyBlocks('student', '2026-10-20T10:00:00Z');
+  assert.equal((await s.getStudyBlocksForUser('student'))[0].status, 'active');
+  assert.equal((await s.getStudyBlocksForUser('student', { date: '2026-10-28' }))[0].id, block.id, 'unfinished timers remain reachable on a later date');
+  const finished = await s.finishStudyBlock('student', block.id, '2026-10-20T09:40:00Z');
+  assert.equal(finished.status, 'done'); assert.equal(finished.actual_study_seconds, 25 * 60);
+  assert.equal(finished.actual_end_time, '2026-10-20T09:40:00.000Z');
+  const retry = await s.finishStudyBlock('student', block.id, '2026-10-20T10:00:00Z');
+  assert.deepEqual(plain(retry), plain(finished));
+  assert.equal(s.getFocusTiming(finished, Date.parse('2026-10-21T10:00:00Z')).workSeconds, 1500);
+  assert.equal(s.formatElapsed(754), '12:34'); assert.equal(s.formatElapsed(3754), '1:02:34');
+});
+
+test('short repeated breaks retain millisecond precision and finishing during a break excludes all break time', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const block = await focusFixture(s);
+  await s.startStudyBlock('student', block.id, '2026-10-20T09:00:00Z');
+  await s.pauseStudyBlock('student', block.id, '2026-10-20T09:00:00.200Z');
+  await s.resumeStudyBlock('student', block.id, '2026-10-20T09:00:00.800Z');
+  await s.pauseStudyBlock('student', block.id, '2026-10-20T09:00:01Z');
+  const done = await s.finishStudyBlock('student', block.id, '2026-10-20T09:01:02Z');
+  assert.equal(done.break_time_ms, 61600); assert.equal(done.break_time_minutes, 1);
+  assert.equal(done.actual_study_seconds, 0, 'only 400 ms of actual work, floored once at finish');
+  assert.equal(done.break_started_at, null);
+});
+
+test('timer retries never reset timestamps or double-count a break and only one session runs per user', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const a = await focusFixture(s); const b = await focusFixture(s); const other = await focusFixture(s, 'other');
+  const results = await Promise.allSettled([s.startStudyBlock('student', a.id, '2026-10-20T09:00:00Z'), s.startStudyBlock('student', b.id, '2026-10-20T09:00:00Z')]);
+  assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+  assert.equal((await s.startStudyBlock('student', a.id, '2026-10-20T09:01:00Z')).actual_start_time, '2026-10-20T09:00:00.000Z');
+  await s.startStudyBlock('other', other.id, '2026-10-20T09:00:00Z');
+  await s.pauseStudyBlock('student', a.id, '2026-10-20T09:05:00Z');
+  const repeatedPause = await s.pauseStudyBlock('student', a.id, '2026-10-20T09:06:00Z');
+  assert.equal(repeatedPause.break_started_at, '2026-10-20T09:05:00.000Z');
+  await s.resumeStudyBlock('student', a.id, '2026-10-20T09:07:00Z');
+  const repeatedResume = await s.resumeStudyBlock('student', a.id, '2026-10-20T09:08:00Z');
+  assert.equal(repeatedResume.break_time_ms, 120000);
+  await s.finishStudyBlock('student', a.id, '2026-10-20T09:10:00Z');
+  assert.equal((await s.startStudyBlock('student', b.id, '2026-10-20T09:11:00Z')).status, 'active');
+});
+
+test('timer ownership, invalid transitions and transaction failures preserve stored state', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const block = await focusFixture(s);
+  for (const service of [s.startStudyBlock, s.pauseStudyBlock, s.resumeStudyBlock, s.finishStudyBlock]) {
+    for (const [user, id, now] of [['', block.id, '2026-10-20T09:00:00Z'], ['other', block.id, '2026-10-20T09:00:00Z'], ['student', -1, '2026-10-20T09:00:00Z'], ['student', 9999, '2026-10-20T09:00:00Z'], ['student', block.id, 'invalid']]) {
+      await assert.rejects(service(user, id, now));
+    }
+  }
+  for (const now of ['2026-10-20T08:59:59Z', '2026-10-20T09:30:00Z']) await assert.rejects(s.startStudyBlock('student', block.id, now), /scheduled time/);
+  await assert.rejects(s.pauseStudyBlock('student', block.id, '2026-10-20T09:00:00Z'), /Start this session/);
+  const active = await s.startStudyBlock('student', block.id, '2026-10-20T09:00:00Z');
+  await assert.rejects(s.pauseStudyBlock('student', block.id, '2026-10-20T08:59:59Z'), /clock/);
+  const db = await s.getDatabase();
+  await db.execAsync("CREATE TRIGGER reject_timer_update BEFORE UPDATE ON StudyBlock BEGIN SELECT RAISE(ABORT, 'Injected timer failure'); END");
+  await assert.rejects(s.pauseStudyBlock('student', block.id, '2026-10-20T09:01:00Z'), /Injected timer failure/);
+  assert.deepEqual(plain((await s.getStudyBlocksForUser('student'))[0]), plain(active));
+  await db.execAsync('DROP TRIGGER reject_timer_update');
+  await s.finishStudyBlock('student', block.id, '2026-10-20T09:10:00Z');
+  await assert.rejects(s.resumeStudyBlock('student', block.id, '2026-10-20T09:11:00Z'), /Start this session/);
+});
+
+test('active and paused timers survive closing SQLite and reopening without losing or running paused work', async t => {
+  const filename = path.join(os.tmpdir(), `yotei-timer-${randomUUID()}.db`);
+  const instances = [];
+  t.after(async () => { for (const s of instances) await s.close(); for (const suffix of ['', '-wal', '-shm']) if (fs.existsSync(filename + suffix)) fs.unlinkSync(filename + suffix); });
+  const first = await loadServices(filename); instances.push(first);
+  const block = await focusFixture(first);
+  await first.startStudyBlock('student', block.id, '2026-10-20T09:00:00Z');
+  await first.close();
+  const second = await loadServices(filename); instances.push(second);
+  const active = (await second.getStudyBlocksForUser('student'))[0];
+  assert.equal(second.getFocusTiming(active, Date.parse('2026-10-20T09:05:00Z')).workSeconds, 300);
+  await second.pauseStudyBlock('student', block.id, '2026-10-20T09:05:00Z'); await second.close();
+  const third = await loadServices(filename); instances.push(third);
+  const paused = (await third.getStudyBlocksForUser('student'))[0];
+  assert.equal(third.getFocusTiming(paused, Date.parse('2026-10-21T09:05:00Z')).workSeconds, 300);
+  assert.equal(third.getFocusTiming(paused, Date.parse('2026-10-21T09:05:00Z')).breakSeconds, 86400);
+  await third.resumeStudyBlock('student', block.id, '2026-10-21T09:05:00Z');
+  const done = await third.finishStudyBlock('student', block.id, '2026-10-21T09:10:00Z');
+  assert.equal(done.actual_study_seconds, 600); assert.equal(done.break_time_minutes, 1440);
+});
 
 test('review queue binds topics, validates input, and isolates accounts for every operation', async t => {
   const services = await loadServices(':memory:', false, '2026-10-20T12:00:00Z');
@@ -253,8 +359,16 @@ test('study completion feeds review topics and repeated missed sessions incremen
     task_id: task.id, start_time: '2026-10-20T09:00:00Z', end_time: '2026-10-20T09:30:00Z',
   });
   assert.equal(block.subject_id, subject.id);
+  services.setNow('2026-10-20T09:13:00Z');
+  await services.startStudyBlock('student', block.id);
+  services.setNow('2026-10-20T09:18:00Z');
+  await services.pauseStudyBlock('student', block.id);
+  services.setNow('2026-10-20T09:20:00Z');
+  await services.resumeStudyBlock('student', block.id);
   services.setNow('2026-10-20T09:25:00Z');
-  const completed = await services.updateStudyBlockStatus('student', block.id, 'done');
+  const completed = await services.finishStudyBlock('student', block.id);
+  assert.equal(completed.actual_study_seconds, 600);
+  assert.equal(completed.break_time_minutes, 2);
   assert.equal(completed.subject_id, subject.id);
   assert.equal(completed.task_title, task.title);
   const review = await services.createReviewItem('student', {
@@ -841,6 +955,11 @@ test('migrates legacy planned blocks without losing data and can reopen safely',
   assert.deepEqual(await (await first.getDatabase()).getAllAsync('PRAGMA foreign_key_check'), []);
   assert.deepEqual(migrated.map(block => block.status), ['scheduled', 'done']);
   assert.equal(migrated[0].rescheduled_from, null);
+  assert.equal(migrated[0].actual_start_time, null);
+  assert.equal(migrated[0].break_started_at, null);
+  assert.equal(migrated[0].break_time_minutes, 0);
+  assert.equal(migrated[0].break_time_ms, 0);
+  assert.equal(migrated[0].actual_study_seconds, 0);
   await first.markExpiredStudyBlocks('user-a', '2026-10-20T09:00:00Z');
   const replacement = await first.rescheduleStudyBlock('user-a', 1, '2026-10-20T09:00:00Z');
   assert.equal((await first.getTasksForUser('user-a'))[0].postpone_count, 1);

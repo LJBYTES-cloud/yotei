@@ -8,7 +8,7 @@ import { DEFAULT_FIELD, normalizeFieldColors, normalizeFieldOfStudy } from '../u
 /**
  * @typedef {{id: number, name: string, field_of_study: string, field_colors: string}} BackupSubject
  * @typedef {{id: number, subject_id: number, title: string, deadline: string | null, estimated_minutes: number, status: string, postpone_count: number}} BackupTask
- * @typedef {{id: number, task_id: number, start_time: string, end_time: string, status: string, rescheduled_from: number | null}} BackupBlock
+ * @typedef {{id: number, task_id: number, start_time: string, end_time: string, status: string, rescheduled_from: number | null, actual_start_time: string | null, break_time_minutes: number, break_started_at: string | null, break_time_ms: number, actual_end_time: string | null, actual_study_seconds: number}} BackupBlock
  * @typedef {{id: number, subject_id: number, topic: string, last_reviewed_at: string | null, next_review_at: string | null}} BackupReview
  * @typedef {{id: number, subject_id: number, task_id: number | null, title: string, url_or_note: string | null, local_file_path: string | null}} BackupMaterial
  * @typedef {{subjects: BackupSubject[], tasks: BackupTask[], studyBlocks: BackupBlock[], reviewItems: BackupReview[], materials: BackupMaterial[]}} BackupData
@@ -16,13 +16,15 @@ import { DEFAULT_FIELD, normalizeFieldColors, normalizeFieldOfStudy } from '../u
  */
 
 const FORMAT = 'yotei.study-backup';
-const VERSION = 2;
+const VERSION = 3;
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 /** @param {unknown} value */
 const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 /** @param {unknown} value */
 const positiveId = value => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+/** @param {unknown} value */
+const nonnegativeInteger = value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 /** @param {unknown} value */
 const text = value => typeof value === 'string' && value.trim().length > 0;
 /** @param {unknown} value */
@@ -47,7 +49,10 @@ const fields = {
     estimated_minutes: positiveId, status: text,
     postpone_count: value => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 },
   studyBlocks: { id: positiveId, task_id: positiveId, start_time: timestamp, end_time: timestamp,
-    status: value => value === 'scheduled' || value === 'done' || value === 'missed',
+    status: value => value === 'scheduled' || value === 'active' || value === 'done' || value === 'missed',
+    actual_start_time: nullableTimestamp, break_time_minutes: nonnegativeInteger,
+    break_started_at: nullableTimestamp, break_time_ms: nonnegativeInteger,
+    actual_end_time: nullableTimestamp, actual_study_seconds: nonnegativeInteger,
     rescheduled_from: value => value === null || positiveId(value) },
   reviewItems: { id: positiveId, subject_id: positiveId, topic: text, last_reviewed_at: nullableTimestamp, next_review_at: nullableTimestamp },
   materials: { id: positiveId, subject_id: positiveId, task_id: value => value === null || positiveId(value),
@@ -58,8 +63,8 @@ const fields = {
 function validateBackup(input) {
   if (!record(input)) throw new Error('Choose a valid Yotei JSON backup.');
   const backup = /** @type {Backup} */ (input);
-  if (backup.format !== FORMAT || (backup.version !== 1 && backup.version !== VERSION)) {
-    throw new Error('This file is not a supported Yotei backup (version 1 or 2).');
+  if (backup.format !== FORMAT || ![1, 2, VERSION].includes(backup.version)) {
+    throw new Error('This file is not a supported Yotei backup (version 1, 2 or 3).');
   }
   if (!timestamp(backup.exported_at) || !record(backup.data)) throw new Error('The backup header is invalid.');
   const data = { ...backup.data };
@@ -70,6 +75,12 @@ function validateBackup(input) {
         throw new Error('The backup has an invalid subjects.color value.');
       }
       return { id: legacy.id, name: legacy.name, field_of_study: DEFAULT_FIELD, field_colors: legacy.color };
+    });
+  }
+  if (backup.version < 3 && Array.isArray(data.studyBlocks)) {
+    data.studyBlocks = data.studyBlocks.map(row => !record(row) ? row : { ...row,
+      actual_start_time: null, break_time_minutes: 0, break_started_at: null,
+      break_time_ms: 0, actual_end_time: null, actual_study_seconds: 0,
     });
   }
   for (const name of /** @type {(keyof BackupData)[]} */ (Object.keys(fields))) {
@@ -92,12 +103,35 @@ function validateBackup(input) {
   const blocks = new Map(data.studyBlocks.map(row => [row.id, row]));
   const replaced = new Set();
   const postponements = new Map();
+  let activeCount = 0;
   for (const task of data.tasks) {
     if (!subjects.has(task.subject_id)) throw new Error('A task references a subject missing from the backup.');
   }
   for (const block of data.studyBlocks) {
     if (!tasks.has(block.task_id) || Date.parse(block.end_time) <= Date.parse(block.start_time)) {
       throw new Error('A study block has a missing task or invalid time range.');
+    }
+    if (block.break_time_minutes !== Math.floor(block.break_time_ms / 60000)) throw new Error('A study block has inconsistent break totals.');
+    if (block.actual_start_time === null) {
+      if (block.status === 'active' || block.break_started_at !== null || block.actual_end_time !== null || block.break_time_ms !== 0 || block.actual_study_seconds !== 0) {
+        throw new Error('A study block has timer data without an actual start.');
+      }
+    } else {
+      const started = Date.parse(block.actual_start_time);
+      if (!['active', 'done'].includes(block.status) || started < Date.parse(block.start_time) || started >= Date.parse(block.end_time)) {
+        throw new Error('A study block has an invalid actual start.');
+      }
+      if (block.status === 'active') {
+        activeCount++;
+        if (block.actual_end_time !== null || block.actual_study_seconds !== 0 || (block.break_started_at !== null && Date.parse(block.break_started_at) - started < block.break_time_ms)) {
+          throw new Error('An active study block has invalid timer state.');
+        }
+      } else {
+        const elapsed = block.actual_end_time === null ? -1 : Date.parse(block.actual_end_time) - started;
+        if (block.break_started_at !== null || elapsed < block.break_time_ms || block.actual_study_seconds !== Math.floor((elapsed - block.break_time_ms) / 1000)) {
+          throw new Error('A completed study block has inconsistent studied time.');
+        }
+      }
     }
     if (block.rescheduled_from !== null) {
       const source = blocks.get(block.rescheduled_from);
@@ -108,6 +142,7 @@ function validateBackup(input) {
       postponements.set(block.task_id, (postponements.get(block.task_id) || 0) + 1);
     }
   }
+  if (activeCount > 1) throw new Error('A backup can contain only one active focus session.');
   // Walk each chain once; detect cycles without recursion on large backups.
   const visited = new Set();
   for (const block of data.studyBlocks) {
@@ -150,7 +185,8 @@ export async function exportBackup(userId) {
     data.subjects = await transaction.getAllAsync('SELECT id, name, field_of_study, field_colors FROM Subject WHERE user_id = ? ORDER BY id', userId);
     data.tasks = await transaction.getAllAsync(`SELECT id, subject_id, title, deadline, estimated_minutes, status, postpone_count
       FROM Task WHERE user_id = ? ORDER BY id`, userId);
-    data.studyBlocks = await transaction.getAllAsync(`SELECT b.id, b.task_id, b.start_time, b.end_time, b.status, b.rescheduled_from
+    data.studyBlocks = await transaction.getAllAsync(`SELECT b.id, b.task_id, b.start_time, b.end_time, b.status, b.rescheduled_from,
+      b.actual_start_time, b.break_time_minutes, b.break_started_at, b.break_time_ms, b.actual_end_time, b.actual_study_seconds
       FROM StudyBlock b JOIN Task t ON t.id = b.task_id WHERE t.user_id = ? ORDER BY b.id`, userId);
     data.reviewItems = await transaction.getAllAsync(`SELECT r.id, r.subject_id, r.topic, r.last_reviewed_at, r.next_review_at
       FROM ReviewItem r JOIN Subject s ON s.id = r.subject_id WHERE s.user_id = ? ORDER BY r.id`, userId);
@@ -219,8 +255,10 @@ export async function importBackup(userId) {
       tasks.set(row.id, inserted.lastInsertRowId);
     }
     for (const row of data.studyBlocks) {
-      const inserted = await transaction.runAsync(`INSERT INTO StudyBlock (task_id, start_time, end_time, status, rescheduled_from)
-        VALUES (?, ?, ?, ?, NULL)`, tasks.get(row.task_id), row.start_time, row.end_time, row.status);
+      const inserted = await transaction.runAsync(`INSERT INTO StudyBlock (task_id, start_time, end_time, status, rescheduled_from,
+        actual_start_time, break_time_minutes, break_started_at, break_time_ms, actual_end_time, actual_study_seconds)
+        VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`, tasks.get(row.task_id), row.start_time, row.end_time, row.status,
+      row.actual_start_time, row.break_time_minutes, row.break_started_at, row.break_time_ms, row.actual_end_time, row.actual_study_seconds);
       blocks.set(row.id, inserted.lastInsertRowId);
     }
     // Attach history after insertion: supports any file order and avoids firing

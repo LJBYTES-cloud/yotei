@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { USE_REAL_AUTH } from '../auth';
 import { useTheme, useThemedStyles } from '../ThemeContext';
@@ -10,6 +10,8 @@ import { Button, FieldLabel, Message } from '../components/ui';
 export default function SettingsScreen() {
   const { user, blocked, disabled, seeding, loadDemoData, backupAction, manageBackup, signOut, signingOut, signOutError } = useStudy();
   const { colors: p, isDark, toggleTheme } = useTheme();
+  const themeLabel = isDark ? 'Dark Mode' : 'Light Mode';
+  const switchThumb = isDark ? p.muted : '#FFFFFF';
   const s = useThemedStyles(createStudyStyles);
   const t = useThemedStyles(createStyles);
   return (
@@ -19,8 +21,11 @@ export default function SettingsScreen() {
         <View style={[s.card, t.profile]}><View style={t.avatar}><Text style={t.initial}>{user.name.charAt(0).toUpperCase() || 'Y'}</Text></View><View style={s.flex}><Text style={t.name}>{user.name}</Text><Text style={s.hint}>{user.email}</Text></View></View>
         <Text style={t.label}>01 / APPEARANCE</Text>
         <View style={s.card}>
-          <View style={t.row}><View style={s.flex}><FieldLabel label="Light mode" textStyle={t.title} help="Your theme is remembered on this device. Books keep their field colors in both themes; other light-mode screens use monochrome colors." /></View>
-            <Switch accessibilityLabel="Light mode" accessibilityHint="Switch between dark purple and monochrome light themes" value={!isDark} onValueChange={toggleTheme} trackColor={{ false: p.line, true: p.accent }} thumbColor={isDark ? p.muted : p.surface} ios_backgroundColor={p.line} />
+          <View style={t.row}><View style={s.flex}><FieldLabel label={themeLabel} textStyle={t.title} help="Your theme is remembered on this device. Books keep their field colors in both themes; other light-mode screens use monochrome colors." /></View>
+            <Switch accessibilityLabel={themeLabel} accessibilityHint={`Switch to ${isDark ? 'Light Mode' : 'Dark Mode'}`} value={!isDark} onValueChange={toggleTheme}
+              trackColor={{ false: isDark ? p.line : '#E0E0E0', true: isDark ? p.accent : '#000000' }}
+              thumbColor={switchThumb} ios_backgroundColor={isDark ? p.line : '#E0E0E0'}
+              {...(Platform.OS === 'web' ? { activeThumbColor: switchThumb } : {})} />
           </View>
           <View style={t.themePreview}><View style={t.previewPage}><View style={t.previewLine} /><View style={[t.previewLine, t.shortLine]} /><View style={t.previewButton} /></View><View style={s.flex}><Text style={s.eyebrow}>{isDark ? 'DARK / VIOLET' : 'LIGHT / MONOCHROME'}</Text></View></View>
         </View>
@@ -41,15 +46,12 @@ export default function SettingsScreen() {
         <Text style={t.label}>{USE_REAL_AUTH ? '03' : '04'} / YOUR ACCOUNT</Text>
         <View style={s.card}><FieldLabel label="Sign out" textStyle={t.title} help="Signing out clears the login session. Your study data remains stored on this device." /><Message text={signOutError} /><Button label="Sign Out ↗" busy={signingOut} disabled={blocked} onPress={signOut} /></View>
       </ScrollView>
-      <View style={t.mottoBar}><Text style={t.mottoText}>By students, for students.</Text></View>
     </SafeAreaView>
   );
 }
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
-  mottoBar: { paddingHorizontal: 20, paddingVertical: 12, borderTopWidth: 1, borderTopColor: p.line, backgroundColor: p.surface },
-  mottoText: { color: p.text, fontSize: 11, lineHeight: 16, textAlign: 'center' },
   profile: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   avatar: { height: 52, width: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: p.accentSoft }, initial: { color: p.accent, fontSize: 23, fontWeight: '500' }, name: { color: p.text, fontSize: 18, fontWeight: '500', marginBottom: 4 },
   label: { color: p.muted, fontSize: 10, letterSpacing: 1.7, fontWeight: '700', marginTop: 12, marginBottom: 12 },

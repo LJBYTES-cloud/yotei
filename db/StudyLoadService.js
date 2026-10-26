@@ -15,7 +15,7 @@ export class StudyLoadWarning extends Error {
 }
 
 /**
- * Count actual planned/completed minutes inside a local day. Missed history is
+ * Count planned minutes for scheduled, active and done blocks. Missed history is
  * excluded; cross-midnight sessions contribute only their overlapping minutes.
  * @param {string} userId @param {string} date
  */
@@ -29,7 +29,7 @@ export async function getDailyStudyMinutes(userId, date) {
       - MAX(CAST(ROUND((julianday(block.start_time) - 2440587.5) * 86400000) AS INTEGER), ?)
     )) / 60000.0, 0) AS minutes
     FROM StudyBlock AS block INNER JOIN Task AS task ON task.id = block.task_id
-    WHERE task.user_id = ? AND block.status IN ('scheduled', 'done')
+    WHERE task.user_id = ? AND block.status IN ('scheduled', 'active', 'done')
       AND julianday(block.start_time) < julianday(?) AND julianday(block.end_time) > julianday(?)
   `, Date.parse(end), Date.parse(start), userId, end, start));
   return Math.round((row?.minutes ?? 0) * 1e6) / 1e6;

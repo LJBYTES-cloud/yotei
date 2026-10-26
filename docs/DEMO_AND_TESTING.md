@@ -23,10 +23,10 @@ The native scheduler now includes `@react-native-community/datetimepicker` 9.1.0
 4. Home shows 4 hours of planned/completed study and coaching for two postponed tasks. Elapsed seeded blocks are done; remaining blocks are scheduled.
 5. Library shows Mathematics, Biology, History as gradient book spines grouped under Mathematics, Biology/Chemistry, and Humanities, plus six tasks. Tap a book to filter; tap it again or **Show All Tasks** to reset. Use its pencil to edit: confirm pre-filled name/field/colors, change them, and save. Verify the book moves to its updated field, the active filter still works, and linked task/review names/colors refresh. Verify titles, binding/page lines, selection indicators, task counts, and horizontal browsing.
 6. Select Schedule on a task. Use Start's native calendar and clock to select a future time today, then choose an End date/time five minutes later. Today's demo already has 240 minutes, so the workload warning appears. Adjust or explicitly choose Schedule anyway. Overnight sessions select a later End date; workload is checked for each affected calendar day.
-7. Once the session's start time arrives, select Mark Done on Home. The completed block opens the optional review-topic prompt.
+7. Once the session's start time arrives, choose Start Session on Home. Check the live elapsed timer and lateness message. Take Break, wait briefly, and confirm work freezes while break time grows. Resume Work and then Finish Session. The actual studied total is saved and the optional review-topic prompt opens. Finishing while still on break is also supported.
 8. Choose Yes, add a topic. Enter a topic and save it. Its subject comes from the completed block, not a new manual subject selection.
 9. Open Review: the three seeded due topics and the new topic are listed. Verify the Hard/Good/Easy buttons have no interval labels, popup guidance, or screen-reader interval announcements. Rate a topic: it leaves the due list and shows "Review saved." The underlying review intervals are unchanged.
-10. Open Add subject: enter a Field of Study and choose one or two colors from ten swatches. A third choice is disabled until one is removed. In Light mode, books must retain gradients, paper title labels, and binding/page details; task subject selectors remain monochrome. Add another subject under the same field and verify both share a horizontally scrolling shelf. Toggle Light, cold restart, and confirm Light is restored; repeat for Dark. Confirm the motto remains visible below scrolling Settings content.
+10. Open Add subject: enter a Field of Study and choose one or two colors from twelve swatches, including Black and White. Verify every option has a visible colored circle in both themes. A third choice is disabled until one is removed. In Light mode, books must retain gradients, paper title labels, and binding/page details; task subject selectors remain monochrome. Add another subject under the same field and verify both share a horizontally scrolling shelf. Settings must label the current Dark Mode/Light Mode, with a black/white switch in Light mode. Toggle Light, cold restart, and confirm Light is restored; repeat for Dark. Confirm the small motto appears at the bottom of Home and is absent from Settings.
 11. In Settings > Data Management, export a backup and save the JSON using the native share sheet. Add a temporary subject in Library, then import the saved JSON. Confirm the temporary subject disappears and Home/Library/Review refresh. See [DATA_BACKUP.md](DATA_BACKUP.md) for cancellation, rollback, and account-isolation checks.
 12. Schedule another block for a date next week, including a morning time earlier on the clock than now. Confirm the saved-date notice and exported record show the chosen date. Home remains Today's Focus, so future blocks appear there when that date arrives.
 13. Tap the small info icons next to labels/titles. Check that guidance appears in a brief native popup and dismisses cleanly without changing a draft. Inspect the bookshelf's page lines/binding details and a long subject name in both themes.
@@ -43,7 +43,8 @@ The demo seed is day-relative. Reload it on a new date to obtain today's four-ho
 | Subject/task creation | Field text required; choose one/two distinct colors, no third or empty selection; forms retain drafts on failure; linked task/review markers still work |
 | Subject editing | Pencil opens a pre-filled sheet in both themes without filtering the task list; Save changes updates the same row and shared tabs; Cancel changes nothing; invalid input retains the draft; imported colors remain selectable; Add subject starts a fresh form after closing the editor |
 | Subject deletion | Create a temporary subject with a task, block and review. Select its task filter, open its pencil, and find the red Delete Subject button below Save changes. Cancel (or dismiss on Android) preserves the draft and all data. Reopen confirmation and Delete: sheet closes, subject/linked data disappear across tabs, and Library shows remaining tasks without a stale filter. Verify both themes and failure/retry/loading feedback; no delete button appears in Add Subject/Add Task |
-| Theme persistence | Light and Dark each restore after a cold restart, including before sign-in; rapid toggles retain the last choice; sign-out/import leave the preference intact |
+| Theme persistence | Light and Dark each restore after a cold restart, including before sign-in; rapid toggles retain the last choice; sign-out/import leave the preference intact; Settings labels the current mode and Light mode has no green toggle tint |
+| Browser guard | Open with `npm run web`: show the mobile-only notice, with no SQLite/WASM request or error; native login and study storage remain available on Android/iOS |
 | Subject migration | Upgrade an existing database: subject names/IDs/colors and linked tasks/reviews/materials survive under General; no reset required |
 | Native schedule | Pick today, tomorrow, next week, and a year-boundary date; verify chosen local start/end dates and stored instants |
 | Passed-time validation | At 4 PM today, 5 PM today is valid; earlier today is rejected; tomorrow morning is valid; an end at/before the start is rejected |
@@ -53,6 +54,10 @@ The demo seed is day-relative. Reload it on a new date to obtain today's four-ho
 | Task estimates | New and existing task cards omit non-editable estimated-minute text; postponement counts remain visible |
 | Subject bookshelf | Verify grouped horizontal shelves, one-color shading/two-color gradients in both themes, visible paper titles/binding/page detail, long/scaled text, filtering/counts, and reset after demo/import |
 | Workload | Exactly 240 minutes is permitted; adding more warns; Cancel/Adjust inserts nothing; explicit confirmation inserts once |
+| Focus timer | Start within the scheduled window; elapsed work updates each second; lateness is shown; other Start buttons are disabled while a session is active. Missed blocks still require rescheduling |
+| Break tracking | Take Break freezes work and starts current/total break time; Resume Work excludes breaks; repeated short breaks accumulate precisely; Finish during a break excludes the open break |
+| Timer restoration | Switch tabs/background/cold restart during work and during a break. Work/break mode and elapsed totals restore. Active blocks remain reachable past scheduled end and midnight; they are not auto-missed |
+| Actual completion | Finish stores actual end, studied seconds, and break minutes; done cards show the saved total. Retry cannot reset timestamps or inflate totals; failed actions show an error and can be retried |
 | Completion prompt | Yes creates a due topic under the correct subject; No/Skip creates none; block remains done in either case |
 | Missed blocks | A scheduled block ending in the past becomes missed on load/refresh/foreground/timer detection |
 | Recommitment | Reschedule preserves the original; a replacement is linked; task count rises once per replacement, including rapid retries |
@@ -70,7 +75,7 @@ For a short live missed-block demonstration, use the native clock to choose the 
 ```powershell
 npx.cmd expo lint
 npx.cmd tsc --noEmit
-node --experimental-vm-modules --test tests/database.test.cjs tests/auth.test.cjs tests/backup.test.cjs tests/theme.test.cjs tests/subject-deletion.test.cjs
+node --experimental-vm-modules --test tests/database.test.cjs tests/auth.test.cjs tests/backup.test.cjs tests/theme.test.cjs tests/subject-deletion.test.cjs tests/focus-timer.test.cjs
 ```
 
 Date-sensitive database coverage can run in separate PowerShell processes with:
@@ -109,7 +114,9 @@ Export success confirms bundling and asset resolution. It does not install the a
 - Do not replace the entry with the older registerRootComponent bootstrap while retaining Expo Router routes.
 - If PowerShell refuses `npx.ps1`, use `npx.cmd` rather than changing machine execution policy just to run Expo.
 - When dependency compatibility is in doubt, use `npx.cmd expo install --check`; apply version fixes only after reviewing the reported changes.
-- The app targets native SQLite. A web-only failure does not establish that native storage is broken; web SQLite headers/WASM and exclusive seeding need separate validation.
+- The browser intentionally shows a mobile-only notice before authentication/study routes mount. `db/database.web.js` prevents SQLite/WASM from entering the web bundle; Android/iOS continue using the native database. Browser study functionality is not implemented.
+
+Run the web guard regression checks with `node --experimental-vm-modules --test tests/web-platform.test.cjs`. They verify the import-free web database, mobile notice, and unchanged native route mounting. `npx.cmd expo export --platform web --output-dir .expo/web-guard-verification` also checks Metro's platform resolution.
 
 ## Real Appwrite setup boundary
 

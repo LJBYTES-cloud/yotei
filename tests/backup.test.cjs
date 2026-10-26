@@ -137,7 +137,7 @@ test('export includes all five owned tables, formatted JSON, and native sharing 
   assert.doesNotMatch(shared.json, /Private other account|user-a|user-b|password|session/i);
   const backup = JSON.parse(shared.json);
   assert.equal(backup.format, 'yotei.study-backup');
-  assert.equal(backup.version, 2);
+  assert.equal(backup.version, 3);
   assert.equal(backup.data.subjects[0].field_of_study, 'General');
   assert.equal(backup.data.subjects[0].field_colors, '#C2ACF3');
   assert.equal('color' in backup.data.subjects[0], false);
@@ -210,7 +210,7 @@ const invalidCases = {
   'inconsistent count': backup => { backup.data.tasks[0].postpone_count = 1; },
 };
 
-test('version 2 fields and gradient colors round-trip while version 1 colors migrate to General', async t => {
+test('field metadata round-trips in version 3 while versions 1 and 2 receive empty timer defaults', async t => {
   const s = await setup(t);
   s.pick(fixture());
   await s.importBackup('user');
@@ -220,7 +220,7 @@ test('version 2 fields and gradient colors round-trip while version 1 colors mig
   await s.db.runAsync('UPDATE Subject SET field_of_study = ?, field_colors = ? WHERE id = ?', 'Biology, Chemistry', '#2DD4BF,#60A5FA', subject.id);
   await s.exportBackup('user');
   const exported = JSON.parse(s.device.shares.at(-1).json);
-  assert.equal(exported.version, 2);
+  assert.equal(exported.version, 3);
   assert.equal(exported.data.subjects[0].field_of_study, 'Biology, Chemistry');
   assert.equal(exported.data.subjects[0].field_colors, '#2DD4BF,#60A5FA');
   s.pick(exported);
@@ -228,6 +228,11 @@ test('version 2 fields and gradient colors round-trip while version 1 colors mig
   subject = await s.db.getFirstAsync('SELECT * FROM Subject WHERE user_id = ?', 'user');
   assert.equal(subject.field_of_study, 'Biology, Chemistry');
   assert.equal(subject.field_colors, '#2DD4BF,#60A5FA');
+  const legacyV2 = structuredClone(exported);
+  legacyV2.version = 2;
+  for (const block of legacyV2.data.studyBlocks) for (const key of ['actual_start_time', 'break_time_minutes', 'break_started_at', 'break_time_ms', 'actual_end_time', 'actual_study_seconds']) delete block[key];
+  s.pick(legacyV2); await s.importBackup('user');
+  assert.equal((await s.db.getFirstAsync('SELECT * FROM StudyBlock LIMIT 1')).actual_start_time, null);
   const before = await snapshot(s);
   for (const value of ['', '#GG0000', '#FF0000,#00FF00,#0000FF', '#FF0000,#ff0000']) {
     const invalid = structuredClone(exported);
@@ -252,6 +257,45 @@ for (const [name, change] of Object.entries(invalidCases)) {
     assert.deepEqual(await snapshot(s), before);
   });
 }
+
+test('version 3 preserves paused timers and frozen actual totals through export and import', async t => {
+  const s = await setup(t);
+  s.pick(fixture()); await s.importBackup('user');
+  const task = await s.db.getFirstAsync('SELECT * FROM Task WHERE user_id = ?', 'user');
+  await s.db.runAsync(`UPDATE StudyBlock SET status = 'active', actual_start_time = '2026-10-22T12:13:00Z',
+    break_started_at = '2026-10-22T12:18:00Z', break_time_minutes = 1, break_time_ms = 60000 WHERE task_id = ? AND status = 'scheduled'`, task.id);
+  await s.db.runAsync(`INSERT INTO StudyBlock (task_id, start_time, end_time, status, actual_start_time, actual_end_time,
+    break_time_minutes, break_time_ms, actual_study_seconds) VALUES (?, '2026-10-22T10:00:00Z', '2026-10-22T10:30:00Z',
+    'done', '2026-10-22T10:00:00Z', '2026-10-22T10:20:00Z', 2, 120000, 1080)`, task.id);
+  await s.exportBackup('user');
+  const exported = JSON.parse(s.device.shares.at(-1).json);
+  assert.equal(exported.version, 3);
+  s.pick(exported); await s.importBackup('user');
+  const active = await s.db.getFirstAsync("SELECT b.* FROM StudyBlock b JOIN Task t ON t.id = b.task_id WHERE t.user_id = ? AND b.status = 'active'", 'user');
+  assert.equal(active.actual_start_time, '2026-10-22T12:13:00Z');
+  assert.equal(active.break_started_at, '2026-10-22T12:18:00Z');
+  assert.equal(active.break_time_minutes, 1); assert.equal(active.break_time_ms, 60000);
+  const done = await s.db.getFirstAsync("SELECT * FROM StudyBlock WHERE status = 'done'");
+  assert.equal(done.actual_end_time, '2026-10-22T10:20:00Z'); assert.equal(done.actual_study_seconds, 1080);
+  assert.equal(done.break_time_ms, 120000);
+  const before = await snapshot(s);
+  const invalidCases = [
+    data => { data.studyBlocks.find(block => block.status === 'active').actual_start_time = null; },
+    data => { data.studyBlocks.find(block => block.status === 'active').break_time_minutes = 99; },
+    data => { data.studyBlocks.find(block => block.status === 'active').break_time_ms = -1; },
+    data => { data.studyBlocks.find(block => block.status === 'active').break_started_at = '2026-10-22T12:12:00Z'; },
+    data => { data.studyBlocks.find(block => block.status === 'active').actual_end_time = '2026-10-22T12:20:00Z'; },
+    data => { data.studyBlocks.find(block => block.status === 'done').actual_study_seconds = 9999; },
+    data => { data.studyBlocks.find(block => block.status === 'done').actual_end_time = null; },
+    data => { data.studyBlocks.push({ ...data.studyBlocks.find(block => block.status === 'active'), id: 9999, rescheduled_from: null }); },
+    data => { delete data.studyBlocks[0].break_time_ms; },
+  ];
+  for (const invalidate of invalidCases) {
+    const bad = structuredClone(exported); invalidate(bad.data); s.pick(bad);
+    await assert.rejects(s.importBackup('user'));
+    assert.deepEqual(await snapshot(s), before);
+  }
+});
 
 test('mid-import SQL failure rolls back deleted records and every partial insertion', async t => {
   const s = await setup(t);

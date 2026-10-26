@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { USE_REAL_AUTH } from '../auth';
 import { useSession } from '../auth/SessionContext';
 import { getLocalDateKey } from '../db/dateUtils';
-import { updateStudyBlockStatus } from '../db/StudyBlockService';
+import { finishStudyBlock, pauseStudyBlock, resumeStudyBlock, startStudyBlock } from '../db/StudyBlockService';
 import { seedDemoData } from '../db/seedData';
 import { createReviewItem, markReviewed } from '../db/ReviewService';
 import { exportBackup, importBackup } from '../db/BackupService';
@@ -13,6 +13,7 @@ import EntrySheet from './EntrySheet';
 import ScheduleSheet from './ScheduleSheet';
 import CompletionReviewSheet from './CompletionReviewSheet';
 import { formatTime } from './theme';
+import { formatElapsed } from '../utils/focusTimer';
 
 /** @typedef {import('../db/StudyBlockService').StudyBlock} StudyBlock */
 /** @typedef {{task: {id: number, title: string, subject_name: string}, sourceBlock?: StudyBlock, initialDuration?: number}} Schedule */
@@ -31,6 +32,7 @@ function useWorkspaceState(user) {
   const [schedule, setSchedule] = useState(/** @type {Schedule | null} */ (null));
   const [reviewPrompt, setReviewPrompt] = useState(/** @type {StudyBlock | null} */ (null));
   const [workingBlock, setWorkingBlock] = useState(/** @type {number | null} */ (null));
+  const [workingTimerAction, setWorkingTimerAction] = useState(/** @type {'start' | 'break' | 'resume' | 'finish' | null} */ (null));
   const [addingReview, setAddingReview] = useState(false);
   const [workingReview, setWorkingReview] = useState(/** @type {{id: number, difficulty: import('../db/ReviewService').ReviewDifficulty} | null} */ (null));
   const [seeding, setSeeding] = useState(false);
@@ -116,20 +118,35 @@ function useWorkspaceState(user) {
     } finally { mutation.current = false; busyRef.current = false; if (mounted.current) setWorkingReview(null); }
   }
 
+  /** @param {number} id @param {'start' | 'break' | 'resume'} action */
+  async function controlTimer(id, action) {
+    if (mutation.current || disabled || busyRef.current) return;
+    mutation.current = true; busyRef.current = true; setWorkingBlock(id); setWorkingTimerAction(action); setActionError(''); setNotice('');
+    try {
+      const service = { start: startStudyBlock, break: pauseStudyBlock, resume: resumeStudyBlock }[action];
+      await service(user.id, id);
+      if (!mounted.current) return;
+      setClock(Date.now());
+      await data.refresh();
+    } catch (error) {
+      if (mounted.current) setActionError(error instanceof Error ? error.message : 'Could not update the timer. Refresh and try again.');
+    } finally { mutation.current = false; busyRef.current = false; if (mounted.current) { setWorkingBlock(null); setWorkingTimerAction(null); } }
+  }
+
   /** @param {number} id */
   async function complete(id) {
     if (mutation.current || disabled || busyRef.current) return;
-    mutation.current = true; busyRef.current = true; setWorkingBlock(id); setActionError('');
+    mutation.current = true; busyRef.current = true; setWorkingBlock(id); setWorkingTimerAction('finish'); setActionError('');
     let openedPrompt = false;
     try {
-      const completed = await updateStudyBlockStatus(user.id, id, 'done');
+      const completed = await finishStudyBlock(user.id, id);
       if (!mounted.current) return;
       openedPrompt = true;
       setReviewPrompt(completed);
-      setNotice('Session marked done.');
+      setNotice(`Session completed. ${formatElapsed(completed.actual_study_seconds)} studied.`);
       await data.refresh();
     } catch { if (mounted.current) setActionError('We couldn’t update that session. Pull down to refresh, then try again.'); }
-    finally { mutation.current = false; busyRef.current = openedPrompt; if (mounted.current) setWorkingBlock(null); }
+    finally { mutation.current = false; busyRef.current = openedPrompt; if (mounted.current) { setWorkingBlock(null); setWorkingTimerAction(null); } }
   }
 
   async function loadDemoData() {
@@ -211,10 +228,10 @@ function useWorkspaceState(user) {
     busyRef.current = true; setEditingSubject(subject); setInitialSubject(null); setEntry('subject'); setActionError('');
   }
   return {
-    user, data, clock, today, disabled, blocked, workingBlock, seeding, demoRevision, addingReview, workingReview, addReview, review,
+    user, data, clock, today, disabled, blocked, workingBlock, workingTimerAction, seeding, demoRevision, addingReview, workingReview, addReview, review,
     notice, dismissNotice: () => setNotice(''), error: data.error || actionError,
     refresh: refreshData, refreshInBackground,
-    complete, loadDemoData, backupAction, manageBackup, openEntry, openEditSubject, openSchedule, openReschedule,
+    complete, controlTimer, loadDemoData, backupAction, manageBackup, openEntry, openEditSubject, openSchedule, openReschedule,
     signingOut, signOutError, signOut: () => { if (!busyRef.current) void signOut(); },
     entry, initialSubject, editingSubject, schedule, setEntry, setSchedule, setNotice, savedSession,
     reviewPrompt, addCompletedReview, dismissReviewPrompt,

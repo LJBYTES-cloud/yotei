@@ -18,6 +18,8 @@ const subjectColors = [
   { name: 'Orange', color: '#FB923C' },
   { name: 'Rose', color: '#FB7185' },
   { name: 'Pink', color: '#F472B6' },
+  { name: 'Black', color: '#000000' },
+  { name: 'White', color: '#FFFFFF' },
 ];
 
 /** @param {{ kind: 'subject' | 'task', userId: string, subjects: import('../db/SubjectService').Subject[], initialSubject?: number | null, editingSubject?: import('../db/SubjectService').Subject | null, onClose: () => void, onSaved: () => void, onDeleted: () => void }} props */
@@ -115,7 +117,8 @@ const createStyles = p => StyleSheet.create({
   colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 32 }, subjects: { gap: 20, paddingBottom: 32 },
   colorChoice: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, padding: 12, borderWidth: 1, borderColor: p.line, borderRadius: 12 },
   colorSelected: { borderColor: p.text, backgroundColor: p.raised },
-  colorName: { color: p.text, fontSize: 13, fontWeight: '500' }, swatch: { width: 18, height: 18, borderRadius: 9 },
+  colorName: { color: p.text, fontSize: 13, fontWeight: '500' },
+  swatch: { width: 26, height: 26, flexShrink: 0, borderRadius: 13, borderWidth: 1, borderColor: '#888888' },
   unavailable: { opacity: 0.4 }, pressed: { opacity: 0.75 },
   deleteButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 52, marginTop: 24, padding: 12, borderWidth: 1, borderColor: p.line, borderRadius: 14 },
   deleteText: { color: '#FF4C4C', fontSize: 14, fontWeight: '700' },

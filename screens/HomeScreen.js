@@ -9,6 +9,7 @@ import { useStudy } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
 import { formatMinutes } from '../components/theme';
 import { Button, InfoButton } from '../components/ui';
+import FocusTimer from '../components/FocusTimer';
 
 export default function HomeScreen() {
   const study = useStudy();
@@ -18,7 +19,7 @@ export default function HomeScreen() {
   const h = useThemedStyles(createStyles);
   const list = useRef(null);
   useScrollToTop(list);
-  const blocks = useMemo(() => data.blocks.filter(block => !block.rescheduled_to), [data.blocks]);
+  const blocks = useMemo(() => data.blocks.filter(block => !block.rescheduled_to).sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active')), [data.blocks]);
   const coaching = useMemo(() => data.tasks.filter(task => task.postpone_count >= 2).slice(0, 2), [data.tasks]);
   const dayRange = getLocalDayRange(today);
   const completed = blocks.filter(block => block.status === 'done' && Date.parse(block.start_time) < Date.parse(dayRange.end) && Date.parse(block.end_time) > Date.parse(dayRange.start)).length;
@@ -30,7 +31,7 @@ export default function HomeScreen() {
         ListHeaderComponent={<>
           <ScreenHeader title="Home" eyebrow={new Date(clock).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()} subtitle="View scheduled sessions and daily study time." />
           <View style={h.summary}>
-            <View style={h.summaryHeading}><Text style={h.kicker}>DAILY STUDY TIME</Text><InfoButton title="Daily study time" message="Scheduled and completed minutes count toward the 4-hour workload threshold. Missed sessions are excluded; overnight sessions are split by calendar day." /></View>
+            <View style={h.summaryHeading}><Text style={h.kicker}>DAILY STUDY TIME</Text><InfoButton title="Daily study time" message="Planned minutes for scheduled, active and completed blocks count toward the 4-hour workload threshold. Missed sessions are excluded; overnight sessions are split by calendar day. The focus timer records studied time separately." /></View>
             <View style={h.numbers}><Text style={h.minutes}>{formatMinutes(data.minutes)}</Text><Text style={h.caption}>planned{ '\n' }& completed</Text></View>
             <View style={h.meter}><View style={[h.fill, { width: `${Math.min(data.minutes / 240 * 100, 100)}%`, backgroundColor: data.minutes > 240 ? p.warm : p.accent }]} /></View>
             {data.minutes > 240 && <Text style={h.summaryNote}>Over the 4-hour threshold</Text>}
@@ -43,7 +44,8 @@ export default function HomeScreen() {
             <Button label="Plan a session ↗" disabled={disabled} onPress={() => router.navigate('/library')} />
           </View>
         </>}
-        renderItem={({ item }) => <FocusCard block={item} />}
+        renderItem={({ item }) => item.status === 'active' ? <FocusTimer block={item} /> : <FocusCard block={item} />}
+        ListFooterComponent={<Text style={h.motto}>By students, for students.</Text>}
         ListEmptyComponent={<EmptyState title="No study blocks scheduled for today." text="Select a task in Library to schedule a study session." action="Open Library ↗" onPress={() => router.navigate('/library')} />} />
     </SafeAreaView>
   );
@@ -51,6 +53,7 @@ export default function HomeScreen() {
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
+  motto: { color: p.subtle, fontSize: 11, lineHeight: 18, textAlign: 'center', paddingTop: 12, paddingBottom: 8 },
   summary: { backgroundColor: p.hero, borderWidth: 1, borderColor: p.heroLine, borderRadius: 16, padding: 20, marginBottom: 24 },
   kicker: { color: p.accent, fontSize: 9, fontWeight: '600', letterSpacing: 1.8 },
   summaryHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },

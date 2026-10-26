@@ -1,0 +1,61 @@
+import { useCallback, useState } from 'react';
+import { AppState, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useTheme, useThemedStyles } from '../ThemeContext';
+import { formatElapsed, getFocusTiming } from '../utils/focusTimer';
+import { useStudy } from './StudyWorkspace';
+import { createStudyStyles } from './studyStyles';
+import { Button } from './ui';
+
+/** @param {{block: import('../db/StudyBlockService').StudyBlock}} props */
+export default function FocusTimer({ block }) {
+  const { disabled, workingBlock, workingTimerAction, controlTimer, complete } = useStudy();
+  const { colors: p, subjectColor } = useTheme();
+  const s = useThemedStyles(createStudyStyles);
+  const t = useThemedStyles(createStyles);
+  const [now, setNow] = useState(() => Date.now());
+  useFocusEffect(useCallback(() => {
+    let interval = /** @type {ReturnType<typeof setInterval> | null} */ (null);
+    const tick = () => setNow(Date.now());
+    const sync = (/** @type {import('react-native').AppStateStatus | null} */ state) => {
+      if (interval !== null) clearInterval(interval);
+      interval = null;
+      if (state === 'active' || state === null) { tick(); interval = setInterval(tick, 1000); }
+    };
+    sync(AppState.currentState);
+    const subscription = AppState.addEventListener('change', sync);
+    return () => { if (interval !== null) clearInterval(interval); subscription.remove(); };
+  }, []));
+  const timing = getFocusTiming(block, now);
+  const onBreak = block.break_started_at !== null;
+  const working = workingBlock === block.id;
+  return <View style={[s.card, t.card]}>
+    <View style={s.cardTop}><View style={[s.dot, { backgroundColor: subjectColor(block.subject_color) }]} /><Text style={s.subject}>{block.subject_name}</Text>
+      <Text style={[s.badge, s.activeBadge]}>{onBreak ? 'On break' : 'Active'}</Text></View>
+    <Text style={s.title}>{block.task_title}</Text>
+    {timing.startedLate && <View style={t.lateRow}><Ionicons name="time-outline" size={14} color={p.warm} /><Text style={t.late}>{timing.lateMinutes === 0 ? 'Started less than a minute late' : `Started ${timing.lateMinutes} ${timing.lateMinutes === 1 ? 'minute' : 'minutes'} late`}</Text></View>}
+    <View style={t.clock}>
+      <Text style={t.label}>{onBreak ? 'BREAK' : 'WORK'}</Text>
+      <Text style={t.elapsed} accessibilityLabel={`${onBreak ? 'Break' : 'Work'} time ${formatElapsed(onBreak ? timing.currentBreakSeconds : timing.workSeconds)}`}>
+        {formatElapsed(onBreak ? timing.currentBreakSeconds : timing.workSeconds)}</Text>
+      <Text style={s.hint}>{onBreak ? `${formatElapsed(timing.workSeconds)} studied · work paused` : 'elapsed'}</Text>
+    </View>
+    <Text style={t.breakTotal}>Total breaks: {formatElapsed(timing.breakSeconds)}</Text>
+    <View style={t.actions}>
+      <Button label={onBreak ? 'Resume Work' : 'Take Break'} disabled={disabled} busy={working && workingTimerAction !== 'finish'}
+        onPress={() => void controlTimer(block.id, onBreak ? 'resume' : 'break')} />
+      <Button label="Finish Session" tone="outline" disabled={disabled} busy={working && workingTimerAction === 'finish'} onPress={() => void complete(block.id)} />
+    </View>
+  </View>;
+}
+
+/** @param {import('../ThemeContext').ThemeColors} p */
+const createStyles = p => StyleSheet.create({
+  card: { borderColor: p.accent },
+  lateRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16 }, late: { color: p.warm, fontSize: 12, flexShrink: 1 },
+  clock: { alignItems: 'center', paddingVertical: 28, gap: 8 },
+  label: { color: p.accent, fontSize: 11, fontWeight: '700', letterSpacing: 1.4 },
+  elapsed: { color: p.text, fontSize: 48, fontWeight: '700', letterSpacing: -1, fontVariant: ['tabular-nums'] },
+  breakTotal: { color: p.muted, fontSize: 12, textAlign: 'center', marginBottom: 24 }, actions: { gap: 16 },
+});

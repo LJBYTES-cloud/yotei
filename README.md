@@ -29,16 +29,20 @@ Sign in, open Settings, and select **Load Demo Data**. It replaces only the curr
 
 | Tab | Features |
 | --- | --- |
-| Home | Today's Focus, daily workload, task coaching, Mark Done, missed-session rescheduling |
+| Home | Today's Focus, commitment timer, work/break tracking, lateness, actual studied totals, daily workload, coaching, missed-session rescheduling, small student motto footer |
 | Library | Subject/task creation, fields of study, grouped horizontal gradient bookshelves, task list, native calendar/time scheduling |
 | Review | Topic creation by subject; due queue; Hard / Good / Easy ratings |
-| Settings | Dark/light toggle, JSON data export/import, mock-only demo loader, Sign Out, fixed student motto |
+| Settings | Current-mode label and monochrome light-theme switch, JSON data export/import, mock-only demo loader, Sign Out |
 
 Completing a study block prompts the user to add a review topic under the same subject. Rescheduling a missed block increments the task's postponement count once. Coaching appears at a count of 2 or more.
 
+Subject forms offer twelve outlined color swatches, including pure Black and White. Browser startup shows a themed mobile-only notice; the web database module excludes SQLite/WASM entirely. Use Android/iOS for authentication and study features.
+
 Schedule sessions with native Start/End calendar and clock pickers, including dates next week or later. Validation compares the selected timestamps with now, and SQLite calculates the elapsed study minutes. General instructions are available through small info icons; errors and overwrite/workload warnings remain visible. Subject book spines have page/binding details and fully wrapping titles on a themed shelf.
 
-Subjects have a Field of Study and one or two colors. Each field gets a horizontal shelf; gradient books retain titles and binding/page details in both themes. Light-mode chrome and task/review subject markers stay monochrome. Theme choice is saved on this device with AsyncStorage and restored before screens mount. Existing subject colors migrate automatically into the General field; backup exports now use version 2 and still import version 1.
+Subjects have a Field of Study and one or two colors. Each field gets a horizontal shelf; gradient books retain titles and binding/page details in both themes. Light-mode chrome and task/review subject markers stay monochrome. Theme choice is saved on this device with AsyncStorage and restored before screens mount. Existing subject colors migrate automatically into the General field; backup exports now use version 3 and still import versions 1 and 2.
+
+On Home, choose **Start Session** during a block's scheduled window. The focus timer records actual work and breaks, shows lateness, and restores its mode after a restart. **Take Break** pauses work; **Resume Work** continues it. **Finish Session** freezes actual studied time and opens the existing optional review-topic prompt. One session can run per account; active sessions remain accessible after their scheduled end or midnight. Work or break time continues while away according to the selected mode. The workload guardrail still uses planned duration, including active blocks.
 
 ## Entry point and routes
 
@@ -65,6 +69,7 @@ npm run test:auth
 npm run test:db
 npm run test:backup
 npm run test:theme
+node --experimental-vm-modules --test tests/focus-timer.test.cjs tests/subject-deletion.test.cjs
 npx expo export --platform android --platform ios --output-dir .expo/verification
 ```
 
