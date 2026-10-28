@@ -2,6 +2,14 @@
 
 Copy this block, then append the next task.
 
+Latest polish (2026-10-29): preserve finalized USER_MANUAL.txt. Add Subject/count
+are in Library's header. Journal notes use a nested dedicated screen, not a detail
+modal. The saved 12h/24h control moved from Settings to ScheduleSheet. useStudyList
+excludes toasts/sheets; useScreenClock keeps clock ticks local to focused screens;
+reconcileRows preserves unchanged query objects. Seed writes reuse prepared SQL.
+Chart adds subtle fill/bezier while keeping all actual data/hit targets. See the
+latest CHANGELOG/VALIDATION entries for every file and test evidence.
+
 ```text
 Continue Yotei in C:\Users\Dawn-BYTES\Documents\Yotei-Engine\yotei.
 Read AGENTS.md, README.md, PROJECT_CONTEXT.md and VALIDATION.md. Inspect git
@@ -12,7 +20,7 @@ faces plus a TimeFormatProvider around Application. Expo ~57.0.31, RN 0.86.3, Re
 Use npx expo install, matching versioned docs, and expo-router entry points.
 
 Tabs: Home, Library (nested /library/[subjectId] notebooks), Journal, Settings.
-JournalScreen and journal.tsx replace ReflectionsScreen/reflections.tsx. The
+JournalScreen is journal/index.tsx; journal/[entryId].tsx opens JournalEntryScreen. The
 ReflectionItem table/service and CompletionReflectionSheet remain: focus-session
 notes now share one newest-first timeline with manual JournalEntry notes.
 
@@ -21,7 +29,7 @@ creates/reads owned entries and returns an owned UNION ALL timeline combining
 manual entries and reflections. IDs are entry-<id>/reflection-<id> to avoid key
 collisions. Title 1-200 characters; content 1-12000. New Entry opens a keyboard-aware
 JournalEntrySheet with shared workspace locks, draft-preserving errors and global
-success toast. Tap a preview for full text in JournalDetailSheet. updateJournalEntry/
+success toast. Tap a preview for full text in JournalEntryScreen/JournalEntryContent. updateJournalEntry/
 deleteJournalEntry accept numeric source_id and kind=entry|reflection. Manual titles/
 content and reflection note text are editable; dates/session links stay unchanged.
 Delete removes only the note. Manual entries survive subject deletion.
@@ -92,7 +100,8 @@ continues; active blocks never auto-miss. Live FocusTimer no longer calculates o
 shows lateness. CompletionReflectionSheet uses getCompletionStartMessage against
 saved timestamps: exact, subminute, whole-minute late/early or neutral legacy text.
 Home/Journal/Library FlatLists use 10 initial +10 per batch, windowSize5 and
-removeClippedSubviews=true, memoized rows and useCallback renderers. Library now
+memoized rows and useCallback renderers. Library/notebook clip only on Android;
+horizontal animated books never clip. Other list windows retain existing clipping. Library now
 virtualizes field shelves vertically; each shelf keeps horizontal books. Journal
 rows do not read workspace context; static FocusCard uses narrow props instead of
 the clock context. Workspace entry/edit/reschedule/timer callbacks are stable.

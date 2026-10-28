@@ -4,7 +4,7 @@ import { useFocusEffect, useScrollToTop } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTheme, useThemedStyles } from '../ThemeContext';
-import { useStudy } from '../components/StudyWorkspace';
+import { useStudyList } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
 import { fonts, typeScale, typeLeading } from '../components/typography';
 import { EmptyState, Feedback, ScreenHeader } from '../components/StudyCards';
@@ -34,7 +34,7 @@ const MemoJournalCard = memo(JournalCard);
 const journalKey = item => item.id;
 
 export default function JournalScreen() {
-  const { data, disabled, refresh, refreshInBackground, openJournalEntry, openJournalDetail } = useStudy();
+  const { data, disabled, refresh, refreshInBackground, openJournalEntry, openJournalDetail } = useStudyList();
   const s = useThemedStyles(createStudyStyles);
   const list = useRef(null);
   useScrollToTop(list);

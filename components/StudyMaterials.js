@@ -1,19 +1,19 @@
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { getMaterialUrl } from '../utils/materialLinks';
-import { useStudy } from './StudyWorkspace';
+import { useStudyList } from './StudyWorkspace';
 import { createStudyStyles } from './studyStyles';
 import { Button, Message } from './ui';
 import ItemActionsMenu from './ItemActionsMenu';
 
 /** @param {{subjectId: number}} props */
-export default function StudyMaterials({ subjectId }) {
-  const { data, disabled, openMaterial, confirmDeleteMaterial, deletingMaterial } = useStudy();
+function StudyMaterials({ subjectId }) {
+  const { data, disabled, openMaterial, confirmDeleteMaterial, deletingMaterial } = useStudyList();
   const { colors: p } = useTheme(), s = useThemedStyles(createStudyStyles);
   const [error, setError] = useState('');
-  const materials = data.materials.filter(item => item.subject_id === subjectId);
+  const materials = useMemo(() => data.materials.filter(item => item.subject_id === subjectId), [data.materials, subjectId]);
   async function open(/** @type {import('../db/MaterialService').Material} */ material) {
     setError('');
     try { await Linking.openURL(getMaterialUrl(material.url_or_note || material.local_file_path || '')); }
@@ -33,3 +33,5 @@ export default function StudyMaterials({ subjectId }) {
     </View><Message text={error} />
   </View>;
 }
+
+export default memo(StudyMaterials);

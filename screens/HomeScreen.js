@@ -3,10 +3,11 @@ import { useCallback, useMemo, useRef } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { router, useScrollToTop } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useScreenClock } from '../hooks/useScreenClock';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { getLocalDayRange } from '../db/dateUtils';
 import { EmptyState, Feedback, FocusCard, ScreenHeader } from '../components/StudyCards';
-import { useStudy } from '../components/StudyWorkspace';
+import { useStudyList } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
 import { formatMinutes } from '../components/theme';
 import { Button, InfoButton } from '../components/ui';
@@ -18,8 +19,9 @@ import CoachCard from '../components/CoachCard';
 const blockKey = block => String(block.id);
 
 export default function HomeScreen() {
-  const study = useStudy();
-  const { data, clock, today, refresh, disabled, controlTimer, openReschedule, workingBlock, markDone, confirmDeleteBlock } = study;
+  const study = useStudyList();
+  const clock = useScreenClock();
+  const { data, today, refresh, disabled, controlTimer, openReschedule, workingBlock, markDone, confirmDeleteBlock } = study;
   const { colors: p } = useTheme();
   const s = useThemedStyles(createStudyStyles);
   const h = useThemedStyles(createStyles);

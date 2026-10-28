@@ -24,7 +24,7 @@ async function setup() {
     'expo-router': { useFocusEffect: callback => { if (!focus.has(callback)) focus.set(callback, callback()); } },
     '@expo/vector-icons/Ionicons': { default: 'Icon' },
     '../ThemeContext': { useTheme: () => ({ colors: palette, subjectColor: () => '#000000' }), useThemedStyles: factory => factory(palette) },
-    './StudyWorkspace': { useStudy: () => study }, './studyStyles': { createStudyStyles: () => ({}) }, './ui': { Button: 'Button' },
+    './StudyWorkspace': { useStudyList: () => study }, './studyStyles': { createStudyStyles: () => ({}) }, './ui': { Button: 'Button' },
   };
   const helpers = new vm.SourceTextModule(fs.readFileSync('utils/focusTimer.js', 'utf8'), { context });
   await helpers.link(() => { throw new Error('Unexpected import'); }); await helpers.evaluate();

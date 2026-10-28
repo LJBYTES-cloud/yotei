@@ -60,7 +60,7 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
     react: hooks,
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }), Fragment: 'Fragment' },
     'react-native': { ...Object.fromEntries(['ActivityIndicator', 'FlatList', 'Pressable', 'RefreshControl', 'ScrollView', 'SectionList', 'KeyboardAvoidingView', 'Modal', 'Switch', 'Text', 'View'].map(name => [name, name])),
-      StyleSheet: { create: value => value }, Platform: { OS: platform }, Linking: { openURL: async value => { actions.push(['openURL', value]); if (failure) throw new Error('Unavailable'); } }, Alert: { alert: (...args) => alerts.push(args) }, AppState: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} },
+      BackHandler: { addEventListener: () => ({ remove() {} }) }, StyleSheet: { create: value => value }, Platform: { OS: platform }, Linking: { openURL: async value => { actions.push(['openURL', value]); if (failure) throw new Error('Unavailable'); } }, Alert: { alert: (...args) => alerts.push(args) }, AppState: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} },
       AccessibilityInfo: { isReduceMotionEnabled: async () => reduceMotion, addEventListener: () => ({ remove() {} }) },
       Animated: { View: 'AnimatedView', Value: class { constructor(value) { this.value = value; } setValue(value) { this.value = value; } interpolate({ outputRange }) { return this.value ? outputRange.at(-1) : outputRange[0]; } },
         timing: (value, config) => { const animation = { ...config, value, stopped: false }; return { start() { animations.push(animation); if (!holdAnimations) value.setValue(config.toValue); }, stop() { animation.stopped = true; } }; } } },
@@ -69,7 +69,7 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
     '@react-native-community/datetimepicker': { default: 'NativePicker', DateTimePickerAndroid: { open: options => actions.push(['picker', options]), dismiss: async () => {} } },
     'react-native-chart-kit': { LineChart: 'LineChart' }, 'react-native-svg': { Circle: 'Circle' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider' },
-    'expo-router': { useFocusEffect: cb => hooks.useEffect(cb, [cb]), useScrollToTop() {}, useLocalSearchParams: () => ({ subjectId: routeSubjectId }), Redirect: 'Redirect', router: { navigate: value => actions.push(['navigate', value]), push: value => actions.push(['push', value]), canGoBack: () => true, back: () => actions.push(['back']) } },
+    'expo-router': { useFocusEffect: cb => hooks.useEffect(cb, [cb]), useScrollToTop() {}, useLocalSearchParams: () => ({ subjectId: routeSubjectId, entryId: routeSubjectId }), Redirect: 'Redirect', Stack: { Screen: 'StackScreen' }, router: { navigate: value => actions.push(['navigate', value]), push: value => actions.push(['push', value]), canGoBack: () => true, back: () => actions.push(['back']), replace: value => actions.push(['replace', value]) } },
     '../auth': { USE_REAL_AUTH: realAuth },
     '../auth/SessionContext': { useSession: () => ({ user: study.user, signingOut: false, signOut() {}, updatingName: false,
       updateName: async name => { actions.push(['name', name]); study.user = { ...study.user, name }; } }) },
@@ -102,9 +102,10 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
     '../hooks/useDashboardData': { useDashboardData: () => data },
     './EntrySheet': { default: 'EntrySheet' }, './ScheduleSheet': { default: 'ScheduleSheet' }, './CompletionReflectionSheet': { default: 'CompletionReflectionSheet' }, './MaterialSheet': { default: 'MaterialSheet' }, './ProgressDetailsModal': { default: 'ProgressDetailsModal' }, './InfoModal': { default: 'InfoModal' }, '../components/StudyMaterials': { default: 'StudyMaterials' },
     './DateTimeField': { default: 'DateTimeField' }, './ItemActionsMenu': { default: 'ItemActionsMenu' }, './JournalEntrySheet': { default: 'JournalEntrySheet' },
-    './JournalDetailSheet': { default: 'JournalDetailSheet' }, '../components/DisplayNameSheet': { default: 'DisplayNameSheet' },
+    '../components/JournalEntryContent': { default: 'JournalEntryContent' }, '../components/DisplayNameSheet': { default: 'DisplayNameSheet' },
     './BlockDeletionModal': { default: 'BlockDeletionModal' },
-    './StudyWorkspace': { useStudy: () => study }, '../components/StudyWorkspace': { useStudy: () => study },
+    './StudyWorkspace': { useStudy: () => study, useStudyList: () => study }, '../components/StudyWorkspace': { useStudy: () => study, useStudyList: () => study },
+    '../hooks/useScreenClock': { useScreenClock: () => study.clock },
     './ui': controls, '../components/ui': controls,
     './studyStyles': { createStudyStyles() {} }, '../components/studyStyles': { createStudyStyles() {} },
     '../components/StudyCards': Object.fromEntries(['CoachingCard', 'EmptyState', 'Feedback', 'FocusCard', 'ScreenHeader', 'TaskCard'].map(name => [name, name])),
@@ -160,6 +161,9 @@ test('weekly progress waits for layout, preserves zero days, resizes and support
   measure(278.5);
   let chart = find(s.render(props), 'LineChart').props;
   assert.equal(chart.width, 278);
+  assert.equal(chart.bezier, true); assert.equal(chart.withShadow, true);
+  assert.equal(chart.chartConfig.fillShadowGradientFromOpacity, 0.12);
+  assert.equal(chart.chartConfig.fillShadowGradientToOpacity, 0);
   assert.deepEqual(JSON.parse(JSON.stringify(chart.data.datasets[0].data)), [0, 0, 45.5, 0, 0, 0, 0]);
   assert.equal(chart.data.labels.length, 7);
   assert.equal(chart.chartConfig.color(), '#2D5A41');
@@ -372,13 +376,12 @@ test('post-session reflection keeps the note on failure, saves once and supports
   find(render(), 'Button', p => p.label === 'Skip').props.onPress(); assert.equal(closed, 1);
 });
 
-test('Settings hides demo data in real auth, exposes JSON help and saves the clock switch', async () => {
+test('Settings exposes JSON help without a disconnected clock-format switch', async () => {
   const real = await setup('screens/SettingsScreen.js');
   assert.equal(find(real.render(), 'Button', p => p.label === 'Load Demo Data'), undefined);
   const help = find(real.render(), 'FieldLabel', p => p.label === 'Data Management').props.help;
   assert.match(help, /only supported way to back up/);
-  const toggle = find(real.render(), 'Switch', p => p.accessibilityLabel === '24-Hour Time');
-  toggle.props.onValueChange(false); assert.equal(find(real.render(), 'Switch', p => p.accessibilityLabel === '24-Hour Time').props.value, false);
+  assert.equal(find(real.render(), 'Switch', p => p.accessibilityLabel === '24-Hour Time'), undefined);
   find(real.render(), 'Button', p => p.label === 'Edit Display Name').props.onPress();
   const profile = find(real.render(), 'DisplayNameSheet');
   await profile.props.onSave('New Name'); profile.props.onClose();
@@ -485,7 +488,7 @@ test('themed block deletion retains errors for retry and rejects unowned/resolve
 
 test('both journal entry kinds open full text, retain failed edit drafts and require deletion confirmation', async () => {
   for (const kind of ['entry', 'reflection']) {
-    const s = await setup('components/JournalDetailSheet.js', { failure: true });
+    const s = await setup('components/JournalEntryContent.js', { failure: true });
     const item = { id: `${kind}-1`, source_id: 1, kind, title: 'Study Notes', content: 'Full note\nSecond paragraph', created_at: '2026-10-20T10:00:00Z', subject_name: 'Biology' };
     let removed = 0;
     const props = { userId: 'owner', item, onClose() {}, onSaved: s.onSaved, onDeleted: () => { removed++; } };
@@ -562,7 +565,7 @@ test('large-screen lists retain bounded virtualization and stable callbacks; sta
     s.data.journal = [{ id: 'entry-1', kind: 'entry', title: 'Plan', content: 'Next Steps', created_at: '2026-10-20T10:00:00Z' }];
     let list = find(s.render(), 'FlatList');
     assert.equal(list.props.initialNumToRender, 10); assert.equal(list.props.maxToRenderPerBatch, 10);
-    assert.equal(list.props.windowSize, 5); assert.equal(list.props.removeClippedSubviews, true);
+    assert.equal(list.props.windowSize, 5); assert.equal(list.props.removeClippedSubviews, !file.includes('Library'));
     const renderItem = list.props.renderItem;
     const row = renderItem({ item: list.props.data[0] });
     if (!file.includes('Home')) assert.ok(s.memoized.has(row.type));
@@ -685,7 +688,8 @@ test('Opened Book hides a missed badge for any future scheduled commitment and r
   const renderTask = row => {
     s.data.tasks = [row];
     const list = find(s.render(), 'FlatList');
-    return find(list.props.renderItem({ item: row }), 'TaskCard').props;
+    const element = list.props.renderItem({ item: row });
+    return find(s.render(element.props, element.type), 'TaskCard').props;
   };
   assert.equal(renderTask({ ...task, has_missed_session: 1, latest_scheduled_start: null }).hasMissedSession, true);
   assert.equal(renderTask({ ...task, has_missed_session: 1, latest_scheduled_start: '2026-10-27T12:00:00Z' }).hasMissedSession, false);
@@ -719,8 +723,8 @@ test('spines reveal covers without navigation; covers open notebooks, edit separ
   const props = { subjects: [subject], taskCounts: new Map([[7, 3]]), onOpen: value => opened.push(value), onEdit: value => edits.push(value), onAddField() {} };
   const getBook = () => {
     const shelf = s.render(props);
-    const scroll = find(shelf, 'ScrollView');
-    return scroll.props.children[0];
+    const scroll = find(shelf, 'FlatList');
+    return scroll.props.renderItem({ item: scroll.props.data[0] });
   };
   const renderBook = () => { const book = getBook(); return s.render(book.props, book.type); };
   let book = renderBook(); await s.flush();
@@ -795,7 +799,7 @@ test('Library only renders the shelf and opens a dedicated book route', async ()
   assert.equal(s.actions[0][0], 'push');
   assert.equal(s.actions[0][1].pathname, '/library/[subjectId]');
   assert.equal(s.actions[0][1].params.subjectId, '7');
-  find(list.props.ListFooterComponent, 'Button', p => p.label === 'Add Subject').props.onPress();
+  find(find(list.props.ListHeaderComponent, 'ScreenHeader').props.action, 'Button', p => p.label === 'Add Subject').props.onPress();
   assert.deepEqual(s.actions.at(-1), ['entry', 'subject']);
 });
 
@@ -805,7 +809,8 @@ test('Opened Book scopes tasks, prefills New Task, supports book actions and red
   const renderList = () => find(s.render(), 'FlatList');
   let list = renderList();
   assert.deepEqual(list.props.data, [task]);
-  assert.equal(list.props.renderItem({ item: task }).props.children[1].props.notebook, true);
+  const row = list.props.renderItem({ item: task });
+  assert.equal(find(s.render(row.props, row.type), 'TaskCard').props.notebook, true);
   const header = list.props.ListHeaderComponent;
   find(header, 'Button', p => p.label === 'New Task').props.onPress();
   assert.deepEqual(s.actions.at(-1), ['entry', 'task', 7]);
@@ -849,7 +854,8 @@ test('book covers remain mounted while closing, reverse an interrupted transitio
     const s = await setup('components/SubjectBookshelf.js', { holdAnimations: true, reduceMotion: reduced });
     const props = { subjects: [subject], taskCounts: new Map(), onOpen() {}, onEdit() {}, onAddField() {} };
     const renderBook = () => {
-      const element = find(s.render(props), 'ScrollView').props.children[0];
+      const list = find(s.render(props), 'FlatList');
+      const element = list.props.renderItem({ item: list.props.data[0] });
       return s.render(element.props, element.type);
     };
     renderBook(); await s.flush();
@@ -878,7 +884,7 @@ test('books retain identical vibrant gradients across themes and shelf add uses 
   const fields = [];
   const props = { subjects: [subject], taskCounts: new Map(), onOpen() {}, onEdit() {}, onAddField: field => fields.push(field) };
   const shelf = () => s.render(props);
-  const renderBook = () => { const element = find(shelf(), 'ScrollView').props.children[0]; return s.render(element.props, element.type); };
+  const renderBook = () => { const list = find(shelf(), 'FlatList'); const element = list.props.renderItem({ item: list.props.data[0] }); return s.render(element.props, element.type); };
   const stored = subject.field_colors;
   const light = find(renderBook(), 'Gradient').props.colors;
   s.setDark(true);
@@ -933,4 +939,78 @@ test('field dropdown deduplicates existing names, filters suggestions, and saves
   assert.equal(field().props.value, 'Engineering, Design'); assert.equal(s.saved(), 1, 'failed saves retain the field draft');
   s.fail(false); find(render(), 'Button', p => p.label.startsWith('Create Subject')).props.onPress(); await s.flush();
   assert.equal(s.createdSubjects.at(-1)[1].field_of_study, 'Engineering, Design'); assert.equal(s.saved(), 2);
+});
+
+
+test('list subscriptions ignore toast changes and the workspace no longer publishes a ticking clock', async () => {
+  const s = await setup('components/StudyWorkspace.js');
+  const render = () => s.render({ children: 'screen' }, 'StudyWorkspace');
+  const before = render();
+  const lists = find(before, 'Provider', p => p.value !== before.props.value);
+  assert.ok(lists);
+  before.props.value.setNotice('Saved.');
+  const after = render();
+  assert.notEqual(before.props.value.notice, after.props.value.notice);
+  assert.equal(find(after, 'Provider', p => p.value !== after.props.value).props.value, lists.props.value);
+  assert.equal('clock' in after.props.value, false);
+});
+
+test('Journal routes both entry kinds into dedicated screens and rejects unknown sources', async () => {
+  const s = await setup('components/StudyWorkspace.js');
+  s.data.journal = [{ id: 'entry-1' }, { id: 'reflection-2' }];
+  const state = () => s.render({ children: 'screen' }, 'StudyWorkspace').props.value;
+  for (const item of s.data.journal) {
+    state().openJournalDetail(item);
+    assert.equal(s.actions.at(-1)[1].pathname, '/journal/[entryId]');
+    assert.equal(s.actions.at(-1)[1].params.entryId, item.id);
+    assert.equal(state().blocked, false);
+  }
+  const count = s.actions.length;
+  state().openJournalDetail({ id: 'entry-unknown' });
+  assert.equal(s.actions.length, count);
+  const page = await setup('screens/JournalEntryScreen.js');
+  page.data.journal = [{ id: 'entry-1', kind: 'entry', title: 'Notes', content: 'Full text' }];
+  page.route('entry-1');
+  assert.ok(find(page.render(), 'JournalEntryContent'));
+  assert.equal(find(page.render(), 'Modal'), undefined);
+  assert.ok(find(page.render(), 'KeyboardAvoidingView'));
+  page.route('entry-999'); assert.equal(page.render().type, 'Redirect');
+});
+
+test('scheduler switches clock format in place without changing the selected instants', async () => {
+  const s = await setup('components/ScheduleSheet.js');
+  const props = { userId: 'owner', task, onClose() {}, onSaved() {} };
+  const before = find(s.render(props), 'DateTimeField', p => p.label === 'Start').props.value;
+  find(s.render(props), 'Pressable', p => p.accessibilityLabel === 'Switch to 12h').props.onPress();
+  assert.equal(s.time.is24Hour, false);
+  assert.ok(find(s.render(props), 'Pressable', p => p.accessibilityLabel === 'Switch to 24h'));
+  assert.equal(find(s.render(props), 'DateTimeField', p => p.label === 'Start').props.value, before);
+});
+
+test('Library header exposes Add Subject and a count while animated shelves remain unclipped on iOS', async () => {
+  const s = await setup('screens/LibraryScreen.js');
+  const list = find(s.render(), 'FlatList');
+  const header = find(list.props.ListHeaderComponent, 'ScreenHeader');
+  assert.equal(header.props.badge, String(s.data.subjects.length));
+  assert.ok(find(header.props.action, 'Button', p => p.label === 'Add Subject'));
+  assert.equal(list.props.ListFooterComponent, undefined);
+  assert.equal(list.props.removeClippedSubviews, false);
+  const android = await setup('screens/LibraryScreen.js', { platform: 'android' });
+  assert.equal(find(android.render(), 'FlatList').props.removeClippedSubviews, true);
+});
+
+test('saved journal text remains readable without a refresh and cancelling the next edit preserves it', async () => {
+  const s = await setup('components/JournalEntryContent.js');
+  const item = { id: 'entry-1', source_id: 1, kind: 'entry', title: 'Plan', content: 'Original note', created_at: '2026-10-29T12:00:00Z' };
+  const props = { item, userId: 'owner', onSaved: s.onSaved, onDeleted() {} };
+  const render = () => s.render(props);
+  find(render(), 'Button', p => p.label === 'Edit').props.onPress();
+  find(render(), 'Input', p => p.label === 'Content').props.onChangeText('  Saved note  ');
+  find(render(), 'Button', p => p.label === 'Save Changes').props.onPress(); await s.flush();
+  assert.ok(find(render(), 'Text', p => p.children === 'Saved note'));
+  find(render(), 'Button', p => p.label === 'Edit').props.onPress();
+  assert.equal(find(render(), 'Input', p => p.label === 'Content').props.value, 'Saved note');
+  find(render(), 'Input', p => p.label === 'Content').props.onChangeText('Discarded draft');
+  find(render(), 'Button', p => p.label === 'Cancel Editing').props.onPress();
+  assert.ok(find(render(), 'Text', p => p.children === 'Saved note'));
 });

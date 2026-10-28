@@ -25,7 +25,7 @@ Use the compatible SDK 57 Expo Go client or an up-to-date development build. Sta
 12. Toggle Light/Dark and cold restart: saved choice restores; a fresh/missing preference defaults Light. Tap info icons on screens and inside sheets: Merriweather/Inter themed dialogs scroll and dismiss with OK/close/backdrop/Android Back without changing drafts.
 13. Export a backup through Settings and save the shared JSON. Add a temporary subject, then import: it disappears and all lists/chart refresh. Version 6 includes manual journal entries, descriptions, reflections/session links and material URIs; versions 1-5 still import. File contents stay on this device. Invalid/canceled imports preserve data. See DATA_BACKUP.md.
 
-14. Toggle 24-Hour Time OFF: schedules, journal timestamps, completion logs and best-hour suggestions use AM/PM. Turn it ON for 00:00-23:59. Cold restart and verify the preference restores. Elapsed timers, totals and chart duration axes remain durations.
+14. In Schedule Session, tap Switch to 12h: schedules, journal timestamps, completion logs and best-hour suggestions use AM/PM. Tap Switch to 24h for 00:00-23:59. Cold restart and verify the preference restores. Elapsed timers, totals and chart duration axes remain durations.
 15. Settings > Edit Display Name: save a trimmed name, verify the profile updates immediately and the user ID/study records stay intact. Retry a simulated failure without losing the draft. Remembered Mock and Appwrite sessions restore the updated name; real Appwrite API success still needs a signed-in device check.
 16. Mark a scheduled Home block as done without running the timer. Its scheduled duration appears in today's completed totals and optional reflection prompt. Check Start Session is the only main button; the top-right kebab contains Mark as Done and Delete Block. Start is disabled before its window. With another active or paused session, Start remains clickable and shows "You already have a session in progress. Finish it before starting a new one." without starting a second timer. Confirm break/resume still work. Choose Delete Block from the kebab, wait for the menu to dismiss, then use the themed Cancel/Delete Block dialog; its Task and other blocks remain in Library. Check both themes, backdrop/Android Back cancellation, duplicate taps, loading/error retry and larger text on a narrow phone.
 17. Tap a manual or session-reflection Journal card. Read the complete note, edit/save, cancel or confirm deletion. Reflection edits change the note rather than the task title; dates, linked session and chart totals remain intact.
@@ -69,7 +69,7 @@ The seeded overdue Mathematics task takes first priority, ahead of the two postp
 ```powershell
 npx.cmd expo lint
 npx.cmd tsc --noEmit
-node --experimental-vm-modules --test tests/database.test.cjs tests/backup.test.cjs tests/task-library.test.cjs tests/notifications.test.cjs tests/subject-deletion.test.cjs tests/focus-timer.test.cjs tests/auth.test.cjs tests/theme.test.cjs tests/web-platform.test.cjs tests/material-files.test.cjs
+node --experimental-vm-modules --test tests/database.test.cjs tests/backup.test.cjs tests/task-library.test.cjs tests/notifications.test.cjs tests/subject-deletion.test.cjs tests/focus-timer.test.cjs tests/auth.test.cjs tests/theme.test.cjs tests/web-platform.test.cjs tests/dashboard-performance.test.cjs tests/material-files.test.cjs
 npx.cmd expo install --check
 npx.cmd expo export --platform android --platform ios --platform web --output-dir .expo/verification
 ```
@@ -78,8 +78,18 @@ In separate PowerShell processes, set TZ to Asia/Singapore or America/New_York a
 
 ## Routing and Appwrite Troubleshooting
 
-- Bootstrap: index.js -> expo-router/entry -> src/app/_layout.tsx -> App.js. Active tabs use journal.tsx and the nested library stack. Preserve the separate root app/index.tsx experiment.
+- Bootstrap: index.js -> expo-router/entry -> src/app/_layout.tsx -> App.js. Active tabs use nested journal/ and library/ stacks. Preserve the separate root app/index.tsx experiment.
 - Unexpected phone screen: confirm terminal working directory, Metro's root message and the QR/server being opened; restart with npx.cmd expo start --clear before moving routes.
 - Real Appwrite requires correct public endpoint/project/platform values in appwriteConfig.js. The active adapter is currently real. Keep server API keys outside the mobile client. Authentication does not enable cloud study-data synchronization.
 - Native file paths exported from another device may not resolve. Store/share the actual external file separately; backups include references only.
 - Source/history ZIP generation remains scripts/create-handoff.ps1, with ignored output under handoff/. Read the archive's ARCHIVE_README.md before restoring; device SQLite and remembered logins are not inside source archives.
+
+
+## UI Polish Acceptance Checks (2026-10-29)
+
+- Load the six-month Mock demo and scroll Journal rapidly to older entries; open both entry kinds, read full text, edit/save, cancel edits, confirm/cancel deletion and use native Back. Verify no duplicate write or lost failure draft. Journal details must be full screens; New Entry and post-session reflection remain sheets.
+- In Library, verify the total count is a header pill and Add Subject is visible above the shelves. Shelf + still prefills the field. Reveal/close covers on narrow phones and large-text settings, then open books repeatedly. Check title/code/action wrapping, uninterrupted paper rows, Materials placement and both back directions in Light/Dark. iOS animated shelves intentionally disable native clipping.
+- In Schedule Session, toggle Switch to 12h / Switch to 24h and verify Start/End instants and duration do not change. Check native dialogs, other timestamp labels and cold-boot persistence. Settings must no longer show a clock switch.
+- Leave a focus timer running while navigating tabs: elapsed display stays accurate, while Journal/Library should remain responsive. Background/foreground and midnight still detect missed blocks and dates. Watch real device frame times in a release/development build; automated identity tests do not establish a device speedup.
+- Weekly Progress should use a restrained green curve/fill, retain zero days/clean hour labels, and open the correct day through large point hit targets. A background tap still opens the weekly summary.
+- USER_MANUAL.txt remains unchanged as requested; use this dated addendum for the explicitly requested Journal/time-control UI differences.

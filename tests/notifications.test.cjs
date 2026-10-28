@@ -43,7 +43,7 @@ async function setup(file) {
     'react-native-safe-area-context': { SafeAreaProvider: 'SafeAreaProvider', SafeAreaView: 'SafeAreaView' },
     'expo-router/js-tabs': { BottomTabBar: 'BottomTabBar' },
     '../ThemeContext': { useTheme: () => ({ colors: colors(), isDark: dark }), useThemedStyles: factory => factory(colors()) },
-    './StudyWorkspace': { useStudy: () => study }, './Toast': { default: 'Toast' }, './InfoModal': { default: 'InfoModal' },
+    './StudyWorkspace': { useStudy: () => study, useStudyList: () => study }, './Toast': { default: 'Toast' }, './InfoModal': { default: 'InfoModal' },
     './ui': { Button: 'Button', Message: 'Message' },
   };
   const context = vm.createContext({ setTimeout: (callback, delay) => { const id = ++nextTimer; timers.set(id, { callback, at: now + delay }); return id; }, clearTimeout: id => timers.delete(id) });

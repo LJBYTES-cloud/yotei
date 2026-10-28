@@ -20,6 +20,7 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
   const context = vm.createContext(now ? { Date: FixedDate, URL } : { URL });
   const connections = [];
   let opens = 0;
+  const prepared = [], finalized = [];
   const sqlite = new vm.SyntheticModule(['openDatabaseAsync'], function () {
     this.setExport('openDatabaseAsync', async name => {
       assert.equal(name, 'yotei.db');
@@ -58,6 +59,17 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
         runAsync: async (sql, ...params) => {
           const result = native.prepare(sql).run(...params);
           return { lastInsertRowId: Number(result.lastInsertRowid), changes: Number(result.changes) };
+        },
+        prepareAsync: async sql => {
+          prepared.push(sql);
+          const statement = native.prepare(sql);
+          return {
+            executeAsync: async values => {
+              const result = statement.run(...values);
+              return { lastInsertRowId: Number(result.lastInsertRowid), changes: Number(result.changes) };
+            },
+            finalizeAsync: async () => { finalized.push(sql); },
+          };
         },
         getAllAsync: async (sql, ...params) => native.prepare(sql).all(...params),
         getFirstAsync: async (sql, ...params) => native.prepare(sql).get(...params) ?? null,
@@ -113,6 +125,7 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
     ...coaching.namespace, ...chartAxis.namespace, ...coachService.namespace,
     setNow: value => { now = value; },
     get opens() { return opens; },
+    prepared, finalized,
     close: async () => { for (const connection of connections) await connection.closeAsync(); },
   };
 }
@@ -800,13 +813,13 @@ test('demo data rolls back completely if an insert fails after the reset', async
   const before = {};
   const tables = ['Subject', 'Task', 'StudyBlock', 'ReflectionItem', 'Material', 'JournalEntry'];
   for (const table of tables) before[table] = await database.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
-  const run = database.runAsync;
-  database.runAsync = async (sql, ...params) => {
+  const prepare = database.prepareAsync;
+  database.prepareAsync = async sql => {
     if (sql.includes('INSERT INTO Task')) throw new Error('Simulated disk error');
-    return run(sql, ...params);
+    return prepare(sql);
   };
   await assert.rejects(services.seedDemoData('demo-user'), /Simulated disk error/);
-  database.runAsync = run;
+  database.prepareAsync = prepare;
   for (const table of tables) assert.deepEqual(await database.getAllAsync(`SELECT * FROM ${table} ORDER BY id`), before[table]);
 });
 
@@ -1689,4 +1702,23 @@ test('native picker instants preserve DST offsets and calendar edits reject unav
     assert.ok(initial.start > reference);
     assert.equal(initial.end - initial.start, 30 * 60000);
   }
+});
+
+
+test('six-month seeding compiles each SQL shape once and finalizes every statement on success or failure', async t => {
+  const s = await loadServices(':memory:', false, '2026-10-29T12:00:00'); t.after(s.close);
+  const counts = await s.seedDemoData('owner');
+  assert.ok(counts.studyBlocks > 250);
+  assert.equal(s.prepared.length, new Set(s.prepared).size);
+  assert.ok(s.prepared.length < 20, 'hundreds of inserts reuse fewer than 20 SQL statements');
+  assert.deepEqual(s.finalized, s.prepared);
+  const db = await s.getDatabase(), prepare = db.prepareAsync;
+  db.prepareAsync = async sql => {
+    if (sql.includes('INSERT INTO StudyBlock')) throw new Error('Prepare failed');
+    return prepare(sql);
+  };
+  const count = s.prepared.length;
+  await assert.rejects(s.seedDemoData('owner'), /Prepare failed/);
+  assert.deepEqual(s.finalized.slice(count), s.prepared.slice(count));
+  assert.equal((await s.getSubjectsForUser('owner')).length, 20, 'failed replacement rolled back');
 });

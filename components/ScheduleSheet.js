@@ -1,6 +1,6 @@
 import { fonts, typeScale, typeLeading } from './typography';
 import { useRef, useState } from 'react';
-import { Keyboard, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createStudyBlock, rescheduleStudyBlock } from '../db/StudyBlockService';
 import { StudyLoadWarning } from '../db/StudyLoadService';
 import { applyStudyDuration, buildStudyTimes, getInitialStudyWindow, updateStudyWindow } from '../utils/scheduling';
@@ -8,10 +8,12 @@ import { Button, FieldLabel, Input, Message, Sheet } from './ui';
 import DateTimeField from './DateTimeField';
 import { formatMinutes } from './theme';
 import { useThemedStyles } from '../ThemeContext';
+import { useTimeFormat } from '../TimeFormatContext';
 
 /** @param {{ userId: string, task: { id: number, title: string, subject_name: string }, sourceBlock?: import('../db/StudyBlockService').StudyBlock, initialDuration?: number, onClose: () => void, onSaved: (block: import('../db/StudyBlockService').StudyBlock) => void }} props */
 export default function ScheduleSheet({ userId, task, sourceBlock, initialDuration = 30, onClose, onSaved }) {
   const s = useThemedStyles(createStyles);
+  const { is24Hour, set24Hour } = useTimeFormat();
   const [window, setWindow] = useState(() => getInitialStudyWindow(new Date(), initialDuration));
   const windowRef = useRef(window);
   const [duration, setDuration] = useState('');
@@ -94,6 +96,14 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
         </View>
       ) : (
         <>
+          <View style={s.timeHeading}>
+            <Text style={s.timeLabel}>Session Times</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={is24Hour ? 'Switch to 12h' : 'Switch to 24h'}
+              accessibilityHint="Saves your preferred clock format on this device" disabled={busy}
+              onPress={() => set24Hour(!is24Hour)} style={s.timeToggle}>
+              <Text style={s.timeToggleText}>{is24Hour ? 'Switch to 12h' : 'Switch to 24h'}</Text>
+            </Pressable>
+          </View>
           <DateTimeField label="Start" help="Choose any upcoming date and local time. Changing the start keeps the current session length."
             value={window.start} minimumDate={today} disabled={busy} onChange={(picked, part) => changeWindow('start', picked, part)} />
           <Input label="Duration (Optional)" help="Type 4h 30m, 45m, 2h, or a whole number of minutes to calculate End from Start. Moving Start keeps that duration; editing End clears this shortcut."
@@ -110,6 +120,10 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({
+  timeHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  timeLabel: { fontFamily: fonts.serifBold, fontSize: typeScale.h3, lineHeight: typeLeading.h3, color: p.text },
+  timeToggle: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
+  timeToggleText: { fontFamily: fonts.semibold, fontSize: typeScale.small, lineHeight: typeLeading.small, color: p.accent },
   task: { borderLeftWidth: 2, borderLeftColor: p.accent, paddingLeft: 16, marginBottom: 36 }, subject: { fontFamily: fonts.body, color: p.muted, fontSize: typeScale.small, lineHeight: typeLeading.small, marginBottom: 7 }, taskTitle: { fontFamily: fonts.serifBold, color: p.text, fontSize: typeScale.h3, lineHeight: typeLeading.h3, fontWeight: 'normal' },
   warning: { padding: 20, borderRadius: 20, backgroundColor: p.warmSoft, borderWidth: 1, borderColor: p.line }, warningKicker: { fontFamily: fonts.bold, color: p.warm, fontSize: typeScale.small, lineHeight: typeLeading.small, letterSpacing: 1.5, fontWeight: 'normal', marginBottom: 20 },
   warningTitle: { fontFamily: fonts.serifBold, color: p.text, fontSize: typeScale.h2, lineHeight: typeLeading.h2, letterSpacing: -0.6 }, warningDetail: { fontFamily: fonts.body, color: p.warm, fontSize: typeScale.small, lineHeight: typeLeading.small, marginBottom: 20 }, gap: { height: 20 },

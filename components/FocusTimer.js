@@ -4,13 +4,13 @@ import { AppState, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { formatElapsed, getFocusTiming } from '../utils/focusTimer';
-import { useStudy } from './StudyWorkspace';
+import { useStudyList } from './StudyWorkspace';
 import { createStudyStyles } from './studyStyles';
 import { Button } from './ui';
 
 /** @param {{block: import('../db/StudyBlockService').StudyBlock}} props */
 function FocusTimer({ block }) {
-  const { disabled, workingBlock, workingTimerAction, controlTimer, complete } = useStudy();
+  const { disabled, workingBlock, workingTimerAction, controlTimer, complete } = useStudyList();
   const { subjectColor } = useTheme();
   const s = useThemedStyles(createStudyStyles);
   const t = useThemedStyles(createStyles);

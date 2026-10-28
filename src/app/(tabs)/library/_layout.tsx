@@ -5,7 +5,7 @@ export const unstable_settings = { initialRouteName: 'index' };
 
 export default function LibraryLayout() {
   const { colors } = useTheme();
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+  return <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: colors.background } }}>
     <Stack.Screen name="index" />
     <Stack.Screen name="[subjectId]" />
   </Stack>;

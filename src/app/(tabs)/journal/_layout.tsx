@@ -1,0 +1,12 @@
+import { Stack } from 'expo-router';
+import { useTheme } from '../../../../ThemeContext';
+
+export const unstable_settings = { initialRouteName: 'index' };
+
+export default function JournalLayout() {
+  const { colors } = useTheme();
+  return <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right', contentStyle: { backgroundColor: colors.background } }}>
+    <Stack.Screen name="index" />
+    <Stack.Screen name="[entryId]" />
+  </Stack>;
+}

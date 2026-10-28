@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { getLocalDateKey } from '../db/dateUtils';
-import { useStudy } from './StudyWorkspace';
+import { useStudy, useStudyList } from './StudyWorkspace';
 import { createStudyStyles } from './studyStyles';
 import { formatMinutes } from './theme';
 import { useTimeFormat } from '../TimeFormatContext';
@@ -10,13 +10,19 @@ import { Button, FieldLabel, InfoButton, Message } from './ui';
 import { formatElapsed } from '../utils/focusTimer';
 import ItemActionsMenu from './ItemActionsMenu';
 
-/** @param {{title: string, edition?: string, eyebrow?: string, children?: import('react').ReactNode, subtitle?: string}} props */
-export function ScreenHeader({ title, edition, eyebrow, children, subtitle }) {
+/** @param {{title: string, edition?: string, eyebrow?: string, children?: import('react').ReactNode, subtitle?: string, badge?: string, action?: import('react').ReactNode}} props */
+export function ScreenHeader({ title, edition, eyebrow, children, subtitle, badge, action }) {
   const s = useThemedStyles(createStudyStyles);
   return <>
     <View style={s.masthead}><Text style={s.wordmark}>yotei<Text style={s.accent}>.</Text></Text>{edition && <Text style={s.edition}>{edition}</Text>}</View>
     {eyebrow && <Text style={s.eyebrow}>{eyebrow}</Text>}
-    <View style={s.screenTitleRow}><Text accessibilityRole="header" style={s.screenTitle}>{title}</Text>{subtitle && <InfoButton title={title} message={subtitle} />}</View>
+    <View style={s.screenTitleRow}>
+      <View style={s.screenTitleGroup}><Text accessibilityRole="header" style={s.screenTitle}>{title}</Text>
+        {badge !== undefined && <Text accessibilityLabel={`${badge} subjects`} style={s.titleBadge}>{badge}</Text>}
+        {subtitle && <InfoButton title={title} message={subtitle} />}
+      </View>
+      {action}
+    </View>
     {children && <Text style={s.headerDeck}>{children}</Text>}
   </>;
 }
@@ -31,7 +37,7 @@ export function Feedback() {
 
 /** @param {{task: import('../db/TaskService').Task}} props */
 export function CoachingCard({ task }) {
-  const { disabled, openSchedule } = useStudy();
+  const { disabled, openSchedule } = useStudyList();
   const s = useThemedStyles(createStudyStyles);
   return <View style={s.coaching}>
     <FieldLabel label="Postponed Task" textStyle={s.coachingLabel} help="This task has been postponed at least twice. A short five-minute session can help you start." />
@@ -44,8 +50,8 @@ export function CoachingCard({ task }) {
 }
 
 /** @param {{task: import('../db/TaskService').Task, hasMissedSession?: boolean, notebook?: boolean}} props */
-export function TaskCard({ task, hasMissedSession = false, notebook = false }) {
-  const { disabled, openSchedule, openEditTask, confirmDeleteTask, deletingTask } = useStudy();
+function TaskCardView({ task, hasMissedSession = false, notebook = false }) {
+  const { disabled, openSchedule, openEditTask, confirmDeleteTask, deletingTask } = useStudyList();
   const { subjectColor } = useTheme();
   const s = useThemedStyles(createStudyStyles);
   return <View style={[s.card, notebook && s.notebookTask]}>
@@ -62,6 +68,8 @@ export function TaskCard({ task, hasMissedSession = false, notebook = false }) {
     </View>
   </View>;
 }
+
+export const TaskCard = memo(TaskCardView);
 
 /** Narrow props keep unrelated workspace ticks from re-rendering static cards.
  * @param {{block: import('../db/StudyBlockService').StudyBlock, today: string,

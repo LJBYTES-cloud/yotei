@@ -1,5 +1,16 @@
 # Validation snapshot
 
+
+## Performance and UI Polish (2026-10-29)
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed with no warnings.
+- Full 11-suite regression: **205 cases, 204 passed, 0 failed, 1 existing New York-specific skip** in Asia/Singapore. Command: `node --experimental-vm-modules --test tests/database.test.cjs tests/backup.test.cjs tests/task-library.test.cjs tests/material-files.test.cjs tests/notifications.test.cjs tests/subject-deletion.test.cjs tests/focus-timer.test.cjs tests/auth.test.cjs tests/theme.test.cjs tests/web-platform.test.cjs tests/dashboard-performance.test.cjs`.
+- Database suite with `TZ=America/New_York`: **73 passed, 0 failed/skipped**. Six-month seed content, account isolation, rollback, workload, DST and timer rules are retained. A new prepared-statement transport exercises production SQL, verifies fewer than 20 distinct compiled statements for hundreds of blocks, and checks finalization on success/injected failure.
+- New actual-hook performance tests verify a background query with 1,000 fresh result objects preserves the existing snapshot/rows; one changed row invalidates only itself and reordering preserves other identities. Local readiness clocks stop on blur/background and catch up on focus; list-context checks confirm notices do not change its value and shared state no longer publishes clock ticks.
+- Component regressions cover dedicated Journal route IDs/invalid-entry redirects, full-page keyboard avoidance, both note kinds, immediate saved text without a successful refresh, retry drafts/cancel/deletion guards, Library header action/count, iOS clipping exception, contextual clock format without changing selected instants, reversible responsive covers and unchanged chart point/background actions. Full regression retains completion, active-session conflicts, backup and auth behavior.
+- `npx.cmd expo export --platform android --platform ios --output-dir .expo/polish-verification`: passed, selecting `src/app/` with the nested Library/Journal stacks. No dependencies, schema, backup version or native configuration changed. USER_MANUAL.txt and the root app/index.tsx experiment were left untouched.
+- Device timing/FPS was not measured. Tests prove reduced invalidation/SQL preparation, not a quantified native speedup. Check native stack/back gestures, narrow/large-text notebooks, animated shelf sizes, long-note keyboard editing and chart curves/fills/touch accuracy on Android/iOS in both themes. Node bridges and compiled exports do not establish rendered appearance.
+
 ## Scheduled-Card Menu and Active-Session Notice (2026-10-27)
 
 - `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed without warnings/errors. No dependency, schema, database-service or authentication changes.

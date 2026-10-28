@@ -1,12 +1,12 @@
 import { memo, useCallback, useMemo, useRef } from 'react';
-import { FlatList, Text, View } from 'react-native';
+import { FlatList, Platform, View } from 'react-native';
 import { router, useScrollToTop } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemedStyles } from '../ThemeContext';
 import { EmptyState, Feedback, ScreenHeader } from '../components/StudyCards';
-import { useStudy } from '../components/StudyWorkspace';
+import { useStudyList } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
-import { Button, FieldLabel } from '../components/ui';
+import { Button } from '../components/ui';
 import SubjectBookshelf from '../components/SubjectBookshelf';
 import { groupSubjectsByField } from '../utils/subjectFields';
 
@@ -24,7 +24,7 @@ const MemoLibraryShelf = memo(LibraryShelf);
 const shelfKey = field => field.key;
 
 export default function LibraryScreen() {
-  const { data, disabled, openEntry, openEditSubject, refresh } = useStudy();
+  const { data, disabled, openEntry, openEditSubject, refresh } = useStudyList();
   const scroll = useRef(null);
   useScrollToTop(scroll);
   const s = useThemedStyles(createStudyStyles);
@@ -42,15 +42,12 @@ export default function LibraryScreen() {
   return <SafeAreaView style={s.screen} edges={['top', 'left', 'right']}>
     <FlatList ref={scroll} data={groups} keyExtractor={shelfKey} renderItem={renderShelf} contentContainerStyle={s.content}
       refreshing={data.refreshing && data.ready} onRefresh={refresh}
-      initialNumToRender={10} maxToRenderPerBatch={10} windowSize={5} removeClippedSubviews={true}
+      initialNumToRender={10} maxToRenderPerBatch={10} windowSize={5} removeClippedSubviews={Platform.OS === 'android'}
       ListHeaderComponent={<>
-      <ScreenHeader title="Library" edition="Subjects" subtitle="Choose a book to open its subject notebook." />
+      <ScreenHeader title="Library" edition="Subjects" badge={String(data.subjects.length)}
+        action={<Button label="Add Subject" compact disabled={disabled} onPress={addSubject} />} />
       <Feedback />
-      <View style={s.card}>
-        <View style={s.section}><FieldLabel label="Bookshelf" textStyle={s.sectionTitle} help="Tap a spine to reveal its cover. Open the cover to see that subject's tasks, or use its pencil to edit." /><Text style={s.sectionCount}>{data.subjects.length}</Text></View>
-      </View>
       </>}
-      ListEmptyComponent={<EmptyState title="No Books Yet" text="Add a subject to create its book." />}
-      ListFooterComponent={<Button label="Add Subject" disabled={disabled} onPress={addSubject} />} />
+      ListEmptyComponent={<EmptyState title="No Books Yet" text="Add a subject to create its book." />} />
   </SafeAreaView>;
 }

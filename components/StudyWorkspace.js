@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 import { router } from 'expo-router';
 import { useSession } from '../auth/SessionContext';
@@ -20,12 +20,12 @@ import ScheduleSheet from './ScheduleSheet';
 import CompletionReflectionSheet from './CompletionReflectionSheet';
 import MaterialSheet from './MaterialSheet';
 import JournalEntrySheet from './JournalEntrySheet';
-import JournalDetailSheet from './JournalDetailSheet';
 import BlockDeletionModal from './BlockDeletionModal';
 import { formatElapsed } from '../utils/focusTimer';
 
 /** @typedef {import('../db/StudyBlockService').StudyBlock} StudyBlock */
 /** @typedef {{task: {id: number, title: string, subject_name: string}, sourceBlock?: StudyBlock, initialDuration?: number}} Schedule */
+const StudyListContext = createContext(/** @type {ReturnType<typeof useListState> | null} */ (null));
 const StudyContext = createContext(/** @type {ReturnType<typeof useWorkspaceState> | null} */ (null));
 
 /** @param {import('../auth/AuthService').AuthUser} user */
@@ -33,7 +33,6 @@ function useWorkspaceState(user) {
   const { signingOut, signOut, signOutError, updatingName } = useSession();
   const { isDark } = useTheme();
   const { formatTime } = useTimeFormat();
-  const [clock, setClock] = useState(() => Date.now());
   const [today, setToday] = useState(() => getLocalDateKey());
   const data = useDashboardData(user.id, today);
   const { blocks, refresh } = data;
@@ -55,7 +54,7 @@ function useWorkspaceState(user) {
   const [workingTimerAction, setWorkingTimerAction] = useState(/** @type {'start' | 'break' | 'resume' | 'finish' | 'mark-done' | null} */ (null));
   const [addingReflection, setAddingReflection] = useState(false);
   const [journalEntryOpen, setJournalEntryOpen] = useState(false);
-  const [journalDetail, setJournalDetail] = useState(/** @type {import('../db/JournalService').JournalFeedItem | null} */ (null));
+  const [journalEditing, setJournalEditing] = useState(false);
   const [addingJournalEntry, setAddingJournalEntry] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [backupAction, setBackupAction] = useState(/** @type {'export' | 'import' | null} */ (null));
@@ -73,14 +72,14 @@ function useWorkspaceState(user) {
   const mounted = useRef(false);
   const busy = signingOut || updatingName || workingBlock !== null || deletingTask !== null || deletingSubject !== null || deletingMaterial !== null || deletingBlock || seeding || backupAction !== null || addingReflection || addingJournalEntry;
   const disabled = busy || !data.ready || data.refreshing;
-  const blocked = busy || entry !== null || schedule !== null || reflectionPrompt !== null || materialEntry !== null || journalEntryOpen || journalDetail !== null || blockDeletion !== null;
+  const blocked = busy || entry !== null || schedule !== null || reflectionPrompt !== null || materialEntry !== null || journalEntryOpen || journalEditing || blockDeletion !== null;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => { busyRef.current = blocked; }, [blocked]);
   useEffect(() => {
     const tick = (foreground = false) => {
       const now = new Date();
       const date = getLocalDateKey(now);
-      setClock(now.getTime()); setToday(date);
+      setToday(date);
       const expired = blocks.some(block => block.status === 'scheduled' && Date.parse(block.end_time) < now.getTime());
       if (!busyRef.current && date === today && (foreground || expired)) void refresh(true);
     };
@@ -94,13 +93,14 @@ function useWorkspaceState(user) {
 
   const openJournalDetail = useCallback((/** @type {import('../db/JournalService').JournalFeedItem} */ item) => {
     if (disabled || busyRef.current || !data.journal.some(row => row.id === item.id)) return;
-    busyRef.current = true; setJournalDetail(item); setActionError(''); setNotice('');
+    setActionError(''); setNotice('');
+    router.push({ pathname: '/journal/[entryId]', params: { entryId: item.id } });
   }, [disabled, data.journal, setNotice]);
 
-  function openJournalEntry() {
+  const openJournalEntry = useCallback(() => {
     if (disabled || busyRef.current) return;
     busyRef.current = true; setJournalEntryOpen(true); setActionError(''); setNotice('');
-  }
+  }, [disabled, setNotice]);
   function closeJournalEntry() { if (!addingJournalEntry) { setJournalEntryOpen(false); busyRef.current = false; } }
   /** @param {{title: string, content: string}} input @returns {Promise<boolean>} */
   async function saveJournalEntry(input) {
@@ -166,7 +166,6 @@ function useWorkspaceState(user) {
       const service = { start: startStudyBlock, break: pauseStudyBlock, resume: resumeStudyBlock }[action];
       await service(user.id, id);
       if (!mounted.current) return;
-      setClock(Date.now());
       await refresh();
     } catch (error) {
       if (mounted.current) setActionError(error instanceof Error ? error.message : 'Could not update the timer. Refresh and try again.');
@@ -187,7 +186,7 @@ function useWorkspaceState(user) {
   }, [disabled, user.id, refresh, setNotice]);
 
   /** @param {number} id */
-  async function complete(id) {
+  const complete = useCallback(async (/** @type {number} */ id) => {
     if (mutation.current || disabled || busyRef.current) return;
     mutation.current = true; busyRef.current = true; setWorkingBlock(id); setWorkingTimerAction('finish'); setActionError('');
     let openedPrompt = false;
@@ -197,10 +196,10 @@ function useWorkspaceState(user) {
       openedPrompt = true;
       setReflectionPrompt(completed);
       setNotice(`Session completed. ${formatElapsed(completed.actual_study_seconds)} studied.`);
-      await data.refresh();
+      await refresh();
     } catch { if (mounted.current) setActionError('We couldn’t update that session. Pull down to refresh, then try again.'); }
     finally { mutation.current = false; busyRef.current = openedPrompt; if (mounted.current) { setWorkingBlock(null); setWorkingTimerAction(null); } }
-  }
+  }, [disabled, user.id, refresh, setNotice]);
 
   async function loadDemoData() {
     if (USE_REAL_AUTH !== false || mutation.current || disabled || busyRef.current) return;
@@ -208,7 +207,7 @@ function useWorkspaceState(user) {
     try {
       await seedDemoData(user.id);
       if (!mounted.current) return;
-      setClock(Date.now()); setToday(getLocalDateKey());
+      setToday(getLocalDateKey());
       await data.refresh();
       if (mounted.current) {
         setDemoRevision(value => value + 1);
@@ -231,7 +230,7 @@ function useWorkspaceState(user) {
       } else {
         const counts = await importBackup(user.id);
         if (!counts || !mounted.current) return;
-        setClock(Date.now()); setToday(getLocalDateKey());
+        setToday(getLocalDateKey());
         setDemoRevision(value => value + 1);
         await data.refresh();
         if (mounted.current) setNotice(`Backup imported: ${counts.subjects} subjects, ${counts.tasks} tasks, ${counts.studyBlocks} study blocks, ${counts.reflectionItems} reflections, ${counts.journalEntries} journal entries, and ${counts.materials} materials.`);
@@ -259,10 +258,10 @@ function useWorkspaceState(user) {
   }
 
   /** @param {{id: number, title: string, subject_name: string}} task @param {number} [minutes] */
-  function openSchedule(task, minutes = 30) {
+  const openSchedule = useCallback((/** @type {{id: number, title: string, subject_name: string}} */ task, minutes = 30) => {
     if (disabled || busyRef.current) return;
     busyRef.current = true; setActionError(''); setSchedule({ task, initialDuration: minutes });
-  }
+  }, [disabled]);
   /** @param {StudyBlock} block */
   const openReschedule = useCallback((/** @type {StudyBlock} */ block) => {
     if (disabled || busyRef.current) return;
@@ -281,15 +280,15 @@ function useWorkspaceState(user) {
     busyRef.current = true; setEditingSubject(subject); setEditingTask(null); setInitialSubject(null); setInitialField(''); setEntry('subject'); setActionError(''); setNotice('');
   }, [disabled, user.id, setNotice]);
   /** @param {import('../db/TaskService').Task} task */
-  function openEditTask(task) {
+  const openEditTask = useCallback((/** @type {import('../db/TaskService').Task} */ task) => {
     if (disabled || busyRef.current || task.user_id !== user.id) return;
     busyRef.current = true; setEditingTask(task); setEditingSubject(null); setInitialSubject(null); setInitialField(''); setEntry('task'); setActionError('');
-  }
+  }, [disabled, user.id]);
   /** @param {number} subjectId @param {import('../db/MaterialService').Material} [material] */
-  function openMaterial(subjectId, material) {
+  const openMaterial = useCallback((/** @type {number} */ subjectId, /** @type {import('../db/MaterialService').Material | undefined} */ material = undefined) => {
     if (disabled || busyRef.current || !data.subjects.some(subject => subject.id === subjectId)) return;
     busyRef.current = true; setMaterialEntry({ subjectId, material }); setActionError(''); setNotice('');
-  }
+  }, [disabled, data.subjects, setNotice]);
   const confirmDeleteRecord = useCallback((/** @type {import('../db/TaskService').Task | import('../db/SubjectService').Subject | import('../db/MaterialService').Material} */ record, /** @type {'task' | 'subject' | 'material'} */ kind) => {
     const owned = 'user_id' in record ? record.user_id === user.id : data.materials.some(item => item.id === record.id);
     if (mutation.current || disabled || busyRef.current || !owned) return;
@@ -343,18 +342,18 @@ function useWorkspaceState(user) {
     finally { mutation.current = false; busyRef.current = !deleted; if (mounted.current) setDeletingBlock(false); }
   }
   /** @param {import('../db/TaskService').Task} task */
-  function confirmDeleteTask(task) { confirmDeleteRecord(task, 'task'); }
+  const confirmDeleteTask = useCallback((/** @type {import('../db/TaskService').Task} */ task) => confirmDeleteRecord(task, 'task'), [confirmDeleteRecord]);
   /** @param {import('../db/SubjectService').Subject} subject */
-  function confirmDeleteSubject(subject) { confirmDeleteRecord(subject, 'subject'); }
+  const confirmDeleteSubject = useCallback((/** @type {import('../db/SubjectService').Subject} */ subject) => confirmDeleteRecord(subject, 'subject'), [confirmDeleteRecord]);
   /** @param {import('../db/MaterialService').Material} material */
-  function confirmDeleteMaterial(material) { confirmDeleteRecord(material, 'material'); }
+  const confirmDeleteMaterial = useCallback((/** @type {import('../db/MaterialService').Material} */ material) => confirmDeleteRecord(material, 'material'), [confirmDeleteRecord]);
   function savedEntry() {
     setEntry(null);
     setNotice(entry === 'task' ? editingTask ? 'Task updated.' : 'Task created.' : '');
     void data.refresh();
   }
   return {
-    user, data, clock, today, disabled, blocked, workingBlock, workingTimerAction, seeding, demoRevision, addingReflection, addReflection,
+    user, data, today, disabled, blocked, workingBlock, workingTimerAction, seeding, demoRevision, addingReflection, addReflection,
     notice, noticeId, dismissNotice, error: data.error || actionError,
     refresh: refreshData, refreshInBackground,
     complete, controlTimer, markDone, confirmDeleteBlock, loadDemoData, backupAction, manageBackup, openEntry, openEditSubject, openEditTask, confirmDeleteTask, deletingTask, confirmDeleteSubject, deletingSubject, savedEntry, openSchedule, openReschedule,
@@ -363,7 +362,7 @@ function useWorkspaceState(user) {
     reflectionPrompt, addCompletedReflection, dismissReflectionPrompt,
     openMaterial, materialEntry, setMaterialEntry, confirmDeleteMaterial, deletingMaterial,
     openJournalEntry, closeJournalEntry, journalEntryOpen, addingJournalEntry, saveJournalEntry,
-    journalDetail, setJournalDetail, openJournalDetail,
+    journalEditing, setJournalEditing, openJournalDetail,
     blockDeletion, deletingBlock, blockDeleteError, cancelBlockDeletion, deleteConfirmedBlock,
   };
 }
@@ -378,9 +377,10 @@ export function StudyWorkspace({ children }) {
 /** @param {{user: import('../auth/AuthService').AuthUser, children: import('react').ReactNode}} props */
 function WorkspaceContent({ user, children }) {
   const study = useWorkspaceState(user);
+  const listState = useListState(study);
   return (
     <StudyContext.Provider value={study}>
-      {children}
+      <StudyListContext.Provider value={listState}>{children}</StudyListContext.Provider>
       {study.blockDeletion && <BlockDeletionModal taskTitle={study.blockDeletion.task_title} busy={study.deletingBlock} error={study.blockDeleteError}
         onCancel={study.cancelBlockDeletion} onConfirm={() => { void study.deleteConfirmedBlock(); }} />}
       {study.entry && <EntrySheet key={study.editingSubject ? `edit-subject-${study.editingSubject.id}` : study.editingTask ? `edit-task-${study.editingTask.id}` : study.entry} kind={study.entry} userId={study.user.id} subjects={study.data.subjects} initialSubject={study.initialSubject} initialField={study.initialField} editingSubject={study.editingSubject} editingTask={study.editingTask}
@@ -395,9 +395,6 @@ function WorkspaceContent({ user, children }) {
         study.setMaterialEntry(null); study.setNotice('Material saved.'); void study.data.refresh();
       }} />}
       {study.journalEntryOpen && <JournalEntrySheet busy={study.addingJournalEntry} onClose={study.closeJournalEntry} onSave={study.saveJournalEntry} />}
-      {study.journalDetail && <JournalDetailSheet key={study.journalDetail.id} userId={user.id} item={study.journalDetail} onClose={() => study.setJournalDetail(null)}
-        onSaved={() => { study.setJournalDetail(null); study.setNotice('Journal entry updated.'); void study.data.refresh(); }}
-        onDeleted={() => { study.setJournalDetail(null); study.setNotice('Journal entry deleted.'); void study.data.refresh(); }} />}
     </StudyContext.Provider>
   );
 }
@@ -406,4 +403,27 @@ export function useStudy() {
   const study = useContext(StudyContext);
   if (!study) throw new Error('useStudy must be used inside StudyWorkspace.');
   return study;
+}
+
+/** A stable subscription for list screens, excluding notices and sheet state.
+ * @param {ReturnType<typeof useWorkspaceState>} state
+ */
+function useListState(state) {
+  const { user, data, today, disabled, workingBlock, workingTimerAction, deletingTask, deletingSubject, deletingMaterial,
+    openEntry, openEditSubject, openEditTask, openSchedule, openReschedule, confirmDeleteSubject, confirmDeleteTask,
+    confirmDeleteMaterial, confirmDeleteBlock, controlTimer, complete, markDone, refresh, refreshInBackground,
+    openJournalEntry, openJournalDetail, openMaterial } = state;
+  return useMemo(() => ({ user, data, today, disabled, workingBlock, workingTimerAction, deletingTask, deletingSubject, deletingMaterial,
+    openEntry, openEditSubject, openEditTask, openSchedule, openReschedule, confirmDeleteSubject, confirmDeleteTask,
+    confirmDeleteMaterial, confirmDeleteBlock, controlTimer, complete, markDone, refresh, refreshInBackground,
+    openJournalEntry, openJournalDetail, openMaterial }), [user, data, today, disabled, workingBlock, workingTimerAction,
+    deletingTask, deletingSubject, deletingMaterial, openEntry, openEditSubject, openEditTask, openSchedule, openReschedule,
+    confirmDeleteSubject, confirmDeleteTask, confirmDeleteMaterial, confirmDeleteBlock, controlTimer, complete, markDone,
+    refresh, refreshInBackground, openJournalEntry, openJournalDetail, openMaterial]);
+}
+
+export function useStudyList() {
+  const state = useContext(StudyListContext);
+  if (!state) throw new Error('useStudyList must be used inside StudyWorkspace.');
+  return state;
 }

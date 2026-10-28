@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { reconcileRows } from '../utils/stableData';
 import { getSubjectsForUser } from '../db/SubjectService';
 import { getTasksForUser } from '../db/TaskService';
 import { getStudyBlocksForUser, markExpiredStudyBlocks } from '../db/StudyBlockService';
@@ -37,9 +38,13 @@ export function useDashboardData(userId, date) {
         getCoachHistory(userId, date),
       ]);
       if (!mounted.current || id !== requestId.current) return;
-      setSubjects(nextSubjects); setTasks(nextTasks); setBlocks(nextBlocks); setMinutes(nextMinutes); setJournal(nextJournal); setWeekly(nextWeekly);
-      setMaterials(nextMaterials);
-      setCoach(nextCoach);
+      setSubjects(previous => reconcileRows(previous, nextSubjects));
+      setTasks(previous => reconcileRows(previous, nextTasks));
+      setBlocks(previous => reconcileRows(previous, nextBlocks)); setMinutes(nextMinutes);
+      setJournal(previous => reconcileRows(previous, nextJournal));
+      setWeekly(previous => reconcileRows(previous, nextWeekly));
+      setMaterials(previous => reconcileRows(previous, nextMaterials));
+      setCoach(previous => previous.completedToday === nextCoach.completedToday && previous.completedYesterday === nextCoach.completedYesterday && previous.bestHour === nextCoach.bestHour ? previous : nextCoach);
       setReady(true); setError('');
     } catch {
       if (mounted.current && id === requestId.current) setError('Could not refresh study data. Try again.');
@@ -49,5 +54,6 @@ export function useDashboardData(userId, date) {
   }, [userId, date]);
 
   useEffect(() => { void refresh(); }, [refresh]);
-  return { subjects, tasks, blocks, minutes, coach, journal, weekly, materials, ready, refreshing, error, refresh };
+  return useMemo(() => ({ subjects, tasks, blocks, minutes, coach, journal, weekly, materials, ready, refreshing, error, refresh }),
+    [subjects, tasks, blocks, minutes, coach, journal, weekly, materials, ready, refreshing, error, refresh]);
 }

@@ -1,13 +1,13 @@
 import { fonts, typeScale, typeLeading } from './typography';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { bookGradient, groupSubjectsByField } from '../utils/subjectFields';
 
-/** @param {{subject: import('../db/SubjectService').Subject, count: number, revealed: boolean, disabled: boolean, reduceMotion: boolean, onReveal: (id: number) => void, onReturn: () => void, onOpen: (subject: import('../db/SubjectService').Subject) => void, onEdit: (subject: import('../db/SubjectService').Subject) => void}} props */
-function SubjectBook({ subject, count, revealed, disabled, reduceMotion, onReveal, onReturn, onOpen, onEdit }) {
+/** @param {{subject: import('../db/SubjectService').Subject, count: number, revealed: boolean, disabled: boolean, reduceMotion: boolean, coverWidth?: number, onReveal: (id: number) => void, onReturn: () => void, onOpen: (subject: import('../db/SubjectService').Subject) => void, onEdit: (subject: import('../db/SubjectService').Subject) => void}} props */
+function SubjectBook({ subject, count, revealed, disabled, reduceMotion, coverWidth = 232, onReveal, onReturn, onOpen, onEdit }) {
   const s = useThemedStyles(createStyles);
   const { colors: p } = useTheme();
   const [progress] = useState(() => new Animated.Value(revealed ? 1 : 0));
@@ -31,12 +31,12 @@ function SubjectBook({ subject, count, revealed, disabled, reduceMotion, onRevea
   </>;
   return (
     <Animated.View style={[s.bookFrame, revealed && s.revealedFrame, disabled && s.disabled, {
-      width: progress.interpolate({ inputRange: [0, 1], outputRange: [64, 232] }),
+      width: progress.interpolate({ inputRange: [0, 1], outputRange: [64, coverWidth] }),
       height: progress.interpolate({ inputRange: [0, 1], outputRange: [295, coverHeight + 15] }),
     }]}>
       <Animated.View pointerEvents={revealed ? 'auto' : 'none'} accessibilityElementsHidden={!revealed} importantForAccessibility={revealed ? 'auto' : 'no-hide-descendants'}
         style={[s.layer, { opacity: progress, transform: [{ perspective: 800 }, { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [0, -5] }) }, { rotateY: progress.interpolate({ inputRange: [0, 1], outputRange: ['-12deg', '0deg'] }) }] }]}>
-        <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.cover}
+        <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[s.cover, { width: coverWidth - 10 }]}
           onLayout={event => { const height = Math.max(280, Math.ceil(event.nativeEvent.layout.height)); setCoverHeight(current => current === height ? current : height); }}>
           {details}
           <View style={s.coverTools}>
@@ -73,6 +73,8 @@ function SubjectBook({ subject, count, revealed, disabled, reduceMotion, onRevea
   );
 }
 
+/** @param {import('../db/SubjectService').Subject} subject */
+const bookKey = subject => String(subject.id);
 const MemoSubjectBook = memo(SubjectBook);
 
 /** Horizontal shelves grouped by field. A cover opens a dedicated subject notebook.
@@ -83,6 +85,7 @@ function SubjectBookshelf({ subjects, taskCounts, disabled = false, onOpen, onEd
   const { colors: p } = useTheme();
   const [revealedId, setRevealedId] = useState(/** @type {number | null} */ (null));
   const [reduceMotion, setReduceMotion] = useState(true);
+  const [coverWidth, setCoverWidth] = useState(232);
   const returnBook = useCallback(() => setRevealedId(null), []);
   useEffect(() => {
     let mounted = true;
@@ -92,19 +95,25 @@ function SubjectBookshelf({ subjects, taskCounts, disabled = false, onOpen, onEd
     return () => { mounted = false; subscription.remove(); };
   }, []);
   const groups = useMemo(() => groupSubjectsByField(subjects), [subjects]);
+  const renderBook = useCallback((/** @type {import('react-native').ListRenderItemInfo<import('../db/SubjectService').Subject>} */ { item: subject }) =>
+    <MemoSubjectBook subject={subject} count={taskCounts.get(subject.id) ?? 0}
+      revealed={subject.id === revealedId} disabled={disabled} reduceMotion={reduceMotion} coverWidth={coverWidth}
+      onReveal={setRevealedId} onReturn={returnBook} onOpen={onOpen} onEdit={onEdit} />,
+    [taskCounts, revealedId, disabled, reduceMotion, coverWidth, returnBook, onOpen, onEdit]);
   return <View style={s.shelves}>
-    {groups.map(group => <View key={group.key} style={s.shelf}>
+    {groups.map(group => <View key={group.key} style={s.shelf} onLayout={event => {
+      const width = Math.floor(event.nativeEvent.layout.width - 28);
+      if (width > 0) setCoverWidth(Math.max(144, Math.min(232, width)));
+    }}>
       <View style={s.shelfHeading}><Text style={s.fieldTitle}>{group.name}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel={`Add Subject to ${group.name}`} accessibilityState={{ disabled }} disabled={disabled} onPress={() => onAddField(group.name)} style={({ pressed }) => [s.addSubject, pressed && s.pressed]}>
           <Ionicons name="add" size={22} color={p.accent} />
         </Pressable>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={s.books} keyboardShouldPersistTaps="handled">
-        {group.subjects.map(subject => <MemoSubjectBook key={subject.id} subject={subject} count={taskCounts.get(subject.id) ?? 0}
-          revealed={subject.id === revealedId} disabled={disabled} reduceMotion={reduceMotion}
-          onReveal={setRevealedId} onReturn={returnBook}
-          onOpen={onOpen} onEdit={onEdit} />)}
-      </ScrollView>
+      <FlatList horizontal data={group.subjects} keyExtractor={bookKey} renderItem={renderBook}
+        showsHorizontalScrollIndicator contentContainerStyle={s.books} keyboardShouldPersistTaps="handled"
+        initialNumToRender={10} maxToRenderPerBatch={10} windowSize={3}
+        removeClippedSubviews={false} />
       <View style={s.shelfEdge}><View style={s.shelfHighlight} /></View>
     </View>)}
   </View>;

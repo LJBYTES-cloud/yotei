@@ -9,14 +9,12 @@ import { createStudyStyles } from '../components/studyStyles';
 import { Button, FieldLabel, Message } from '../components/ui';
 import { USE_REAL_AUTH } from '../auth';
 import { useSession } from '../auth/SessionContext';
-import { useTimeFormat } from '../TimeFormatContext';
 import DisplayNameSheet from '../components/DisplayNameSheet';
 
 export default function SettingsScreen() {
   const { user, blocked, disabled, seeding, loadDemoData, backupAction, manageBackup, signOut, signingOut, signOutError } = useStudy();
   const { colors: p, isDark, toggleTheme } = useTheme();
   const { updateName, updatingName } = useSession();
-  const { is24Hour, set24Hour } = useTimeFormat();
   const [editingName, setEditingName] = useState(false);
   const themeLabel = isDark ? 'Dark Mode' : 'Light Mode';
   const switchThumb = '#FFFFFF';
@@ -38,11 +36,6 @@ export default function SettingsScreen() {
           </View>
           <View style={t.themePreview}><View style={t.previewPage}><View style={t.previewLine} /><View style={[t.previewLine, t.shortLine]} /><View style={t.previewButton} /></View><View style={s.flex}><Text style={s.eyebrow}>{isDark ? 'Dark / Sage' : 'Light / Forest'}</Text></View></View>
         </View>
-        <View style={s.card}><View style={t.row}><FieldLabel label="24-Hour Time" textStyle={t.title} />
-          <Switch accessibilityLabel="24-Hour Time" value={is24Hour} onValueChange={set24Hour}
-            trackColor={{ false: p.line, true: p.accent }} thumbColor={switchThumb} ios_backgroundColor={p.line}
-            {...(Platform.OS === 'web' ? { activeThumbColor: switchThumb } : {})} />
-        </View></View>
         <Feedback />
         <View style={s.card}>
           <FieldLabel label="Data Management" textStyle={t.title} help="Study data is stored only on this device. Exporting JSON and importing it later is the only supported way to back up and restore local study data. Appwrite sign-in does not sync it. Backups contain file locations, not attached file contents." />
@@ -52,7 +45,7 @@ export default function SettingsScreen() {
           </View>
           <Text style={t.warning}>Warning: Importing will overwrite your current local data.</Text>
         </View>
-        {USE_REAL_AUTH && <View style={s.card}><FieldLabel label="Demo Study Data" textStyle={t.title} /><Button label="Load Demo Data" tone="outline" disabled={disabled || blocked} busy={seeding} onPress={() => void loadDemoData()} /><Text style={t.footnote}>Replaces this account’s local data.</Text></View>}
+        {USE_REAL_AUTH === false && <View style={s.card}><FieldLabel label="Demo Study Data" textStyle={t.title} /><Button label="Load Demo Data" tone="outline" disabled={disabled || blocked} busy={seeding} onPress={() => void loadDemoData()} /><Text style={t.footnote}>Replaces this account’s local data.</Text></View>}
         <Text style={t.label}></Text>
         <View style={s.card}><FieldLabel label="Sign Out" textStyle={t.title} /><Message text={signOutError} /><Button label="Sign Out ↗" busy={signingOut} disabled={blocked} onPress={signOut} /></View>
       </ScrollView>

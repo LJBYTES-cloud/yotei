@@ -2,6 +2,57 @@
 
 This consolidates the feature requests and reworks through the 2026-10-21 handoff. The current implementation and [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) take precedence over earlier intermediate designs.
 
+
+## Performance and UI Polish (2026-10-29)
+
+- Preserved finalized USER_MANUAL.txt, study rules, schema, backup version 6, authentication and four tabs. Journal previews now open the requested dedicated note screen; the saved clock-format control moved from Settings into Schedule Session.
+- Removed workspace clock ticks, split stable list state from notices/sheets, stabilized actions and reconciled unchanged query results. Focused Home/notebook clocks stop offscreen/backgrounded. FocusTimer retains its independent one-second clock.
+- Retained bounded virtualized lists, added horizontal book virtualization and memoized notebook/material rows. Animated book faces avoid iOS native clipping; covers fit shelf width. Demo writes reuse fewer than 20 compiled SQL shapes for hundreds of blocks inside the same rollback-safe transaction.
+- Added Library header action/count, cleaner notebook wrapping/actions/page boundaries, and consistent themed native transitions. Chart curves/fill are restrained; real data, hour ticks and point hit targets remain.
+- Full-page Journal keeps both entry kinds, validation, confirmed deletion, retry drafts and immediate saved text. Corrected demo visibility to match the existing USE_REAL_AUTH === false mutation guard.
+- Validation: clean lint/typecheck; **205 cases: 204 passed, 0 failed, 1 existing timezone skip**; **73 database tests passed in America/New_York**; Android/iOS exports passed. Native FPS/latency and gestures require the device checks in DEMO_AND_TESTING.md.
+
+| File | Change |
+| --- | --- |
+| `README.md` | **Updated.** Updated current Library, Journal, clock control and performance overview. |
+| `components/FocusTimer.js` | **Updated.** Uses stable list state; work/break clock remains local. |
+| `components/JournalDetailSheet.js` | **Removed.** Removed modal-only reader; replaced by JournalEntryContent and dedicated screen. |
+| `components/JournalEntryContent.js` | **Created.** New full-page note content/editor; both entry kinds, confirmation, retry drafts and immediate saved text. |
+| `components/ScheduleSheet.js` | **Updated.** Added saved 12h/24h control beside Session Times without changing selected instants. |
+| `components/StudyCards.js` | **Updated.** Memoized TaskCard, narrowed row subscriptions and added header action/count support. |
+| `components/StudyMaterials.js` | **Updated.** Memoized owned material filtering/section and uses stable list state. |
+| `components/StudyWorkspace.js` | **Updated.** Split list subscriptions from notices/sheets, stabilized actions, removed shared clock ticks and routed Journal details. |
+| `components/SubjectBookshelf.js` | **Updated.** Virtualized horizontal books and fitted covers to measured shelf width; retained reversible animations. |
+| `components/WeeklyProgressCard.js` | **Updated.** Memoized data, smooth bezier curve and subtle fading accent fill; preserved values/touch actions. |
+| `components/studyStyles.js` | **Updated.** Added wrapping title/action layout and subject-count pill. |
+| `db/seedData.js` | **Updated.** Reuses/finalizes compiled SQL inside the same owned, atomic six-month seed transaction. |
+| `docs/CHANGELOG.md` | **Updated.** Recorded this implementation and complete per-file summary. |
+| `docs/DEMO_AND_TESTING.md` | **Updated.** Updated Journal/clock walkthroughs and added native performance/layout acceptance checks. |
+| `docs/NEXT_SESSION_PROMPT.md` | **Updated.** Updated continuation context for routes, clock controls and stable state. |
+| `docs/PROJECT_CONTEXT.md` | **Updated.** Updated architecture, component map and current UI/performance contracts. |
+| `docs/VALIDATION.md` | **Updated.** Recorded tests/exports, SQL reuse evidence and physical-device verification limits. |
+| `hooks/useDashboardData.js` | **Updated.** Reconciles unchanged query rows/arrays and memoizes the returned data snapshot. |
+| `hooks/useScreenClock.js` | **Created.** New focused-screen readiness clock with foreground catch-up and blur/background cleanup. |
+| `screens/HomeScreen.js` | **Updated.** Uses stable list state and local readiness clock; active timer ticks stay isolated. |
+| `screens/JournalEntryScreen.js` | **Created.** New full-page keyboard-aware owned note route with writing/back guards and stale-ID handling. |
+| `screens/JournalScreen.js` | **Updated.** Uses stable list state while retaining memoized, virtualized chronological previews. |
+| `screens/LibraryScreen.js` | **Updated.** Moved Add Subject/count to header and disabled problematic iOS shelf clipping. |
+| `screens/OpenedBookScreen.js` | **Updated.** Memoized/keyed task rows, safer wrapping/stacked actions and clean notebook/material separation. |
+| `screens/SettingsScreen.js` | **Updated.** Removed time-format switch and corrected demo visibility to match the existing Mock-only guard. |
+| `src/app/(tabs)/journal.tsx` | **Removed.** Removed flat wrapper, replaced by nested Journal routes. |
+| `src/app/(tabs)/journal/[entryId].tsx` | **Created.** New namespaced entry/reflection detail wrapper. |
+| `src/app/(tabs)/journal/_layout.tsx` | **Created.** New themed Journal stack retaining the same tab and native back navigation. |
+| `src/app/(tabs)/journal/index.tsx` | **Created.** New feed wrapper for JournalScreen. |
+| `src/app/(tabs)/library/_layout.tsx` | **Updated.** Consistent native slide-right notebook transition on themed background. |
+| `tests/dashboard-performance.test.cjs` | **Created.** New actual-hook tests for 1,000-row stability, one-row edits/reordering and local clock cleanup. |
+| `tests/database.test.cjs` | **Updated.** Prepared SQL transport/reuse/finalization checks; retained rollback, seed and ownership coverage. |
+| `tests/focus-timer.test.cjs` | **Updated.** Updated bridge for stable list subscription; retained timer lifecycle checks. |
+| `tests/notifications.test.cjs` | **Updated.** Updated bridge for split subscriptions; retained toast/dialog regressions. |
+| `tests/task-library.test.cjs` | **Updated.** Updated shelf/notebook coverage and added dedicated Journal, stable context, header and clock-control checks. |
+| `utils/stableData.js` | **Created.** New flat-row reconciliation by ID/date; preserves unchanged object/array identities across refreshes. |
+
+No dependencies or native configuration changed. The removed detail-sheet/flat wrapper are replaced by the content component/nested routes; no study records or manual content were deleted.
+
 ## Scheduled-Card Kebab and Active-Session Notice (2026-10-27)
 
 - Reverted the three-button action row. Scheduled cards now have only the full-width primary Start Session button; the top-right kebab beside time/status contains exact Mark as Done and Delete Block actions. Status text can shrink/wrap while keeping the menu touch target. The existing themed block-deletion modal remains connected.
