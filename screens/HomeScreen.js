@@ -1,35 +1,44 @@
 import { cardShadow, fonts, typeScale, typeLeading } from '../components/typography';
-import { useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { router, useScrollToTop } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { getLocalDayRange } from '../db/dateUtils';
-import { CoachingCard, EmptyState, Feedback, FocusCard, ScreenHeader } from '../components/StudyCards';
+import { EmptyState, Feedback, FocusCard, ScreenHeader } from '../components/StudyCards';
 import { useStudy } from '../components/StudyWorkspace';
 import { createStudyStyles } from '../components/studyStyles';
 import { formatMinutes } from '../components/theme';
 import { Button, InfoButton } from '../components/ui';
 import FocusTimer from '../components/FocusTimer';
 import WeeklyProgressCard from '../components/WeeklyProgressCard';
+import CoachCard from '../components/CoachCard';
+
+/** @param {import('../db/StudyBlockService').StudyBlock} block */
+const blockKey = block => String(block.id);
 
 export default function HomeScreen() {
   const study = useStudy();
-  const { data, clock, today, refresh, disabled } = study;
+  const { data, clock, today, refresh, disabled, controlTimer, openReschedule, workingBlock, markDone, confirmDeleteBlock } = study;
   const { colors: p } = useTheme();
   const s = useThemedStyles(createStudyStyles);
   const h = useThemedStyles(createStyles);
   const list = useRef(null);
   useScrollToTop(list);
   const blocks = useMemo(() => data.blocks.filter(block => !block.rescheduled_to).sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active')), [data.blocks]);
-  const coaching = useMemo(() => data.tasks.filter(task => task.postpone_count >= 2).slice(0, 2), [data.tasks]);
+  const start = useCallback((/** @type {number} */ id) => { void controlTimer(id, 'start'); }, [controlTimer]);
+  const renderBlock = useCallback((/** @type {import('react-native').ListRenderItemInfo<import('../db/StudyBlockService').StudyBlock>} */ { item }) => item.status === 'active' ? <FocusTimer block={item} /> : <FocusCard block={item}
+    today={today} readyToStart={item.status === 'scheduled' && Date.parse(item.start_time) <= clock && Date.parse(item.end_time) > clock}
+    disabled={disabled} working={workingBlock === item.id} onStart={start} onReschedule={openReschedule} onMarkDone={markDone} onDelete={confirmDeleteBlock} />,
+  [today, clock, disabled, workingBlock, start, openReschedule, markDone, confirmDeleteBlock]);
   const dayRange = getLocalDayRange(today);
   const completed = blocks.filter(block => block.status === 'done' && Date.parse(block.start_time) < Date.parse(dayRange.end) && Date.parse(block.end_time) > Date.parse(dayRange.start)).length;
   const planned = blocks.filter(block => block.status === 'scheduled').length;
   return (
     <SafeAreaView style={s.screen} edges={['top', 'left', 'right']}>
-      <FlatList ref={list} data={blocks} keyExtractor={block => String(block.id)} contentContainerStyle={s.content}
-        refreshing={data.refreshing && data.ready} onRefresh={refresh} initialNumToRender={6}
+      <FlatList ref={list} data={blocks} keyExtractor={blockKey} contentContainerStyle={s.content}
+        refreshing={data.refreshing && data.ready} onRefresh={refresh} initialNumToRender={10}
+        maxToRenderPerBatch={10} windowSize={5} removeClippedSubviews={true}
         ListHeaderComponent={<>
           <ScreenHeader title="Home" eyebrow={new Date(clock).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()} subtitle="View scheduled sessions and daily study time." />
           <View style={h.summary}>
@@ -41,13 +50,13 @@ export default function HomeScreen() {
           </View>
           <Feedback />
           <WeeklyProgressCard userId={study.user.id} days={data.weekly} ready={data.ready} error={data.error} />
-          {coaching.length > 0 && <View style={s.card}><View style={s.section}><Text style={s.sectionTitle}>Postponed Tasks</Text></View>{coaching.map(task => <CoachingCard key={task.id} task={task} />)}</View>}
+          {data.ready && <CoachCard tasks={data.tasks} scheduledMinutes={data.minutes} history={data.coach} now={clock} />}
           <View style={s.card}>
             <View style={s.section}><Text style={s.sectionTitle}>Today’s Focus</Text><Text style={s.sectionCount}>{String(blocks.length).padStart(2, '0')}</Text></View>
             <Button label="Plan a Session ↗" disabled={disabled} onPress={() => router.navigate('/library')} />
           </View>
         </>}
-        renderItem={({ item }) => item.status === 'active' ? <FocusTimer block={item} /> : <FocusCard block={item} />}
+        renderItem={renderBlock}
         ListFooterComponent={<Text style={h.motto}>By students, for students.</Text>}
         ListEmptyComponent={<EmptyState title="No study blocks scheduled for today." text="Select a task in Library to schedule a study session." action="Open Library ↗" onPress={() => router.navigate('/library')} />} />
     </SafeAreaView>

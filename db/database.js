@@ -66,6 +66,14 @@ async function initializeDatabase() {
           local_file_path TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS JournalEntry (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL CHECK (length(trim(title)) > 0),
+          content TEXT NOT NULL CHECK (length(trim(content)) > 0),
+          created_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_subject_user ON Subject (user_id, id);
         CREATE INDEX IF NOT EXISTS idx_task_user ON Task (user_id, id);
         CREATE INDEX IF NOT EXISTS idx_task_user_deadline ON Task (user_id, deadline);
@@ -75,6 +83,7 @@ async function initializeDatabase() {
         CREATE INDEX IF NOT EXISTS idx_reflection_subject_created ON ReflectionItem (subject_id, created_at, id);
         CREATE INDEX IF NOT EXISTS idx_material_subject ON Material (subject_id);
         CREATE INDEX IF NOT EXISTS idx_material_task ON Material (task_id);
+        CREATE INDEX IF NOT EXISTS idx_journal_user_created ON JournalEntry (user_id, created_at, id);
       `);
       const legacyReviews = await database.getFirstAsync("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'ReviewItem'");
       if (legacyReviews) {

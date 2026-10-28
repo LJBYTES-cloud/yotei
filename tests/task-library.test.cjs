@@ -14,20 +14,23 @@ function find(node, type, predicate = () => true, includeHidden = false) {
 }
 
 // Compile actual components; substitute only hooks/native/storage transports.
-async function setup(file, { failure = false, hold = false, warn = false, dark = false, reduceMotion = false, holdAnimations = false } = {}) {
+async function setup(file, { failure = false, hold = false, warn = false, dark = false, reduceMotion = false, holdAnimations = false, platform = 'ios', realAuth = true } = {}) {
   let slots = [];
-  const instances = new Map(), alerts = [], updates = [], createdSubjects = [], subjectUpdates = [], subjectDeletions = [], deletions = [], actions = [], schedules = [], animations = [];
+  const instances = new Map(), memoized = new Set(), alerts = [], updates = [], createdSubjects = [], subjectUpdates = [], subjectDeletions = [], deletions = [], actions = [], schedules = [], animations = [];
   let routeSubjectId = '7';
   let cursor = 0, effects = [], refreshes = 0, saved = 0, release;
   const gate = hold ? new Promise(resolve => { release = resolve; }) : Promise.resolve();
   class StudyLoadWarning extends Error { constructor() { super('Heavy day'); this.days = [{ date: '2026-10-26', current_minutes: 0, added_minutes: 270, total_minutes: 270 }]; } }
-  const data = { tasks: [task], subjects: [subject, { ...subject, id: 8, name: 'Chemistry' }], blocks: [], materials: [], reflections: [], daySessions: [], weekly: [], minutes: 0, ready: true, refreshing: false,
+  const data = { tasks: [task], subjects: [subject, { ...subject, id: 8, name: 'Chemistry' }], blocks: [], materials: [], journal: [], reflections: [], daySessions: [], weekly: [], minutes: 0, ready: true, refreshing: false,
     refresh: async () => { refreshes++; } };
   const study = { data, user: { id: 'owner', name: 'Alex', email: 'alex@example.com' }, refreshInBackground() {}, today: '2026-10-20', clock: Date.parse('2026-10-20T11:00:00Z'), disabled: false, demoRevision: 0,
     refresh: data.refresh, openEntry: (...args) => actions.push(['entry', ...args]), openEditSubject: value => actions.push(['editSubject', value]), confirmDeleteSubject: value => actions.push(['deleteSubject', value]),
     openEditTask: value => actions.push(['edit', value]), confirmDeleteTask: value => actions.push(['delete', value]),
-    openSchedule: value => actions.push(['schedule', value]) };
+    openSchedule: value => actions.push(['schedule', value]), openJournalDetail: value => actions.push(['openJournal', value]),
+    markDone: value => actions.push(['markDone', value]), confirmDeleteBlock: value => actions.push(['deleteBlock', value]) };
+  const time = { is24Hour: true, set24Hour: value => { time.is24Hour = value; } };
   const hooks = {
+    memo: component => { memoized.add(component); return component; },
     createContext: () => ({ Provider: 'Provider' }), useContext: () => study,
     useState(initial) {
       const owner = slots;
@@ -56,51 +59,70 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
   const modules = {
     react: hooks,
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }), Fragment: 'Fragment' },
-    'react-native': { ...Object.fromEntries(['ActivityIndicator', 'FlatList', 'Pressable', 'RefreshControl', 'ScrollView', 'SectionList', 'KeyboardAvoidingView', 'Switch', 'Text', 'View'].map(name => [name, name])),
-      StyleSheet: { create: value => value }, Platform: { OS: 'ios' }, Linking: { openURL: async value => { actions.push(['openURL', value]); if (failure) throw new Error('Unavailable'); } }, Alert: { alert: (...args) => alerts.push(args) }, AppState: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} },
+    'react-native': { ...Object.fromEntries(['ActivityIndicator', 'FlatList', 'Pressable', 'RefreshControl', 'ScrollView', 'SectionList', 'KeyboardAvoidingView', 'Modal', 'Switch', 'Text', 'View'].map(name => [name, name])),
+      StyleSheet: { create: value => value }, Platform: { OS: platform }, Linking: { openURL: async value => { actions.push(['openURL', value]); if (failure) throw new Error('Unavailable'); } }, Alert: { alert: (...args) => alerts.push(args) }, AppState: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} },
       AccessibilityInfo: { isReduceMotionEnabled: async () => reduceMotion, addEventListener: () => ({ remove() {} }) },
       Animated: { View: 'AnimatedView', Value: class { constructor(value) { this.value = value; } setValue(value) { this.value = value; } interpolate({ outputRange }) { return this.value ? outputRange.at(-1) : outputRange[0]; } },
         timing: (value, config) => { const animation = { ...config, value, stopped: false }; return { start() { animations.push(animation); if (!holdAnimations) value.setValue(config.toValue); }, stop() { animation.stopped = true; } }; } } },
     '@expo/vector-icons/Ionicons': { default: 'Icon' },
     'expo-linear-gradient': { LinearGradient: 'Gradient' },
-    'react-native-chart-kit': { LineChart: 'LineChart' },
-    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    '@react-native-community/datetimepicker': { default: 'NativePicker', DateTimePickerAndroid: { open: options => actions.push(['picker', options]), dismiss: async () => {} } },
+    'react-native-chart-kit': { LineChart: 'LineChart' }, 'react-native-svg': { Circle: 'Circle' },
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider' },
     'expo-router': { useFocusEffect: cb => hooks.useEffect(cb, [cb]), useScrollToTop() {}, useLocalSearchParams: () => ({ subjectId: routeSubjectId }), Redirect: 'Redirect', router: { navigate: value => actions.push(['navigate', value]), push: value => actions.push(['push', value]), canGoBack: () => true, back: () => actions.push(['back']) } },
-    '../auth': { USE_REAL_AUTH: true },
-    '../auth/SessionContext': { useSession: () => ({ user: { id: 'owner' }, signingOut: false, signOut() {} }) },
+    '../auth': { USE_REAL_AUTH: realAuth },
+    '../auth/SessionContext': { useSession: () => ({ user: study.user, signingOut: false, signOut() {}, updatingName: false,
+      updateName: async name => { actions.push(['name', name]); study.user = { ...study.user, name }; } }) },
+    './index': { authService: { getCurrentUser: async () => study.user,
+      updateName: async name => { actions.push(['nameAdapter', name]); await gate; if (failure) throw new Error('Name unavailable'); return { ...study.user, name }; },
+      signOut: async () => { actions.push(['signOut']); } } },
+    '../TimeFormatContext': { useTimeFormat: () => time },
     '../ThemeContext': theme,
     '../db/SubjectService': { createSubject: async (...args) => { createdSubjects.push(args); if (failure) throw new Error('Disk error'); }, deleteSubject: async (...args) => { subjectDeletions.push(args); await gate; if (failure) throw new Error('Disk error'); }, updateSubject: async (...args) => { subjectUpdates.push(args); } },
     '../db/TaskService': { createTask: async () => { throw new Error('Unexpected task creation'); },
       updateTask: async (...args) => { updates.push(args); await gate; if (failure) throw new Error('Disk error'); },
       deleteTask: async (...args) => { deletions.push(args); await gate; if (failure) throw new Error('Disk error'); } },
     '../db/dateUtils': { getLocalDateKey: () => '2026-10-20', getLocalDayRange: () => ({ start: '2026-10-20T00:00:00Z', end: '2026-10-21T00:00:00Z' }) },
-    '../db/StudyBlockService': { finishStudyBlock: async (_user, id) => ({ id, subject_id: 7, subject_name: 'Biology', task_title: 'Read cells', status: 'done', actual_study_seconds: 600 }), pauseStudyBlock() {}, resumeStudyBlock() {}, startStudyBlock() {},
+    '../db/StudyBlockService': { finishStudyBlock: async (_user, id) => ({ id, subject_id: 7, subject_name: 'Biology', task_title: 'Read cells', status: 'done', actual_study_seconds: 600 }),
+      pauseStudyBlock: async (...args) => actions.push(['timer-break', ...args]), resumeStudyBlock: async (...args) => actions.push(['timer-resume', ...args]), startStudyBlock: async (...args) => actions.push(['timer-start', ...args]),
+      markStudyBlockDone: async (user, id) => { actions.push(['markDone', user, id]); await gate; if (failure) throw new Error('Disk error'); return { id, status: 'done', actual_start_time: null, actual_end_time: new Date().toISOString(), actual_study_seconds: 1800 }; },
+      deleteStudyBlock: async (...args) => { actions.push(['deleteBlock', ...args]); await gate; if (failure) throw new Error('Disk error'); },
       createStudyBlock: async (...args) => { schedules.push(args); if (warn && !args[2]?.allowHeavyDay) throw new StudyLoadWarning(); return { id: 27, ...args[1] }; },
       rescheduleStudyBlock: async (...args) => { schedules.push(args); return { id: 28, ...args[3] }; } },
     '../db/StudyLoadService': { StudyLoadWarning },
     '../db/seedData': { seedDemoData: async user => actions.push(['seed', user]) },
+    '../db/JournalService': { createJournalEntry: async (...args) => { actions.push(['journal', ...args]); await gate; if (failure) throw new Error('Disk error'); },
+      updateJournalEntry: async (...args) => { actions.push(['editJournal', ...args]); await gate; if (failure) throw new Error('Disk error'); },
+      deleteJournalEntry: async (...args) => { actions.push(['deleteJournal', ...args]); await gate; if (failure) throw new Error('Disk error'); } },
+    '../utils/materialFiles': { pickMaterialFile: async () => { actions.push(['pick']); return { uri: 'file:///documents/materials/user-owner/notes.pdf', name: 'Notes.pdf' }; }, discardMaterialFile: async (...args) => actions.push(['discard', ...args]) },
     '../db/ReflectionService': { createReflectionItem: async (...args) => { actions.push(['reflection', ...args]); await gate; if (failure) throw new Error('Disk error'); } },
     '../db/MaterialService': { createMaterial: async (...args) => { actions.push(['createMaterial', ...args]); if (failure) throw new Error('Disk error'); }, updateMaterial: async (...args) => { actions.push(['updateMaterial', ...args]); if (failure) throw new Error('Disk error'); }, deleteMaterial: async (...args) => { actions.push(['deleteMaterial', ...args]); } },
     '../db/ProgressService': { getStudyDayDetails: async (...args) => { actions.push(['day', ...args]); if (failure) throw new Error('Read failed'); return data.daySessions; } },
     '../db/BackupService': { exportBackup() {}, importBackup() {} },
     '../hooks/useDashboardData': { useDashboardData: () => data },
     './EntrySheet': { default: 'EntrySheet' }, './ScheduleSheet': { default: 'ScheduleSheet' }, './CompletionReflectionSheet': { default: 'CompletionReflectionSheet' }, './MaterialSheet': { default: 'MaterialSheet' }, './ProgressDetailsModal': { default: 'ProgressDetailsModal' }, './InfoModal': { default: 'InfoModal' }, '../components/StudyMaterials': { default: 'StudyMaterials' },
-    './DateTimeField': { default: 'DateTimeField' },
+    './DateTimeField': { default: 'DateTimeField' }, './ItemActionsMenu': { default: 'ItemActionsMenu' }, './JournalEntrySheet': { default: 'JournalEntrySheet' },
+    './JournalDetailSheet': { default: 'JournalDetailSheet' }, '../components/DisplayNameSheet': { default: 'DisplayNameSheet' },
+    './BlockDeletionModal': { default: 'BlockDeletionModal' },
     './StudyWorkspace': { useStudy: () => study }, '../components/StudyWorkspace': { useStudy: () => study },
     './ui': controls, '../components/ui': controls,
     './studyStyles': { createStudyStyles() {} }, '../components/studyStyles': { createStudyStyles() {} },
     '../components/StudyCards': Object.fromEntries(['CoachingCard', 'EmptyState', 'Feedback', 'FocusCard', 'ScreenHeader', 'TaskCard'].map(name => [name, name])),
-    '../components/WeeklyProgressCard': { default: 'WeeklyProgressCard' }, '../components/FocusTimer': { default: 'FocusTimer' },
+    '../components/WeeklyProgressCard': { default: 'WeeklyProgressCard' }, '../components/FocusTimer': { default: 'FocusTimer' }, '../components/CoachCard': { default: 'CoachCard' },
     '../components/SubjectBookshelf': { default: 'Bookshelf' },
     './theme': { formatTime() {}, formatMinutes() {} }, '../components/theme': { formatMinutes() {} }, '../utils/focusTimer': { formatElapsed() {} },
   };
-  const context = vm.createContext({ Date, URL, setInterval: () => 1, clearInterval() {} });
+  const context = vm.createContext({ Date, URL, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: handle => clearImmediate(handle), setInterval: () => 1, clearInterval() {} });
+  const timeHelpers = new vm.SourceTextModule(fs.readFileSync('utils/timeFormat.js', 'utf8'), { context });
+  await timeHelpers.link(() => { throw new Error('Unexpected time helper import'); }); await timeHelpers.evaluate();
+  time.formatTime = value => timeHelpers.namespace.formatTime(value, time.is24Hour);
+  time.formatDateTime = value => timeHelpers.namespace.formatDateTime(value, time.is24Hour);
   const source = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
     fileName: file.replace(/\.js$/, '.jsx'), compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const module = new vm.SourceTextModule(source, { context });
   await module.link(async name => {
-    if (name === '../utils/subjectFields' || name === '../utils/scheduling' || name === '../utils/materialLinks' || name.endsWith('/typography')) {
+    if (['../utils/subjectFields', '../utils/scheduling', '../utils/materialLinks', '../utils/focusTimer', '../utils/coaching', '../utils/progressChart'].includes(name) || name.endsWith('/typography')) {
       const sourcePath = name.endsWith('/typography') ? 'components/typography.js' : name.slice(3) + '.js';
       const fields = new vm.SourceTextModule(fs.readFileSync(sourcePath, 'utf8'), { context });
       await fields.link(() => { throw new Error('Unexpected field dependency'); }); return fields;
@@ -122,9 +144,10 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
     for (const effect of effects) effect();
     return output;
   }
-  return { render, data, study, alerts, updates, createdSubjects, subjectUpdates, subjectDeletions, deletions, actions, schedules, animations, release: () => release?.(), route: value => { routeSubjectId = value; },
+  return { render, data, study, time, memoized, alerts, updates, createdSubjects, subjectUpdates, subjectDeletions, deletions, actions, schedules, animations, release: () => release?.(), route: value => { routeSubjectId = value; },
     setDark: value => { dark = value; }, finishAnimations: () => { for (const animation of animations) if (!animation.stopped) animation.value.setValue(animation.toValue); },
     fail: value => { failure = value; }, saved: () => saved, onSaved: () => { saved++; },
+    unmount: () => { for (const instance of instances.values()) for (const hook of instance) hook?.cleanup?.(); },
     refreshes: () => refreshes, flush: () => new Promise(resolve => setImmediate(resolve)) };
 }
 
@@ -146,6 +169,10 @@ test('weekly progress waits for layout, preserves zero days, resizes and support
   const background = () => find(s.render(props), 'Pressable', p => p.accessibilityLabel?.startsWith('Open Weekly Summary'));
   background().props.onPress();
   assert.equal(find(s.render(props), 'ProgressDetailsModal').props.selection, '2026-10-16', 'a point tap must not bubble into the weekly summary');
+  const target = chart.renderDotContent({ x: 70, y: 20, index: 4 });
+  assert.ok(target.props.r >= 22, 'the transparent target is at least 44 pixels wide');
+  target.props.onPressIn(); background().props.onPress();
+  assert.equal(find(s.render(props), 'ProgressDetailsModal').props.selection, '2026-10-18');
   background().props.onStartShouldSetResponderCapture(); background().props.onPress();
   assert.equal(find(s.render(props), 'ProgressDetailsModal').props.selection, 'week');
   measure(360); s.setDark(true);
@@ -155,7 +182,8 @@ test('weekly progress waits for layout, preserves zero days, resizes and support
   props.days = days.map(day => ({ ...day, minutes: 0 }));
   chart = find(s.render(props), 'LineChart').props;
   assert.ok(chart.data.datasets[0].data.every(value => value === 0));
-  assert.equal(chart.fromZero, true); assert.equal(chart.fromNumber, 1, 'an all-zero week retains a nonzero y-axis range');
+  assert.equal(chart.fromZero, true); assert.equal(chart.fromNumber, 60, 'an all-zero week retains a whole-hour range');
+  assert.equal(chart.segments, 1); assert.equal(chart.formatYLabel('60'), '1h');
   assert.ok(find(s.render(props), 'Pressable', p => p.accessibilityLabel?.includes('0 minutes')));
 });
 
@@ -165,7 +193,7 @@ test('progress detail dialogs show week aggregates, actual/break allocation, ove
   const props = { userId: 'owner', days, selection: 'week', onDay() {}, onClose() {} };
   assert.equal(s.render(props).props.title, 'Weekly Summary');
   assert.ok(find(s.render(props), 'Text', p => p.children === '10 min'), 'average includes all seven dates');
-  s.data.daySessions = [{ id: 1, task_title: 'Read cells', subject_name: 'Biology', actual_start_time: '2026-10-20T10:00:00Z', studied_minutes: 25, planned_minutes: 30, break_minutes: 2, elapsed_minutes: 27, overrun_minutes: 10 }];
+  s.data.daySessions = [{ id: 1, task_title: 'Read cells', subject_name: 'Biology', actual_start_time: '2026-10-20T10:00:00Z', studied_minutes: 25, planned_minutes: 30, break_minutes: 2, elapsed_minutes: 27, overrun_minutes: 0, finished_late_minutes: 10 }];
   props.selection = '2026-10-20'; s.render(props); await s.flush();
   assert.ok(find(s.render(props), 'Text', p => p.children === 'Read cells'));
   assert.deepEqual(s.actions, [['day', 'owner', '2026-10-20']]);
@@ -180,9 +208,9 @@ test('material sheets preserve failed drafts, save edits and open links through 
   const material = { id: 6, subject_id: 7, title: 'Notes', url_or_note: 'https://example.com' };
   const props = { userId: 'owner', subjectId: 7, material, onClose() {}, onSaved: s.onSaved };
   find(s.render(props), 'Input', p => p.label === 'Title').props.onChangeText('Lecture Notes');
-  find(s.render(props), 'Button').props.onPress(); await s.flush();
+  find(s.render(props), 'Button', p => p.label === 'Save Material').props.onPress(); await s.flush();
   assert.equal(s.saved(), 0); assert.equal(find(s.render(props), 'Input', p => p.label === 'Title').props.value, 'Lecture Notes');
-  s.fail(false); find(s.render(props), 'Button').props.onPress(); await s.flush();
+  s.fail(false); find(s.render(props), 'Button', p => p.label === 'Save Material').props.onPress(); await s.flush();
   assert.equal(s.saved(), 1); assert.equal(s.actions.at(-1)[0], 'updateMaterial');
   const links = await setup('components/StudyMaterials.js', { failure: true });
   links.data.materials = [material]; links.study.openMaterial = (...args) => links.actions.push(['edit', ...args]); links.study.confirmDeleteMaterial = value => links.actions.push(['delete', value]);
@@ -192,12 +220,12 @@ test('material sheets preserve failed drafts, save edits and open links through 
   assert.match(find(render(), 'Message').props.text, /could not be opened/);
   links.fail(false); find(render(), 'Pressable', p => p.accessibilityRole === 'link').props.onPress(); await links.flush();
   assert.equal(find(render(), 'Message').props.text, '');
-  find(render(), 'Button', p => p.label === 'Edit').props.onPress(); find(render(), 'Button', p => p.label === 'Delete').props.onPress();
+  find(render(), 'ItemActionsMenu').props.onEdit(); find(render(), 'ItemActionsMenu').props.onDelete();
   assert.deepEqual(links.actions.slice(-2), [['edit', 7, material], ['delete', material]]);
 });
 
-test('demo loading works for real-auth presentations and completion creates a linked reflection once', async () => {
-  const s = await setup('components/StudyWorkspace.js');
+test('mock demo loading and completion create a linked reflection once', async () => {
+  const s = await setup('components/StudyWorkspace.js', { realAuth: false });
   const render = () => s.render({ children: 'screen' }, 'StudyWorkspace').props.value;
   await render().loadDemoData();
   assert.deepEqual(s.actions[0], ['seed', 'owner']); assert.equal(render().demoRevision, 1);
@@ -208,17 +236,124 @@ test('demo loading works for real-auth presentations and completion creates a li
   assert.deepEqual(JSON.parse(JSON.stringify(s.actions.find(action => action[0] === 'reflection'))), ['reflection', 'owner', { subject_id: 7, study_block_id: 27, note: 'I can now explain the stages.' }]);
 });
 
-test('reflection journal groups notes by subject and preserves an unsaved draft on failure', async () => {
-  const s = await setup('screens/ReflectionsScreen.js'); let saved = false;
-  s.data.reflections = [{ id: 1, subject_id: 7, subject_name: 'Biology', note: 'Cells', created_at: '2026-10-20T10:00:00Z' }, { id: 2, subject_id: 8, subject_name: 'Chemistry', note: 'Atoms', created_at: '2026-10-20T10:00:00Z' }];
-  s.study.addReflection = async () => saved;
-  const header = () => find(s.render(), 'SectionList').props.ListHeaderComponent;
-  find(header(), 'Input').props.onChangeText('More practice with cells.');
-  find(header(), 'Button', p => p.label === 'Save Reflection').props.onPress(); await s.flush();
-  assert.equal(find(header(), 'Input').props.value, 'More practice with cells.');
-  saved = true; find(header(), 'Button', p => p.label === 'Save Reflection').props.onPress(); await s.flush();
-  assert.equal(find(header(), 'Input').props.value, '');
-  assert.deepEqual(JSON.parse(JSON.stringify(find(s.render(), 'SectionList').props.sections.map(group => [group.title, group.data.length]))), [['Biology', 1], ['Chemistry', 1]]);
+test('Journal renders a unified feed and opens the manual entry sheet', async () => {
+  const s = await setup('screens/JournalScreen.js'); let opened = 0;
+  s.study.openJournalEntry = () => { opened++; };
+  s.data.journal = [{ id: 'entry-1', kind: 'entry', title: 'Plan', content: 'Next steps', created_at: '2026-10-21T10:00:00Z' },
+    { id: 'reflection-1', kind: 'reflection', title: 'Cells', content: 'Learned the stages', created_at: '2026-10-20T10:00:00Z' }];
+  const list = find(s.render(), 'FlatList');
+  assert.equal(list.props.data, s.data.journal);
+  assert.equal(list.props.keyExtractor(s.data.journal[0]), 'entry-1');
+  find(list.props.ListHeaderComponent, 'Button', p => p.label === 'New Entry').props.onPress(); assert.equal(opened, 1);
+  for (const [index, label] of ['Journal Entry', 'Session Reflection'].entries()) {
+    const row = list.props.renderItem({ item: s.data.journal[index] });
+    assert.ok(s.memoized.has(row.type));
+    assert.ok(find(s.render(row.props, row.type), 'Text', p => p.children === label));
+    find(s.render(row.props, row.type), 'Pressable').props.onPress();
+    assert.equal(s.actions.at(-1)[0], 'openJournal'); assert.equal(s.actions.at(-1)[1], s.data.journal[index]);
+  }
+});
+
+test('item actions wait for modal dismissal before editing and expose no inline task action buttons', async () => {
+  const s = await setup('components/ItemActionsMenu.js'); let edited = 0, deleted = 0;
+  const props = { label: 'Read Cells', onEdit: () => { edited++; }, onDelete: () => { deleted++; } };
+  const render = () => s.render(props);
+  assert.equal(find(render(), 'Modal'), undefined);
+  find(render(), 'Pressable').props.onPress();
+  find(render(), 'Button', p => p.label === 'Edit').props.onPress();
+  assert.equal(edited, 0); assert.equal(find(render(), 'Modal').props.visible, false);
+  find(render(), 'Modal').props.onDismiss(); assert.equal(edited, 1);
+  find(render(), 'Pressable').props.onPress();
+  find(render(), 'Button', p => p.label === 'Delete').props.onPress();
+  find(render(), 'Modal').props.onDismiss(); assert.equal(deleted, 1);
+  const card = await setup('components/StudyCards.js');
+  const tree = card.render({ task }, 'TaskCard');
+  assert.ok(find(tree, 'ItemActionsMenu'));
+  assert.equal(find(tree, 'Text', p => p.children === 'Edit' || p.children === 'Delete'), undefined);
+  const android = await setup('components/ItemActionsMenu.js', { platform: 'android' });
+  find(android.render(props), 'Pressable').props.onPress();
+  find(android.render(props), 'Button', p => p.label === 'Edit').props.onPress();
+  android.render(props); await android.flush();
+  assert.equal(edited, 2, 'Android finishes after commit without relying on onDismiss');
+});
+
+test('custom menu options and labels preserve dismissal ordering and invoke each action once', async () => {
+  const s = await setup('components/ItemActionsMenu.js'); const calls = [];
+  const props = { label: 'Cells', actions: [{ label: 'Mark as Done', onPress: () => calls.push('done') }, { label: 'Delete Block', tone: 'danger', onPress: () => calls.push('delete') }] };
+  const render = () => s.render(props);
+  find(render(), 'Pressable').props.onPress();
+  assert.equal(find(render(), 'Button', p => p.label === 'Edit'), undefined);
+  const done = find(render(), 'Button', p => p.label === 'Mark as Done').props.onPress;
+  done(); done(); assert.deepEqual(calls, []);
+  find(render(), 'Modal').props.onDismiss(); assert.deepEqual(calls, ['done']);
+  find(render(), 'Pressable').props.onPress();
+  find(render(), 'Button', p => p.label === 'Delete Block').props.onPress();
+  assert.deepEqual(calls, ['done'], 'the delete confirmation must wait until the menu is dismissed');
+  find(render(), 'Modal').props.onDismiss(); assert.deepEqual(calls, ['done', 'delete']);
+  const legacy = await setup('components/ItemActionsMenu.js');
+  const labels = { label: 'Cells', editLabel: 'Complete', onEdit: () => calls.push('complete') };
+  find(legacy.render(labels), 'Pressable').props.onPress();
+  assert.ok(find(legacy.render(labels), 'Button', p => p.label === 'Complete'));
+  assert.equal(find(legacy.render(labels), 'Button', p => p.label === 'Delete'), undefined);
+});
+
+test('starting with an active or paused session shows the exact toast without touching SQLite, while break/resume still work', async () => {
+  const s = await setup('components/StudyWorkspace.js');
+  const state = () => s.render({ children: 'screen' }, 'StudyWorkspace').props.value;
+  for (const break_started_at of [null, '2026-10-20T10:15:00Z']) {
+    s.data.blocks = [{ id: 7, status: 'active', break_started_at }];
+    await state().controlTimer(12, 'start');
+    assert.equal(state().notice, 'You already have a session in progress. Finish it before starting a new one.');
+    assert.equal(state().workingBlock, null); assert.equal(s.refreshes(), 0); assert.equal(s.actions.length, 0);
+  }
+  await state().controlTimer(7, 'break'); assert.deepEqual(s.actions.at(-1), ['timer-break', 'owner', 7]);
+  await state().controlTimer(7, 'resume'); assert.deepEqual(s.actions.at(-1), ['timer-resume', 'owner', 7]);
+  s.data.blocks = [{ id: 12, status: 'scheduled' }];
+  await state().controlTimer(12, 'start'); assert.deepEqual(s.actions.at(-1), ['timer-start', 'owner', 12]);
+});
+
+test('Settings switch is off for Light and on for Dark, without redundant help icons', async () => {
+  const s = await setup('screens/SettingsScreen.js');
+  assert.equal(find(s.render(), 'Switch').props.value, false);
+  assert.equal(find(s.render(), 'ScreenHeader').props.subtitle, undefined);
+  assert.equal(find(s.render(), 'FieldLabel', p => Boolean(p.help) && p.label !== 'Data Management'), undefined);
+  s.setDark(true); assert.equal(find(s.render(), 'Switch').props.value, true);
+});
+
+test('file picker fills the material draft, saves the permanent URI and cleans up only unsaved copies', async () => {
+  const s = await setup('components/MaterialSheet.js');
+  const props = { userId: 'owner', subjectId: 7, onClose() {}, onSaved: s.onSaved };
+  assert.equal(find(s.render(props), 'Input', p => p.label.includes('URL')), undefined);
+  const browse = find(s.render(props), 'Button', p => p.label === 'Browse File Manager').props.onPress;
+  browse(); browse(); await s.flush();
+  assert.equal(s.actions.filter(action => action[0] === 'pick').length, 1);
+  assert.equal(find(s.render(props), 'Input', p => p.label === 'Title').props.value, 'Notes.pdf');
+  find(s.render(props), 'Button', p => p.label === 'Save Material').props.onPress(); await s.flush();
+  const input = s.actions.find(action => action[0] === 'createMaterial')[3];
+  assert.equal(input.local_file_path, 'file:///documents/materials/user-owner/notes.pdf');
+  s.unmount(); assert.equal(s.actions.some(action => action[0] === 'discard'), false);
+  const cancelled = await setup('components/MaterialSheet.js');
+  find(cancelled.render(props), 'Button', p => p.label === 'Browse File Manager').props.onPress(); await cancelled.flush();
+  cancelled.unmount(); await cancelled.flush();
+  assert.equal(cancelled.actions.at(-1)[0], 'discard');
+});
+
+test('manual journal draft validates, survives failure and saves through the workspace once', async () => {
+  const s = await setup('components/JournalEntrySheet.js'); let success = false, calls = 0;
+  const props = { busy: false, onClose() {}, onSave: async () => { calls++; return success; } };
+  const render = () => s.render(props);
+  find(render(), 'Button').props.onPress(); await s.flush(); assert.equal(calls, 0);
+  find(render(), 'Input', p => p.label === 'Title').props.onChangeText('Study Plan');
+  find(render(), 'Input', p => p.label === 'Content').props.onChangeText('Practise diagrams.');
+  const save = find(render(), 'Button').props.onPress; save(); save(); await s.flush();
+  assert.equal(calls, 1); assert.equal(find(render(), 'Input', p => p.label === 'Content').props.value, 'Practise diagrams.');
+  success = true; find(render(), 'Button').props.onPress(); await s.flush(); assert.equal(calls, 2);
+  const workspace = await setup('components/StudyWorkspace.js');
+  const state = () => workspace.render({ children: 'screen' }, 'StudyWorkspace').props.value;
+  state().openJournalEntry(); assert.equal(state().journalEntryOpen, true);
+  await state().saveJournalEntry({ title: 'Study Plan', content: 'Practise diagrams.' });
+  assert.equal(state().journalEntryOpen, false); assert.equal(state().notice, 'Journal entry saved.');
+  assert.equal(workspace.refreshes(), 1);
 });
 
 test('post-session reflection keeps the note on failure, saves once and supports skipping', async () => {
@@ -237,6 +372,220 @@ test('post-session reflection keeps the note on failure, saves once and supports
   find(render(), 'Button', p => p.label === 'Skip').props.onPress(); assert.equal(closed, 1);
 });
 
+test('Settings hides demo data in real auth, exposes JSON help and saves the clock switch', async () => {
+  const real = await setup('screens/SettingsScreen.js');
+  assert.equal(find(real.render(), 'Button', p => p.label === 'Load Demo Data'), undefined);
+  const help = find(real.render(), 'FieldLabel', p => p.label === 'Data Management').props.help;
+  assert.match(help, /only supported way to back up/);
+  const toggle = find(real.render(), 'Switch', p => p.accessibilityLabel === '24-Hour Time');
+  toggle.props.onValueChange(false); assert.equal(find(real.render(), 'Switch', p => p.accessibilityLabel === '24-Hour Time').props.value, false);
+  find(real.render(), 'Button', p => p.label === 'Edit Display Name').props.onPress();
+  const profile = find(real.render(), 'DisplayNameSheet');
+  await profile.props.onSave('New Name'); profile.props.onClose();
+  assert.ok(find(real.render(), 'Text', p => p.children === 'New Name'));
+  const workspace = await setup('components/StudyWorkspace.js');
+  await workspace.render({ children: 'screen' }, 'StudyWorkspace').props.value.loadDemoData();
+  assert.equal(workspace.actions.some(action => action[0] === 'seed'), false, 'real-mode demo mutation is guarded too');
+});
+
+test('new subject codes start empty and editing retains the saved code', async () => {
+  const s = await setup('components/EntrySheet.js');
+  const props = { kind: 'subject', userId: 'owner', subjects: s.data.subjects, onSaved: s.onSaved, onClose() {}, onDeleted() {} };
+  const input = find(s.render(props), 'Input', p => p.label === 'Subject Code');
+  assert.equal(input.props.value, ''); assert.equal(input.props.placeholder, 'e.g. GEN-101');
+  const edit = await setup('components/EntrySheet.js');
+  assert.equal(find(edit.render({ ...props, editingSubject: subject }), 'Input', p => p.label === 'Subject Code').props.value, subject.subject_code);
+});
+
+test('duration replacement is anchored to Start even across rapid edits and final save', async () => {
+  const s = await setup('components/ScheduleSheet.js');
+  const props = { userId: 'owner', task, onClose() {}, onSaved: s.onSaved };
+  const render = () => s.render(props);
+  const change = find(render(), 'Input', p => p.label === 'Duration (Optional)').props.onChangeText;
+  const start = find(render(), 'DateTimeField', p => p.label === 'Start').props.value;
+  change('1h'); change('2h'); change('45m');
+  assert.equal(find(render(), 'DateTimeField', p => p.label === 'End').props.value.getTime() - start.getTime(), 45 * 60000);
+  find(render(), 'Button', p => p.label === 'Save Session').props.onPress(); await s.flush();
+  assert.equal(Date.parse(s.schedules[0][1].end_time) - Date.parse(s.schedules[0][1].start_time), 45 * 60000);
+});
+
+test('native time fields follow the saved format in their labels and Android/iOS controls', async () => {
+  for (const platform of ['android', 'ios']) {
+    const s = await setup('components/DateTimeField.js', { platform }); s.time.is24Hour = false;
+    const props = { label: 'Start', help: 'Choose Start', value: new Date('2026-10-20T17:30:00'), minimumDate: new Date('2026-10-20T00:00:00'), onChange() {} };
+    const time = find(s.render(props), 'Pressable', p => p.accessibilityLabel?.startsWith('Start time:'));
+    assert.match(time.props.accessibilityLabel, /05:30 PM/); time.props.onPress();
+    if (platform === 'android') assert.equal(s.actions.at(-1)[1].is24Hour, false);
+    else assert.equal(find(s.render(props), 'NativePicker', p => p.mode === 'time').props.locale, 'en-US');
+    s.time.is24Hour = true;
+    assert.match(find(s.render(props), 'Pressable', p => p.accessibilityLabel?.startsWith('Start time:')).props.accessibilityLabel, /17:30/);
+  }
+});
+
+test('display-name sheet keeps a failed draft, blocks duplicate saves and closes after success', async () => {
+  const s = await setup('components/DisplayNameSheet.js'); let calls = 0, closed = 0, fail = true;
+  const props = { name: 'Alex', onClose: () => { closed++; }, onSave: async () => { calls++; if (fail) throw new Error('Network unavailable'); } };
+  find(s.render(props), 'Input').props.onChangeText('Alex Tan');
+  const save = find(s.render(props), 'Button').props.onPress; save(); save(); await s.flush();
+  assert.equal(calls, 1); assert.equal(closed, 0); assert.equal(find(s.render(props), 'Input').props.value, 'Alex Tan');
+  fail = false; find(s.render(props), 'Button').props.onPress(); await s.flush(); assert.equal(closed, 1);
+});
+
+test('scheduled block actions mark done once and require confirmation before deleting only a block', async () => {
+  const card = await setup('components/StudyCards.js');
+  const block = { id: 12, status: 'scheduled', subject_name: 'Biology', subject_color: '#123ABC', start_time: '2026-10-20T10:00:00Z', end_time: '2026-10-20T10:30:00Z' };
+  const pressed = [];
+  const props = { block, today: '2026-10-20', readyToStart: false, canStart: true, disabled: false, working: false,
+    onMarkDone: id => pressed.push(['done', id]), onDelete: value => pressed.push(['delete', value.id]), onStart() {}, onReschedule() {} };
+  const cardTree = card.render(props, 'FocusCard');
+  assert.equal(find(cardTree, 'Button', p => p.label === 'Mark as Done' || p.label === 'Delete Block'), undefined);
+  const menu = find(cardTree, 'ItemActionsMenu');
+  assert.deepEqual(Array.from(menu.props.actions, action => action.label), ['Mark as Done', 'Delete Block']);
+  menu.props.actions[0].onPress(); menu.props.actions[1].onPress();
+  assert.deepEqual(pressed, [['done', 12], ['delete', 12]]);
+  const start = find(cardTree, 'Button', p => p.label === 'Start Session');
+  assert.equal(start.props.tone, 'primary'); assert.equal(start.props.disabled, true, 'future sessions cannot start early');
+  assert.equal(find(card.render({ ...props, readyToStart: true }, 'FocusCard'), 'Button', p => p.label === 'Start Session').props.disabled, false);
+  assert.equal(find(card.render({ ...props, readyToStart: true, canStart: false }, 'FocusCard'), 'Button', p => p.label === 'Start Session').props.disabled, false, 'an active-session conflict is explained on tap');
+  const s = await setup('components/StudyWorkspace.js', { hold: true });
+  s.data.blocks = [block];
+  const state = () => s.render({ children: 'screen' }, 'StudyWorkspace').props.value;
+  state().confirmDeleteBlock(block); state().confirmDeleteBlock(block);
+  assert.equal(s.alerts.length, 0); assert.equal(s.actions.length, 0);
+  assert.equal(state().blockDeletion.id, 12); assert.equal(state().blocked, true);
+  const modal = find(s.render({ children: 'screen' }, 'StudyWorkspace'), 'BlockDeletionModal');
+  assert.ok(modal); modal.props.onCancel(); assert.equal(state().blockDeletion, null);
+  state().confirmDeleteBlock(block);
+  const remove = state().deleteConfirmedBlock; remove(); remove(); await s.flush();
+  state().cancelBlockDeletion(); assert.ok(state().blockDeletion, 'in-flight deletion cannot be dismissed');
+  assert.deepEqual(s.actions, [['deleteBlock', 'owner', 12]]);
+  s.release(); await s.flush(); assert.equal(s.refreshes(), 1); assert.equal(state().blockDeletion, null);
+  const mark = await setup('components/StudyWorkspace.js', { hold: true });
+  const value = () => mark.render({ children: 'screen' }, 'StudyWorkspace').props.value;
+  const first = value().markDone(12); await value().markDone(12);
+  assert.equal(mark.actions.length, 1); mark.release(); await first;
+  assert.equal(value().reflectionPrompt.actual_study_seconds, 1800);
+});
+
+test('themed block deletion retains errors for retry and rejects unowned/resolved prompts', async () => {
+  const s = await setup('components/StudyWorkspace.js', { failure: true });
+  const block = { id: 12, status: 'scheduled', task_title: 'Cells' };
+  s.data.blocks = [block];
+  const state = () => s.render({ children: 'screen' }, 'StudyWorkspace').props.value;
+  state().confirmDeleteBlock({ ...block, id: 99 }); assert.equal(state().blockDeletion, null);
+  state().confirmDeleteBlock(block); await state().deleteConfirmedBlock();
+  assert.equal(state().blockDeletion.id, 12); assert.match(state().blockDeleteError, /Could not delete/);
+  assert.equal(state().deletingBlock, false); assert.equal(state().blocked, true);
+  s.fail(false); await state().deleteConfirmedBlock();
+  assert.equal(state().blockDeletion, null); assert.equal(state().notice, 'Block deleted.'); assert.equal(s.refreshes(), 1);
+  s.data.blocks = [{ ...block, status: 'done' }];
+  state().confirmDeleteBlock(block); assert.equal(state().blockDeletion, null);
+  assert.equal(s.alerts.length, 0);
+});
+
+test('both journal entry kinds open full text, retain failed edit drafts and require deletion confirmation', async () => {
+  for (const kind of ['entry', 'reflection']) {
+    const s = await setup('components/JournalDetailSheet.js', { failure: true });
+    const item = { id: `${kind}-1`, source_id: 1, kind, title: 'Study Notes', content: 'Full note\nSecond paragraph', created_at: '2026-10-20T10:00:00Z', subject_name: 'Biology' };
+    let removed = 0;
+    const props = { userId: 'owner', item, onClose() {}, onSaved: s.onSaved, onDeleted: () => { removed++; } };
+    const render = () => s.render(props);
+    assert.ok(find(render(), 'Text', p => p.children === item.content));
+    find(render(), 'Button', p => p.label === 'Edit').props.onPress();
+    assert.equal(Boolean(find(render(), 'Input', p => p.label === 'Title')), kind === 'entry');
+    find(render(), 'Input', p => p.label !== 'Title').props.onChangeText('Revised draft');
+    const save = find(render(), 'Button', p => p.label === 'Save Changes').props.onPress;
+    save(); save(); await s.flush();
+    assert.equal(s.actions.filter(action => action[0] === 'editJournal').length, 1);
+    assert.equal(find(render(), 'Input', p => p.label !== 'Title').props.value, 'Revised draft');
+    s.fail(false); find(render(), 'Button', p => p.label === 'Save Changes').props.onPress(); await s.flush(); assert.equal(s.saved(), 1);
+    find(render(), 'Button', p => p.label === 'Delete').props.onPress(); s.alerts[0][2][0].onPress();
+    assert.equal(removed, 0);
+    find(render(), 'Button', p => p.label === 'Delete').props.onPress();
+    const remove = s.alerts[1][2][1].onPress; remove(); remove(); await s.flush();
+    assert.equal(removed, 1); assert.equal(s.actions.filter(action => action[0] === 'deleteJournal').length, 1);
+    assert.equal(s.actions.at(-1).at(-1), kind);
+  }
+});
+
+test('session name updates replace the local profile immediately without changing ID and exclude sign-out races', async () => {
+  const s = await setup('auth/SessionContext.js', { hold: true });
+  const state = () => s.render({ children: 'screen' }, 'SessionProvider').props.value;
+  state(); await s.flush(); assert.equal(state().user.id, 'owner');
+  const saving = state().updateName('Alex Tan');
+  await assert.rejects(state().updateName('Duplicate'), /Wait/);
+  await state().signOut(); assert.equal(s.actions.some(action => action[0] === 'signOut'), false);
+  assert.equal(state().updatingName, true); s.release(); await saving;
+  assert.equal(state().user.name, 'Alex Tan'); assert.equal(state().user.id, 'owner');
+  const failed = await setup('auth/SessionContext.js', { failure: true });
+  const value = () => failed.render({ children: 'screen' }, 'SessionProvider').props.value;
+  value(); await failed.flush();
+  await assert.rejects(value().updateName('New Name'), /unavailable/);
+  assert.equal(value().user.name, 'Alex'); assert.equal(value().updatingName, false);
+});
+
+test('completion sheet shows saved start lateness after the live timer has finished', async () => {
+  const s = await setup('components/CompletionReflectionSheet.js');
+  const props = { block: { subject_name: 'Biology', task_title: 'Cells', status: 'done', start_time: '2026-10-20T09:00:00Z', actual_start_time: '2026-10-20T09:13:00Z' }, busy: false, onClose() {}, onAdd: async () => true };
+  assert.ok(find(s.render(props), 'Text', p => p.children === 'Session complete! You started 13 minutes late.'));
+  props.block.actual_start_time = props.block.start_time;
+  assert.ok(find(s.render(props), 'Text', p => p.children === 'You started exactly on time!'));
+  props.block.actual_start_time = null;
+  assert.ok(find(s.render(props), 'Text', p => p.children === 'Session complete!'));
+});
+
+test('Coach card renders only one note, handles overdue/streak data and formats best-hour suggestions', async () => {
+  const s = await setup('components/CoachCard.js');
+  const props = { tasks: [{ ...task, postpone_count: 2 }], scheduledMinutes: 300,
+    history: { completedToday: true, completedYesterday: true, bestHour: 17 }, now: Date.parse('2026-10-20T12:00:00Z') };
+  assert.ok(find(s.render(props), 'Text', p => p.children.includes?.("I noticed you've been postponing Read cells")));
+  props.tasks = [{ ...task, deadline: '2026-10-19', postpone_count: 2 }];
+  assert.ok(find(s.render(props), 'Text', p => p.children.includes?.('overdue task in Biology')));
+  props.tasks = [];
+  assert.ok(find(s.render(props), 'Text', p => p.children === 'Heavy day ahead! Remember to take breaks.'));
+  props.scheduledMinutes = 240;
+  assert.ok(find(s.render(props), 'Text', p => p.children.includes?.("You're on a 2-day streak")));
+  props.history = { ...props.history, completedYesterday: false };
+  assert.ok(find(s.render(props), 'Text', p => p.children.includes?.('17:00')));
+  s.time.is24Hour = false; props.now++;
+  assert.ok(find(s.render(props), 'Text', p => p.children.includes?.('05:00 PM')));
+  props.history = { ...props.history, bestHour: null };
+  assert.equal(s.render(props), null);
+});
+
+test('large-screen lists retain bounded virtualization and stable callbacks; static Home rows receive narrow props', async () => {
+  for (const file of ['screens/JournalScreen.js', 'screens/LibraryScreen.js', 'screens/HomeScreen.js']) {
+    const s = await setup(file);
+    s.study.controlTimer = async (...args) => s.actions.push(['timer', ...args]);
+    s.study.openReschedule = block => s.actions.push(['reschedule', block]);
+    s.data.blocks = [{ id: 42, status: 'scheduled', start_time: '2026-10-20T12:00:00Z', end_time: '2026-10-20T12:30:00Z' }];
+    s.data.journal = [{ id: 'entry-1', kind: 'entry', title: 'Plan', content: 'Next Steps', created_at: '2026-10-20T10:00:00Z' }];
+    let list = find(s.render(), 'FlatList');
+    assert.equal(list.props.initialNumToRender, 10); assert.equal(list.props.maxToRenderPerBatch, 10);
+    assert.equal(list.props.windowSize, 5); assert.equal(list.props.removeClippedSubviews, true);
+    const renderItem = list.props.renderItem;
+    const row = renderItem({ item: list.props.data[0] });
+    if (!file.includes('Home')) assert.ok(s.memoized.has(row.type));
+    else {
+      const coach = find(list.props.ListHeaderComponent, 'CoachCard');
+      assert.equal(coach.props.tasks, s.data.tasks); assert.equal(coach.props.scheduledMinutes, s.data.minutes);
+      assert.equal(find(list.props.ListHeaderComponent, 'CoachingCard'), undefined, 'Home does not stack older coaching cards');
+      assert.equal(row.props.readyToStart, false);
+      row.props.onStart(42); await s.flush(); assert.deepEqual(s.actions.at(-1), ['timer', 42, 'start']);
+    }
+    s.study.clock += 30000;
+    list = find(s.render(), 'FlatList');
+    if (!file.includes('Home')) assert.equal(list.props.renderItem, renderItem, 'unrelated clock ticks preserve callback identity');
+    else {
+      const next = list.props.renderItem({ item: list.props.data[0] });
+      assert.deepEqual(next.props, row.props, 'unchanged readiness does not invalidate memoized focus cards');
+      s.study.clock = Date.parse(s.data.blocks[0].start_time);
+      list = find(s.render(), 'FlatList');
+      assert.equal(list.props.renderItem({ item: list.props.data[0] }).props.readyToStart, true, 'readiness still changes at scheduled start');
+    }
+  }
+});
+
 test('descriptions prefill, edit and appear only on notebook task cards', async () => {
   const s = await setup('components/EntrySheet.js');
   const editing = { ...task, description: 'Read chapter 4\nDraw the stages' };
@@ -251,8 +600,8 @@ test('descriptions prefill, edit and appear only on notebook task cards', async 
   assert.equal(find(card.render({ task: editing }, 'TaskCard'), 'Text', p => p.children === editing.description), undefined);
 });
 
-test('Settings always includes demo loading and materials require confirmation before deletion', async () => {
-  const settings = await setup('screens/SettingsScreen.js'); let loaded = 0;
+test('Mock Settings includes demo loading and materials require confirmation before deletion', async () => {
+  const settings = await setup('screens/SettingsScreen.js', { realAuth: false }); let loaded = 0;
   settings.study.loadDemoData = () => { loaded++; };
   find(settings.render(), 'Button', p => p.label === 'Load Demo Data').props.onPress();
   assert.equal(loaded, 1);
@@ -349,8 +698,8 @@ test('task cards expose edit/delete actions and only render a requested missed b
   const render = hasMissedSession => s.render({ task, hasMissedSession }, 'TaskCard');
   assert.equal(find(render(false), 'Text', props => props.children === 'Missed Session'), undefined);
   assert.ok(find(render(true), 'Text', props => props.children === 'Missed Session'));
-  find(render(false), 'Pressable', props => props.accessibilityLabel === 'Edit Read cells').props.onPress();
-  find(render(false), 'Pressable', props => props.accessibilityLabel === 'Delete Read cells').props.onPress();
+  find(render(false), 'ItemActionsMenu').props.onEdit();
+  find(render(false), 'ItemActionsMenu').props.onDelete();
   assert.deepEqual(s.actions, [['edit', task], ['delete', task]]);
 });
 
@@ -438,13 +787,15 @@ test('duration-based scheduling retains the workload confirmation and reschedule
 test('Library only renders the shelf and opens a dedicated book route', async () => {
   const s = await setup('screens/LibraryScreen.js');
   const tree = s.render();
-  assert.equal(find(tree, 'FlatList'), undefined); assert.equal(find(tree, 'TaskCard'), undefined);
+  const list = find(tree, 'FlatList');
+  assert.ok(list); assert.equal(find(tree, 'TaskCard'), undefined);
   assert.equal(find(tree, 'Button', p => p.label.includes('New Task')), undefined);
-  find(tree, 'Bookshelf').props.onOpen(subject);
+  const row = list.props.renderItem({ item: list.props.data[0] });
+  find(s.render(row.props, row.type), 'Bookshelf').props.onOpen(subject);
   assert.equal(s.actions[0][0], 'push');
   assert.equal(s.actions[0][1].pathname, '/library/[subjectId]');
   assert.equal(s.actions[0][1].params.subjectId, '7');
-  find(tree, 'Button', p => p.label === 'Add Subject').props.onPress();
+  find(list.props.ListFooterComponent, 'Button', p => p.label === 'Add Subject').props.onPress();
   assert.deepEqual(s.actions.at(-1), ['entry', 'subject']);
 });
 
@@ -543,7 +894,9 @@ test('books retain identical vibrant gradients across themes and shelf add uses 
 
 test('shelf add routes a field-prefilled draft through the shared workspace and resets it for other forms', async () => {
   const library = await setup('screens/LibraryScreen.js');
-  find(library.render(), 'Bookshelf').props.onAddField('Computer Science');
+  const list = find(library.render(), 'FlatList');
+  const row = list.props.renderItem({ item: list.props.data[0] });
+  find(library.render(row.props, row.type), 'Bookshelf').props.onAddField('Computer Science');
   assert.deepEqual(library.actions.at(-1), ['entry', 'subject', null, 'Computer Science']);
   const s = await setup('components/StudyWorkspace.js');
   const tree = () => s.render({ children: 'screen' }, 'StudyWorkspace');
@@ -561,6 +914,7 @@ test('field dropdown deduplicates existing names, filters suggestions, and saves
   s.data.subjects = [subject, { ...subject, id: 8, field_of_study: ' sciences ' }, { ...subject, id: 9, field_of_study: 'Humanities' }];
   const props = { kind: 'subject', userId: 'owner', subjects: s.data.subjects, initialField: 'Computer Science', onSaved: s.onSaved, onClose() {}, onDeleted() {} };
   const render = () => s.render(props);
+  find(render(), 'Input', p => p.label === 'Subject Code').props.onChangeText('GEN-101');
   const field = () => find(render(), 'Input', p => p.label === 'Field of Study');
   assert.equal(field().props.value, 'Computer Science');
   find(render(), 'Pressable', p => p.accessibilityLabel === 'Choose Field of Study').props.onPress();

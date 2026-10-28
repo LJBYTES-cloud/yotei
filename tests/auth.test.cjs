@@ -78,6 +78,12 @@ async function coldBoot(state) {
       if (!state.remoteUser) throw new AppwriteException(401);
       state.remoteUser = null;
     }
+    async updateName({ name }) {
+      if (state.nameError) throw state.nameError;
+      if (!state.remoteUser) throw new AppwriteException(401);
+      state.remoteUser = { ...state.remoteUser, name };
+      return { $id: state.remoteUser.id, name, email: state.remoteUser.email };
+    }
   }
   const modules = new Map([
     ['expo-secure-store', synthetic('secure-store', secureStore)],
@@ -120,6 +126,32 @@ test('Appwrite: normalized email reaches registration and login, with one correc
   assert.equal(state.logs.filter(([label]) => label.includes('Client initialized')).length, 1);
   assert.equal(JSON.stringify(state.logs).includes(credentials.password), false);
 });
+
+for (const provider of ['mock', 'appwrite']) {
+  test(`${provider}: name updates preserve identity, remember choice and cold-boot restoration`, async () => {
+    const state = environment(), auth = (await coldBoot(state))[provider];
+    const original = await auth.signIn({ ...credentials, rememberMe: true });
+    const flag = [...state.values].find(([key]) => key.includes('remember-me'));
+    const updated = await auth.updateName('  Alex Tan  ');
+    assert.equal(updated.name, 'Alex Tan'); assert.equal(updated.id, original.id); assert.equal(updated.email, original.email);
+    assert.equal((await auth.getCurrentUser()).name, 'Alex Tan');
+    assert.equal(state.values.get(flag[0]), flag[1]);
+    const restored = (await coldBoot(state))[provider];
+    assert.equal((await restored.getCurrentUser()).name, 'Alex Tan');
+    for (const name of ['', ' ', 'x'.repeat(129)]) await assert.rejects(restored.updateName(name), /name/i);
+    assert.equal((await restored.getCurrentUser()).name, 'Alex Tan');
+    if (provider === 'mock') {
+      state.storageFailure = 'write';
+      await assert.rejects(restored.updateName('Failed Name'), /write/i); state.storageFailure = null;
+    } else {
+      state.nameError = new Error('Network unavailable');
+      await assert.rejects(restored.updateName('Failed Name'), /Network/); state.nameError = null;
+    }
+    assert.equal((await restored.getCurrentUser()).name, 'Alex Tan');
+    await restored.signOut();
+    await assert.rejects(restored.updateName('Signed Out'), /Sign in/);
+  });
+}
 
 test('Appwrite: duplicate-email signup logs exact details and propagates the original error', async () => {
   const state = environment();

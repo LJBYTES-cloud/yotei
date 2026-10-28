@@ -11,7 +11,12 @@ import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { SessionProvider, useSession } from './auth/SessionContext';
-import { ThemeProvider, useTheme } from './ThemeContext';
+import { ThemeProvider, lightPalette, useTheme } from './ThemeContext';
+import { TimeFormatProvider } from './TimeFormatContext';
+
+function StartupScreen() {
+  return <View style={{ flex: 1, backgroundColor: lightPalette.background }}><StatusBar style="dark" /></View>;
+}
 
 function Routes() {
   const { user, restoring, restoreError } = useSession();
@@ -59,10 +64,10 @@ export default function App() {
     Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
   });
   // Bundled assets load before screens mount; a font error permits system fallback.
-  if (!fontsLoaded && !fontError) return null;
+  if (!fontsLoaded && !fontError) return <StartupScreen />;
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <ThemeProvider><Application /></ThemeProvider>
+      <ThemeProvider fallback={<StartupScreen />}><TimeFormatProvider fallback={<StartupScreen />}><Application /></TimeFormatProvider></ThemeProvider>
     </SafeAreaProvider>
   );
 }

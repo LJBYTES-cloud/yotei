@@ -44,6 +44,7 @@ async function setup(file) {
     'expo-router/js-tabs': { BottomTabBar: 'BottomTabBar' },
     '../ThemeContext': { useTheme: () => ({ colors: colors(), isDark: dark }), useThemedStyles: factory => factory(colors()) },
     './StudyWorkspace': { useStudy: () => study }, './Toast': { default: 'Toast' }, './InfoModal': { default: 'InfoModal' },
+    './ui': { Button: 'Button', Message: 'Message' },
   };
   const context = vm.createContext({ setTimeout: (callback, delay) => { const id = ++nextTimer; timers.set(id, { callback, at: now + delay }); return id; }, clearTimeout: id => timers.delete(id) });
   const module = new vm.SourceTextModule(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
@@ -136,4 +137,29 @@ test('information dialog uses theme/fonts, scrolls and supports backdrop, close,
   s.setDark(true); tree = s.render(props);
   assert.equal(find(tree, 'View', p => p.accessibilityViewIsModal).props.style.backgroundColor, '#1C201D');
   assert.equal(find(tree, 'Text', p => p.children === props.title).props.style.color, '#F0F0F0');
+});
+
+test('block confirmation follows both themes/fonts and guards cancel/confirm while deleting', async () => {
+  const s = await setup('components/BlockDeletionModal.js'); let canceled = 0, confirmed = 0;
+  const props = { taskTitle: 'Read Chapter 4', busy: false, error: 'Could not delete this block. Try again.', onCancel: () => { canceled++; }, onConfirm: () => { confirmed++; } };
+  let tree = s.render(props);
+  assert.equal(find(tree, 'Text', p => p.children === 'Delete Block?').props.style.fontFamily, 'Merriweather_700Bold');
+  assert.equal(find(tree, 'Text', p => typeof p.children === 'string' && p.children.startsWith('Delete this scheduled')).props.style.fontFamily, 'Inter_400Regular');
+  assert.equal(find(tree, 'View', p => p.accessibilityViewIsModal).props.style.backgroundColor, '#FFFFFF');
+  assert.equal(find(tree, 'Message').props.text, props.error);
+  find(tree, 'Modal').props.onRequestClose();
+  find(tree, 'Pressable', p => p.accessibilityLabel === 'Cancel Block Deletion').props.onPress();
+  find(tree, 'Button', p => p.label === 'Cancel').props.onPress();
+  find(tree, 'Button', p => p.label === 'Delete Block').props.onPress();
+  assert.equal(canceled, 3); assert.equal(confirmed, 1);
+  props.busy = true; tree = s.render(props);
+  find(tree, 'Modal').props.onRequestClose();
+  find(tree, 'Button', p => p.label === 'Delete Block').props.onPress();
+  assert.equal(find(tree, 'Button', p => p.label === 'Cancel').props.disabled, true);
+  assert.equal(find(tree, 'Button', p => p.label === 'Delete Block').props.busy, true);
+  assert.equal(canceled, 3); assert.equal(confirmed, 1);
+  s.setDark(true); tree = s.render(props);
+  assert.equal(find(tree, 'View', p => p.accessibilityViewIsModal).props.style.backgroundColor, '#1C201D');
+  assert.equal(find(tree, 'Text', p => p.children === 'Delete Block?').props.style.color, '#F0F0F0');
+  assert.equal(s.alerts.length, 0);
 });

@@ -4,6 +4,7 @@ import * as SystemUI from 'expo-system-ui';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const THEME_KEY = 'yotei.theme';
+const THEME_VERSION = 2;
 // Keep rapid toggles (and provider remounts) in order on persistent storage.
 let themeWrites = Promise.resolve();
 
@@ -31,8 +32,8 @@ export const lightPalette = {
 /** @typedef {{ colors: ThemeColors, isDark: boolean, toggleTheme: () => void, subjectColor: (storedColor: string) => string }} ThemeValue */
 const ThemeContext = createContext(/** @type {ThemeValue | null} */ (null));
 
-/** @param {{children: import('react').ReactNode}} props */
-export function ThemeProvider({ children }) {
+/** @param {{children: import('react').ReactNode, fallback?: import('react').ReactNode}} props */
+export function ThemeProvider({ children, fallback = null }) {
   const [isDark, setIsDark] = useState(false);
   const [ready, setReady] = useState(false);
   const currentTheme = useRef(false);
@@ -41,9 +42,13 @@ export function ThemeProvider({ children }) {
     async function restore() {
       try {
         await themeWrites;
-        const saved = await AsyncStorage.getItem(THEME_KEY);
+        const raw = await AsyncStorage.getItem(THEME_KEY);
+        let saved = null;
+        try { saved = raw ? JSON.parse(raw) : null; } catch { /* Old plain-string choices belong to the reversed-switch UI. */ }
         if (active) {
-          currentTheme.current = saved === 'dark';
+          // Reset legacy/incomplete preferences to Light once. Only an explicit
+          // choice made with the corrected switch can opt back into Dark.
+          currentTheme.current = saved?.version === THEME_VERSION && saved.mode === 'dark';
           setIsDark(currentTheme.current);
         }
       } catch (error) {
@@ -57,7 +62,7 @@ export function ThemeProvider({ children }) {
     const next = !currentTheme.current;
     currentTheme.current = next;
     setIsDark(next);
-    themeWrites = themeWrites.then(() => AsyncStorage.setItem(THEME_KEY, next ? 'dark' : 'light'))
+    themeWrites = themeWrites.then(() => AsyncStorage.setItem(THEME_KEY, JSON.stringify({ version: THEME_VERSION, mode: next ? 'dark' : 'light' })))
       .catch(error => { console.warn('[ThemeContext] Could not save theme preference.', error); });
   }, []);
   useEffect(() => {
@@ -74,7 +79,7 @@ export function ThemeProvider({ children }) {
     subjectColor: (/** @type {string} */ storedColor) => isDark ? storedColor : lightPalette.text,
   }), [isDark, toggleTheme]);
   // Mount screens only once the preference is read, avoiding a wrong-theme flash.
-  if (!ready) return null;
+  if (!ready) return fallback;
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 

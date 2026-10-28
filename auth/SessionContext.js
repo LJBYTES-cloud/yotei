@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { authService } from './index';
 
 /** @typedef {import('./AuthService').AuthUser} AuthUser */
-/** @typedef {{ user: AuthUser | null, restoring: boolean, restoreError: string, retryRestore: () => void, acceptUser: (user: AuthUser) => void, signingOut: boolean, signOutError: string, signOut: () => Promise<void> }} SessionValue */
+/** @typedef {{ user: AuthUser | null, restoring: boolean, restoreError: string, retryRestore: () => void, acceptUser: (user: AuthUser) => void, signingOut: boolean, signOutError: string, signOut: () => Promise<void>, updatingName: boolean, updateName: (name: string) => Promise<void> }} SessionValue */
 const SessionContext = createContext(/** @type {SessionValue | null} */ (null));
 
 /** @param {{children: import('react').ReactNode}} props */
@@ -13,6 +13,7 @@ export function SessionProvider({ children }) {
   const [attempt, setAttempt] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState('');
+  const [updatingName, setUpdatingName] = useState(false);
   const submitting = useRef(false);
 
   useEffect(() => {
@@ -37,7 +38,20 @@ export function SessionProvider({ children }) {
     } finally { submitting.current = false; setSigningOut(false); }
   }
 
-  return <SessionContext.Provider value={{ user, restoring, restoreError, retryRestore: () => setAttempt(value => value + 1), acceptUser: setUser, signingOut, signOutError, signOut }}>{children}</SessionContext.Provider>;
+  /** Session state owns the public profile. SQLite keeps the same user ID.
+   * @param {string} name
+   */
+  async function updateName(name) {
+    if (submitting.current || !user) throw new Error('Wait for the current account action to finish.');
+    submitting.current = true; setUpdatingName(true);
+    try {
+      const updated = await authService.updateName(name);
+      if (updated.id !== user.id) throw new Error('The account changed. Sign in again before updating your name.');
+      setUser(current => current?.id === updated.id ? updated : current);
+    } finally { submitting.current = false; setUpdatingName(false); }
+  }
+
+  return <SessionContext.Provider value={{ user, restoring, restoreError, retryRestore: () => setAttempt(value => value + 1), acceptUser: setUser, signingOut, signOutError, signOut, updatingName, updateName }}>{children}</SessionContext.Provider>;
 }
 
 export function useSession() {

@@ -22,7 +22,8 @@ async function renderApplication(platform, { fontsLoaded = true, fontError = nul
     'react-native': { Platform: { OS: platform }, StyleSheet: { create: styles => styles }, Text: 'Text', View: 'View' },
     'react-native-safe-area-context': { SafeAreaProvider: 'SafeAreaProvider', initialWindowMetrics: null },
     './auth/SessionContext': { SessionProvider: 'SessionProvider', useSession: () => { throw new Error('Web must not restore a session'); } },
-    './ThemeContext': { ThemeProvider: 'ThemeProvider', useTheme: () => ({ colors: {}, isDark: true }) },
+    './ThemeContext': { ThemeProvider: 'ThemeProvider', lightPalette: { background: '#F8F6F2' }, useTheme: () => ({ colors: {}, isDark: true }) },
+    './TimeFormatContext': { TimeFormatProvider: 'TimeFormatProvider' },
     'expo-font': { useFonts: faces => { assert.equal(Object.keys(faces).length, 6); return [fontsLoaded, fontError]; } },
   };
   for (const face of ['Merriweather_400Regular', 'Merriweather_700Bold', 'Inter_400Regular', 'Inter_500Medium', 'Inter_600SemiBold', 'Inter_700Bold']) {
@@ -47,7 +48,9 @@ async function renderApplication(platform, { fontsLoaded = true, fontError = nul
   await module.evaluate();
   const root = module.namespace.default();
   if (!root) return root;
-  const application = root.props.children.props.children;
+  if (root.type.name === 'StartupScreen') return root.type();
+  let application = root.props.children;
+  while (typeof application.type === 'string') application = application.props.children;
   return application.type(application.props);
 }
 
@@ -60,7 +63,9 @@ test('web root shows the mobile notice before mounting authentication or study r
 });
 
 test('root waits for its six bundled font faces and can recover with system fallback after a font error', async () => {
-  assert.equal(await renderApplication('web', { fontsLoaded: false }), null);
+  const startup = await renderApplication('web', { fontsLoaded: false });
+  assert.equal(startup.props.style.backgroundColor, '#F8F6F2');
+  assert.equal(startup.props.children.props.style, 'dark');
   assert.equal((await renderApplication('web', { fontsLoaded: false, fontError: new Error('Font unavailable') })).type, 'View');
 });
 

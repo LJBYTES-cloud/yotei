@@ -6,7 +6,7 @@ import { createSubject, deleteSubject, updateSubject } from '../db/SubjectServic
 import { createTask, updateTask } from '../db/TaskService';
 import { Button, FieldLabel, Input, Message, Pill, Sheet } from './ui';
 import { useTheme, useThemedStyles } from '../ThemeContext';
-import { DEFAULT_SUBJECT_CODE, firstFieldColor, getFieldsOfStudy, normalizeFieldColors, normalizeFieldOfStudy, normalizeSubjectCode } from '../utils/subjectFields';
+import { firstFieldColor, getFieldsOfStudy, normalizeFieldColors, normalizeFieldOfStudy, normalizeSubjectCode } from '../utils/subjectFields';
 
 const subjectColors = [
   { name: 'Iris', color: '#C2ACF3' },
@@ -38,7 +38,7 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, ini
   const existingFields = useMemo(() => getFieldsOfStudy(subjects), [subjects]);
   const query = field.trim().toLowerCase();
   const suggestions = showAllFields ? existingFields : existingFields.filter(option => option.toLowerCase().includes(query));
-  const [code, setCode] = useState(subjectToEdit?.subject_code ?? DEFAULT_SUBJECT_CODE);
+  const [code, setCode] = useState(subjectToEdit?.subject_code ?? '');
   const [colors, setColors] = useState(() => subjectToEdit ? normalizeFieldColors(subjectToEdit.field_colors).split(',') : [subjectColors[0].color]);
   // Imported/legacy colors must remain visible and selectable while editing.
   const storedColors = subjectToEdit ? normalizeFieldColors(subjectToEdit.field_colors).split(',') : [];
@@ -95,7 +95,7 @@ export default function EntrySheet({ kind, userId, subjects, initialSubject, ini
     <Sheet kicker={kind === 'subject' ? 'Subject' : 'Task'} title={subjectToEdit ? 'Edit Subject' : taskToEdit ? 'Edit Task' : kind === 'subject' ? 'Add Subject' : 'Add Task'} onClose={onClose} busy={busy}>
       <Input label={kind === 'subject' ? 'Subject Name' : 'Task Title'} help={kind === 'subject' ? 'Subjects group related tasks and reflections.' : 'After saving, select Schedule in Library to plan this task.'} value={name} onChangeText={setName} onFocus={() => setFieldExpanded(false)} placeholder={kind === 'subject' ? 'e.g. Architecture' : 'e.g. Read chapter 3'} maxLength={kind === 'subject' ? 128 : 256} editable={!busy} returnKeyType="done" onSubmitEditing={() => void save()} />
       {kind === 'subject' ? <>
-        <Input label="Subject Code" help="A short code identifies the book on its spine, for example SE-101 or MATH-2." value={code} onChangeText={setCode} onFocus={() => setFieldExpanded(false)} placeholder="e.g. SE-101" maxLength={32} autoCapitalize="characters" autoCorrect={false} editable={!busy} />
+        <Input label="Subject Code" help="A short code identifies the book on its spine, for example SE-101 or MATH-2." value={code} onChangeText={setCode} onFocus={() => setFieldExpanded(false)} placeholder="e.g. GEN-101" maxLength={32} autoCapitalize="characters" autoCorrect={false} editable={!busy} />
         <View style={s.fieldChoice}>
           <View style={s.fieldInputRow}>
             <View style={s.fieldInput}><Input label="Field of Study" help="Choose an existing field or type a new one. Subjects with the same field share a shelf." value={field}

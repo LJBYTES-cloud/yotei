@@ -161,7 +161,7 @@ export default function AuthScreen() {
                       </Pressable>
                     ))}
                   </View>
-                  <View style={styles.cardTitleRow}><Text style={[styles.cardTitle, styles.flex]}>{isSignUp ? 'Account Details' : 'Welcome Back'}</Text><InfoButton title={isSignUp ? 'Account Details' : 'Welcome Back'} message={isSignUp ? 'Enter your name, email address, and a password of at least 8 characters.' : 'Enter your email address and password. Remember me keeps the session after an app restart.'} /></View>
+                  <View style={styles.cardTitleRow}><Text style={[styles.cardTitle, styles.flex]}>{isSignUp ? 'Account Details' : 'Welcome Back.'}</Text><InfoButton title={isSignUp ? 'Account Details' : 'Welcome Back'} message={isSignUp ? 'Enter your name, email address, and a password of at least 8 characters.' : 'Enter your email address and password. Remember me keeps the session after an app restart.'} /></View>
                   {isSignUp && <Field label="Your Name" placeholder="Alex Morgan" value={name} onChangeText={setName} autoComplete="name" textContentType="name" maxLength={128} editable={!working} />}
                   <Field
                     label="Email Address" placeholder="you@example.com"

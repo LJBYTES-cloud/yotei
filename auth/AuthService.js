@@ -1,5 +1,12 @@
 import * as SecureStore from 'expo-secure-store';
 
+/** @param {string} name */
+export function normalizeDisplayName(name) {
+  const value = typeof name === 'string' ? name.trim() : '';
+  if (!value || value.length > 128) throw new Error('Enter a name between 1 and 128 characters.');
+  return value;
+}
+
 /**
  * @typedef {{ id: string, name: string, email: string }} AuthUser
  * @typedef {{ email: string, password: string, rememberMe?: boolean }} SignInCredentials
@@ -64,5 +71,10 @@ export default class AuthService {
   /** @returns {Promise<AuthUser | null>} */
   async getCurrentUser() {
     throw new Error('AuthService.getCurrentUser must be implemented.');
+  }
+
+  /** @param {string} name @returns {Promise<AuthUser>} */
+  async updateName(name) {
+    throw new Error('AuthService.updateName must be implemented.');
   }
 }

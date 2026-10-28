@@ -5,12 +5,15 @@ import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/d
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { FieldLabel, Message } from './ui';
+import { useTimeFormat } from '../TimeFormatContext';
 
 /** @param {{label: string, help: string, value: Date, disabled?: boolean, minimumDate: Date, onChange: (value: Date, part: 'date' | 'time') => void}} props */
 export default function DateTimeField({ label, help, value, disabled = false, minimumDate, onChange }) {
   const { colors: p, isDark } = useTheme();
+  const { is24Hour, formatTime } = useTimeFormat();
   const s = useThemedStyles(createStyles);
   const [error, setError] = useState('');
+  const [timeExpanded, setTimeExpanded] = useState(false);
   const active = useRef(/** @type {'date' | 'time' | null} */ (null));
   const mounted = useRef(false);
   useEffect(() => {
@@ -26,7 +29,7 @@ export default function DateTimeField({ label, help, value, disabled = false, mi
     active.current = mode;
     setError('');
     try {
-      DateTimePickerAndroid.open({ value, mode, is24Hour: true,
+      DateTimePickerAndroid.open({ value, mode, is24Hour,
         ...(mode === 'date' ? { minimumDate } : {}),
         onValueChange: (_event, picked) => { active.current = null; if (mounted.current) onChange(picked, mode); },
         onDismiss: () => { active.current = null; },
@@ -40,9 +43,11 @@ export default function DateTimeField({ label, help, value, disabled = false, mi
       <DateTimePicker value={value} mode="date" display="compact" minimumDate={minimumDate} disabled={disabled}
         themeVariant={isDark ? 'dark' : 'light'} accentColor={p.accent} accessibilityLabel={`${label} date`}
         onValueChange={(_event, picked) => onChange(picked, 'date')} />
-      <DateTimePicker value={value} mode="time" display="compact" disabled={disabled}
-        themeVariant={isDark ? 'dark' : 'light'} accentColor={p.accent} accessibilityLabel={`${label} time`}
-        onValueChange={(_event, picked) => onChange(picked, 'time')} />
+      <Pressable accessibilityRole="button" accessibilityLabel={`${label} time: ${formatTime(value)}`} accessibilityState={{ expanded: timeExpanded }} disabled={disabled}
+        onPress={() => setTimeExpanded(current => !current)} style={s.timeButton}><Ionicons name="time-outline" size={18} color={p.muted} /><Text style={s.value}>{formatTime(value)}</Text></Pressable>
+      {timeExpanded && <DateTimePicker value={value} mode="time" display="spinner" disabled={disabled} locale={is24Hour ? 'en-GB' : 'en-US'} style={{ width: '100%', height: 180 }}
+        themeVariant={isDark ? 'dark' : 'light'} textColor={p.text} accentColor={p.accent} accessibilityLabel={`${label} time`}
+        onValueChange={(_event, picked) => onChange(picked, 'time')} />}
     </View> : <View style={s.controls}>
       <Pressable accessibilityRole="button" accessibilityLabel={`${label} date: ${value.toLocaleDateString()}`}
         disabled={disabled || Platform.OS !== 'android'} onPress={() => open('date')}
@@ -50,11 +55,11 @@ export default function DateTimeField({ label, help, value, disabled = false, mi
         <Ionicons name="calendar-outline" size={18} color={p.muted} />
         <Text style={s.value}>{value.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
       </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${label} time: ${value.toLocaleTimeString()}`}
+      <Pressable accessibilityRole="button" accessibilityLabel={`${label} time: ${formatTime(value)}`}
         disabled={disabled || Platform.OS !== 'android'} onPress={() => open('time')}
         style={({ pressed }) => [s.timeButton, pressed && s.pressed, disabled && s.disabled]}>
         <Ionicons name="time-outline" size={18} color={p.muted} />
-        <Text style={s.value}>{value.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })}</Text>
+        <Text style={s.value}>{formatTime(value)}</Text>
       </Pressable>
     </View>}
     <Message text={error} />

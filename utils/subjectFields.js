@@ -71,3 +71,17 @@ export function getFieldsOfStudy(subjects) {
   }
   return Array.from(fields.values()).sort((a, b) => a.localeCompare(b));
 }
+
+/** Stable shelf groups shared by the virtualized Library and shelf renderer.
+ * @param {import('../db/SubjectService').Subject[]} subjects
+ */
+export function groupSubjectsByField(subjects) {
+  const fields = new Map(/** @type {[string, {name: string, subjects: import('../db/SubjectService').Subject[]}][]} */ ([]));
+  for (const subject of subjects) {
+    const key = subject.field_of_study.toLowerCase();
+    const group = fields.get(key);
+    if (group) group.subjects.push(subject);
+    else fields.set(key, { name: subject.field_of_study, subjects: [subject] });
+  }
+  return Array.from(fields, ([key, value]) => ({ key, ...value }));
+}

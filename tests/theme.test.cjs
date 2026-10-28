@@ -6,7 +6,8 @@ const ts = require('typescript');
 
 // Run the actual provider with an isolated hook host and native/storage bridges.
 // JSX is compiled by the project's TypeScript dependency; no device is required.
-async function setup({ saved = null, readError = false, writeError = false, holdRead = false, holdWrite = false } = {}) {
+async function setup({ saved = null, readError = false, writeError = false, holdRead = false, holdWrite = false,
+  filename = 'ThemeContext.js', storageKey = 'yotei.theme', provider = 'ThemeProvider' } = {}) {
   let slots = [], cursor = 0, effects = [], cleanups = [];
   const warnings = [], writes = [], appearance = [];
   let releaseRead, releaseWrite;
@@ -48,13 +49,13 @@ async function setup({ saved = null, readError = false, writeError = false, hold
     'expo-system-ui': { setBackgroundColorAsync: async () => {} },
     '@react-native-async-storage/async-storage': { default: {
       getItem: async key => {
-        assert.equal(key, 'yotei.theme');
+        assert.equal(key, storageKey);
         await readGate;
         if (readError) throw new Error('Read unavailable');
         return saved;
       },
       setItem: async (key, value) => {
-        assert.equal(key, 'yotei.theme');
+        assert.equal(key, storageKey);
         writes.push(value);
         await writeGate;
         if (writeError) { writeError = false; throw new Error('Write unavailable'); }
@@ -62,18 +63,24 @@ async function setup({ saved = null, readError = false, writeError = false, hold
       },
     } },
   };
-  const source = ts.transpileModule(fs.readFileSync('ThemeContext.js', 'utf8'), {
+  const source = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
     fileName: 'ThemeContext.jsx',
   }).outputText;
   const module = new vm.SourceTextModule(source, { context });
-  await module.link(name => new vm.SyntheticModule(Object.keys(modules[name]), function () {
+  await module.link(async name => {
+    if (name === './utils/timeFormat') {
+      const helpers = new vm.SourceTextModule(fs.readFileSync('utils/timeFormat.js', 'utf8'), { context });
+      await helpers.link(() => { throw new Error('Unexpected time import'); }); return helpers;
+    }
+    return new vm.SyntheticModule(Object.keys(modules[name]), function () {
     for (const [key, value] of Object.entries(modules[name])) this.setExport(key, value);
-  }, { context }));
+    }, { context });
+  });
   await module.evaluate();
   function render() {
     cursor = 0; effects = [];
-    const output = module.namespace.ThemeProvider({ children: 'screens' });
+    const output = module.namespace[provider]({ children: 'screens' });
     for (const effect of effects) effect();
     return output;
   }
@@ -99,7 +106,7 @@ test('restores light before mounting screens, without writing the default theme'
 });
 
 test('missing, invalid, or unavailable preferences safely use light mode without overwriting storage', async () => {
-  for (const options of [{}, { saved: 'invalid' }, { readError: true }]) {
+  for (const options of [{}, { saved: 'dark' }, { saved: 'light' }, { saved: 'invalid' }, { saved: '{"version":1,"mode":"dark"}' }, { readError: true }]) {
     const s = await setup(options);
     s.render(); await s.flush();
     assert.equal(s.render().props.value.isDark, false);
@@ -115,9 +122,9 @@ test('rapid toggles serialize writes and the final preference survives provider 
   value.toggleTheme(); value.toggleTheme(); value.toggleTheme();
   assert.equal(s.render().props.value.isDark, true);
   await s.flush();
-  assert.deepEqual(s.writes, ['dark'], 'second write waits for the first');
+  assert.deepEqual(s.writes.map(value => JSON.parse(value).mode), ['dark'], 'second write waits for the first');
   s.releaseWrite(); await s.flush();
-  assert.deepEqual(s.writes, ['dark', 'light', 'dark']);
+  assert.deepEqual(s.writes.map(value => JSON.parse(value).mode), ['dark', 'light', 'dark']);
   s.remount(); assert.equal(s.render(), null); await s.flush();
   assert.equal(s.render().props.value.isDark, true);
 });
@@ -129,15 +136,55 @@ test('a failed write keeps the current UI usable and does not block the next sav
   assert.equal(s.render().props.value.isDark, true);
   assert.equal(s.warnings.length, 1);
   s.render().props.value.toggleTheme(); await s.flush();
-  assert.deepEqual(s.writes, ['dark', 'light']);
+  assert.deepEqual(s.writes.map(value => JSON.parse(value).mode), ['dark', 'light']);
   s.remount(); s.render(); await s.flush();
   assert.equal(s.render().props.value.isDark, false);
 });
 
 test('an explicitly saved dark preference still restores before screens mount', async () => {
-  const s = await setup({ saved: 'dark', holdRead: true });
+  const s = await setup({ saved: JSON.stringify({version: 2, mode: 'dark'}), holdRead: true });
   assert.equal(s.render(), null);
   s.releaseRead(); await s.flush();
   assert.equal(s.render().props.value.isDark, true);
   assert.deepEqual(s.appearance, ['dark']); assert.deepEqual(s.writes, []);
+});
+
+test('time preference hydrates before screens, defaults to 24 hours and preserves saved 12-hour choice', async () => {
+  for (const saved of [null, 'invalid', '24', '12']) {
+    const s = await setup({ saved, filename: 'TimeFormatContext.js', storageKey: 'yotei.time-format.v1', provider: 'TimeFormatProvider', holdRead: true });
+    assert.equal(s.render(), null); assert.deepEqual(s.writes, []);
+    s.releaseRead(); await s.flush();
+    const pref = s.render().props.value, midnight = new Date('2026-10-20T00:00:00');
+    assert.equal(pref.is24Hour, saved !== '12');
+    assert.equal(pref.formatTime(midnight).includes('00:00'), saved !== '12');
+    assert.deepEqual(s.writes, [], 'hydration does not overwrite a preference');
+  }
+});
+
+test('rapid time toggles save in order, survive remount and recover from storage failures', async () => {
+  const options = { filename: 'TimeFormatContext.js', storageKey: 'yotei.time-format.v1', provider: 'TimeFormatProvider' };
+  const s = await setup({ ...options, holdWrite: true });
+  s.render(); await s.flush(); const pref = s.render().props.value;
+  pref.set24Hour(false); pref.set24Hour(true); pref.set24Hour(false); await s.flush();
+  assert.deepEqual(s.writes, ['12']); s.releaseWrite(); await s.flush();
+  assert.deepEqual(s.writes, ['12', '24', '12']);
+  s.remount(); s.render(); await s.flush(); assert.equal(s.render().props.value.is24Hour, false);
+  const failed = await setup({ ...options, readError: true, writeError: true });
+  failed.render(); await failed.flush(); assert.equal(failed.render().props.value.is24Hour, true);
+  failed.render().props.value.set24Hour(false); await failed.flush();
+  failed.render().props.value.set24Hour(true); await failed.flush();
+  assert.deepEqual(failed.writes, ['12', '24']);
+});
+
+test('time formatter handles noon, midnight, date-time labels and invalid input independently of elapsed durations', async () => {
+  const module = new vm.SourceTextModule(fs.readFileSync('utils/timeFormat.js', 'utf8'));
+  await module.link(() => { throw new Error('Unexpected import'); }); await module.evaluate();
+  const { formatTime, formatDateTime } = module.namespace;
+  assert.equal(formatTime(new Date('2026-10-20T00:00:00'), true, 'en-US'), '00:00');
+  assert.equal(formatTime('2026-10-20T12:00:00', false, 'en-US'), '12:00 PM');
+  assert.equal(formatTime('2026-10-20T17:30:00', false, 'en-US'), '05:30 PM');
+  assert.equal(formatTime('2026-10-20T17:30:00', true, 'en-US'), '17:30');
+  assert.match(formatDateTime('2026-10-20T17:30:00', false, 'en-US'), /05:30 PM/);
+  assert.match(formatDateTime('2026-10-20T17:30:00', true, 'en-US'), /17:30/);
+  assert.equal(formatTime('bad'), 'Unavailable');
 });

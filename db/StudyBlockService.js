@@ -5,7 +5,7 @@ import { checkStudyLoad } from './StudyLoadService';
 // Serialize scheduling writes so simultaneous submissions see each other's
 // SQLite totals before applying the daily guardrail.
 let scheduleQueue = Promise.resolve();
-/** @param {() => Promise<StudyBlock>} action */
+/** @template T @param {() => Promise<T>} action */
 function scheduleMutation(action) {
   const result = scheduleQueue.then(action);
   scheduleQueue = result.then(() => {}, () => {});
@@ -119,6 +119,62 @@ export async function getStudyBlocksForUser(userId, { date, includeUnresolvedMis
         ${includeUnresolvedMissed ? "OR (block.status = 'missed' AND replacement.id IS NULL)" : ''})` : ''}
     ORDER BY julianday(block.start_time) ASC, block.id ASC
   `, ...(range ? [userId, range.end, range.start] : [userId]));
+}
+
+/** The coach needs history beyond Home's date-filtered list. Untimed legacy
+ * completions use their scheduled end; future-dated completions are excluded.
+ * @param {string} userId @param {string} [now] @returns {Promise<StudyBlock | null>}
+ */
+export async function getLatestCompletedStudyBlock(userId, now = new Date().toISOString()) {
+  requireUserId(userId);
+  const reference = new Date(parseNow(now)).toISOString();
+  const database = await getDatabase();
+  return database.getFirstAsync(`${BLOCK_SELECT}
+    WHERE task.user_id = ? AND block.status = 'done'
+      AND julianday(COALESCE(block.actual_end_time, block.end_time)) <= julianday(?)
+    ORDER BY julianday(COALESCE(block.actual_end_time, block.end_time)) DESC, block.id DESC
+    LIMIT 1
+  `, userId, reference);
+}
+
+/** Manual completion uses allocated seconds and an honest completion timestamp.
+ * A null actual_start_time distinguishes it from a measured timer session.
+ * @param {string} userId @param {number} blockId @param {string} [now]
+ * @returns {Promise<StudyBlock>}
+ */
+export function markStudyBlockDone(userId, blockId, now = new Date().toISOString()) {
+  return scheduleMutation(async () => {
+    requireUserId(userId); requireBlockId(blockId);
+    const timestamp = new Date(parseNow(now)).toISOString(), db = await getDatabase();
+    let completed = /** @type {StudyBlock | null} */ (null);
+    await db.withExclusiveTransactionAsync(async transaction => {
+      const block = /** @type {StudyBlock | null} */ (await transaction.getFirstAsync(`${BLOCK_SELECT} WHERE block.id = ? AND task.user_id = ?`, blockId, userId));
+      if (!block) throw new Error('Choose a study block belonging to your account.');
+      if (block.status === 'done') { completed = block; return; }
+      if (block.status !== 'scheduled') throw new Error('Only a scheduled session can be marked done without the timer.');
+      const seconds = Math.floor((Date.parse(block.end_time) - Date.parse(block.start_time)) / 1000);
+      if (!Number.isSafeInteger(seconds) || seconds <= 0) throw new Error('This study block has invalid scheduled times.');
+      await transaction.runAsync(`UPDATE StudyBlock SET status = 'done', actual_start_time = NULL,
+        actual_end_time = ?, actual_study_seconds = ?, break_started_at = NULL, break_time_ms = 0, break_time_minutes = 0
+        WHERE id = ? AND status = 'scheduled' AND task_id IN (SELECT id FROM Task WHERE user_id = ?)`, timestamp, seconds, blockId, userId);
+      completed = { ...block, status: 'done', actual_start_time: null, actual_end_time: timestamp, actual_study_seconds: seconds,
+        break_started_at: null, break_time_ms: 0, break_time_minutes: 0 };
+    });
+    return /** @type {StudyBlock} */ (completed);
+  });
+}
+
+/** Delete a not-yet-started session while preserving its task and other blocks.
+ * @param {string} userId @param {number} blockId
+ */
+export function deleteStudyBlock(userId, blockId) {
+  return scheduleMutation(async () => {
+    requireUserId(userId); requireBlockId(blockId);
+    const db = await getDatabase();
+    const result = await db.runAsync(`DELETE FROM StudyBlock WHERE id = ? AND status = 'scheduled'
+      AND task_id IN (SELECT id FROM Task WHERE user_id = ?)`, blockId, userId);
+    if (result.changes !== 1) throw new Error('Choose a scheduled session belonging to your account.');
+  });
 }
 
 /** @param {string} userId @param {number} blockId @param {string} [now] */

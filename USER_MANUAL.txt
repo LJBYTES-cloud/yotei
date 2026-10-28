@@ -1,0 +1,444 @@
+YOTEI USER MANUAL
+=================
+Updated: 27 October 2026
+For the current Android and iOS app
+
+CONTENTS
+1. Getting Started
+2. Finding Your Way Around
+3. Subjects and the Bookshelf
+4. Creating and Managing Tasks
+5. Study Materials
+6. Scheduling a Study Session
+7. Using the Focus Timer
+8. Completing, Deleting, and Rescheduling Blocks
+9. Weekly Progress and Daily Study Time
+10. The Coach
+11. Your Study Journal
+12. Account, Appearance, and Time Settings
+13. Exporting and Importing Backups
+14. Demo Mode
+15. Troubleshooting
+16. Running This Project Locally
+
+
+1. GETTING STARTED
+------------------
+Yotei organizes subjects, tasks, study sessions, materials, and journal notes.
+Study records are stored on your device and separated by the signed-in account.
+Appwrite sign-in does not automatically synchronize study records between devices.
+Use Export Backup and Import Backup to transfer or restore your study data.
+
+Sign In or Create an Account
+1. Open the Android or iOS app.
+2. Sign in with your email and password, or switch to the account-creation form.
+3. When creating an account, enter your name, email, and a password of at least
+   eight characters.
+4. Choose whether to enable Remember Me, then submit the form.
+
+Remember Me
+- Off by default: your session works during the current launch. A cold restart
+  requires you to sign in again.
+- On: the app can restore your session after a restart, while the session remains
+  valid.
+- Sign Out clears the remembered login. Signing out does not delete study records.
+
+A First Study Session
+1. Open Library and add a subject.
+2. Open that subject's book and add a task.
+3. Select Schedule on the task and choose a future start and end.
+4. Return to Home when the session's scheduled time arrives.
+5. Select Start Session, then Finish Session when you are finished.
+6. Save an optional reflection and find it in Journal.
+
+
+2. FINDING YOUR WAY AROUND
+-------------------------
+The bottom tabs are:
+
+Home: Today's Focus, the focus timer, daily workload, Weekly Progress, and Coach.
+Library: Subject books, their tasks, and their study materials.
+Journal: Manual journal entries and reflections from completed sessions.
+Settings: Display name, theme, clock format, backups, and Sign Out.
+
+Common Controls
+- An information icon opens an explanation in a themed dialog.
+- A three-dot menu opens actions for the associated card or item.
+- Cancel or a form's close control dismisses an unsaved form.
+- Brief notices appear above the bottom tab bar. Settings suppresses these notices;
+  check its loading indicators and any error message when performing an action.
+- Home and Journal support pull-to-refresh. Library can also be refreshed.
+
+
+3. SUBJECTS AND THE BOOKSHELF
+----------------------------
+Add a Subject
+1. Open Library and select Add Subject.
+2. Enter a Subject Name, such as Software Engineering.
+3. Enter a Subject Code, such as SE-101. The example shown in an empty field is a
+   placeholder, not a saved value; enter your own code before saving.
+4. Choose an existing Field of Study from the suggestions or type a new field,
+   such as Computer Science.
+5. Choose one or two field colors.
+6. Select Create Subject.
+
+Subjects with the same field appear together on a horizontal shelf. The + button
+beside a shelf's name opens Add Subject with that field already filled in.
+
+Open or Close a Book
+- Tap a book spine to reveal its front cover.
+- The spine shows the subject code. The cover shows the full name, code, and task
+  count.
+- Tap the front cover to open that subject's notebook.
+- Select Close on a revealed cover to return it to its spine.
+- Use the notebook's back control to return to Library.
+
+Edit a Subject
+Use the pencil on its cover or Edit Book inside its notebook. Change the name,
+code, field, or colors and select Save Changes.
+
+Delete a Subject
+Use Delete Book in the notebook or Delete Subject at the bottom of the subject
+editor, then confirm deletion.
+
+Deleting a subject permanently removes its tasks, study blocks, subject-linked
+reflections, and material references. Independent manual journal entries remain.
+Export a backup first if you may need those records later.
+
+
+4. CREATING AND MANAGING TASKS
+-----------------------------
+Add a Task
+1. Open the appropriate subject's book.
+2. Select New Task.
+3. Enter a Task Title and, optionally, a multiline Task Description.
+4. Check the selected Subject.
+5. Select Add Task.
+
+Task Actions
+- Schedule opens the scheduling form.
+- The task's three-dot menu contains Edit and Delete.
+- Edit lets you change the title, description, or subject. Save Changes applies
+  the update without replacing its study history.
+- Delete requires confirmation and removes the task and all its study blocks.
+  Subject reflections remain, although deleted session links are detached.
+  Material references remain as subject materials.
+
+Missed Session Indicator
+A task may display a Missed Session indicator when it has unresolved missed work.
+Scheduling a new future block for that task hides the Library indicator. The older
+missed history remains stored.
+
+
+5. STUDY MATERIALS
+------------------
+Open a subject's notebook and find Study Materials.
+
+Add a File
+1. Select Add Material.
+2. Select Browse File Manager and choose a document.
+3. Check or enter its Title.
+4. Select Save Material.
+
+Picked files are copied into the app's private document storage. Keep an external
+copy of important files, especially before removing the app or changing devices.
+
+Add a Website or Existing File Location
+1. Open Add Material.
+2. Select Use URL / File Path.
+3. Enter a Title and the website address or file location.
+4. Select Save Material.
+
+Tap a saved material to open it through your device. A suitable app and permission
+to access the location may be required. A path from another device does not make
+that file available on your phone.
+
+Use a material's three-dot menu to Edit or Delete its reference. Deleting a
+reference does not delete the original external file or website.
+
+
+6. SCHEDULING A STUDY SESSION
+----------------------------
+1. Open a task in its subject notebook and select Schedule.
+2. Choose a Start date and time using the native controls.
+3. Choose an End date and time, or enter an optional Duration.
+4. Select Save Session. The app returns to Home after saving.
+
+Dates and Times
+- You can choose today or a later date, including next week.
+- Start must not have already passed. End must be after Start.
+- Overnight sessions can end on a later date.
+- Changing Start preserves the current session length.
+- Times follow your saved 12-hour or 24-hour preference.
+
+Duration Examples
+45m      = 45 minutes
+2h       = 2 hours
+4h 30m   = 4 hours and 30 minutes
+45       = 45 minutes
+
+A new duration replaces the previous duration and recalculates End from Start.
+It does not add to the old End. Editing End directly clears the duration shortcut.
+Use positive whole-minute durations; invalid input prevents saving.
+
+Workload Warning
+If a proposed block pushes the planned total above 240 minutes on a day, the app
+shows a workload warning. Select Adjust Session to change your choices, or
+Schedule Anyway to explicitly continue. Exactly 240 minutes is permitted.
+
+The planning total includes allocated minutes from scheduled, active, and done
+blocks. Missed blocks are excluded. Overnight allocations are split across the
+affected local dates. This planning total is separate from measured work time.
+
+Home primarily shows today's blocks, along with unfinished active sessions and
+unresolved missed blocks from earlier dates. A future-date block belongs to that
+date's focus list.
+
+
+7. USING THE FOCUS TIMER
+-----------------------
+Start Work
+Select Start Session on a scheduled Home card during its scheduled window. The
+button is disabled before the window opens. The active card shows elapsed work
+time rather than a countdown.
+
+Only one session can be active per account, including a session currently on
+break. If you try to start another eligible block, the app displays:
+
+You already have a session in progress. Finish it before starting a new one.
+
+Take a Break
+Select Take Break. Work time pauses and the break timer runs. Select Resume Work
+to continue studying. Total break time is tracked separately from studied time.
+
+Finish Work
+Select Finish Session. The app saves the work total, excluding breaks, and marks
+the block done. The reflection sheet shows whether you started on time or late.
+Enter a Reflection Note and save it, or select Skip. Skipping the note keeps the
+session completed.
+
+Backgrounding and Restarts
+Backgrounding or closing the app does not automatically pause a running timer.
+Work continues in work mode; break time continues in break mode. After restoring
+or signing back into the same account, an unfinished timer can be resumed.
+
+Reaching the scheduled end does not automatically finish an active session.
+Select Finish Session when you actually stop studying. An active session remains
+accessible after its scheduled end or midnight.
+
+
+8. COMPLETING, DELETING, AND RESCHEDULING BLOCKS
+----------------------------------------------
+Scheduled Home cards keep Start Session as their only main button. Use the
+three-dot menu beside the time and status for the following actions.
+
+Mark as Done Without the Timer
+Select Mark as Done to manually complete a scheduled block. Its scheduled duration
+is recorded as studied time on the day you mark it done. No timer start or breaks
+are invented. You can then save an optional reflection or select Skip.
+
+Delete a Scheduled Block
+1. Open the scheduled card's three-dot menu and select Delete Block.
+2. In the themed confirmation dialog, select Cancel to keep it or Delete Block
+   to remove it.
+
+Deleting a block preserves the task and its other sessions. If deletion fails,
+the dialog keeps the error visible so you can retry or cancel. Dismissal and
+duplicate submissions are blocked while deletion is running.
+
+Missed Blocks and Rescheduling
+An unstarted scheduled block becomes missed after its end time passes and the
+app checks its status. Refresh Home if you are waiting for the status to update.
+
+Select Reschedule on a missed block, choose new future dates/times, and save the
+replacement. The original remains in stored history. Each replacement increments
+the associated task's postponement count once. Repeated postponement can trigger
+a five-minute coaching suggestion.
+
+
+9. WEEKLY PROGRESS AND DAILY STUDY TIME
+-------------------------------------
+Daily Study Time shows planned and completed allocations for today. Its meter
+uses the four-hour planning threshold described in the scheduling section.
+
+Weekly Progress shows completed study minutes for the last seven local dates,
+including today. Days without completed work show zero.
+
+- Timer completions contribute actual work time, excluding breaks.
+- Manually completed blocks contribute their recorded scheduled duration.
+- Older untimed completions use their scheduled duration.
+- Sessions are credited to their completion date, including overnight sessions.
+
+Tap a chart point to inspect that day's sessions and totals. The daily details
+compare Scheduled, Actual, and Overrun. In this comparison, Actual includes elapsed
+work and breaks; Overrun is the amount by which that elapsed time exceeded the
+scheduled allocation. A late clock finish is shown separately. The chart's studied
+minutes exclude measured breaks, so its work total can differ from elapsed Actual.
+
+Tap the chart background for the weekly total, daily average, and best day.
+Hour labels such as 1h and 2h represent durations, not clock times.
+
+
+10. THE COACH
+-------------
+Home automatically displays one matching coaching message at a time, in this
+priority order:
+
+1. An incomplete task with a past deadline.
+2. A task postponed at least twice, with a five-minute micro-action suggestion.
+3. Today's planned workload exceeding 240 minutes, with a break reminder.
+4. A completed session today and yesterday, recognizing a two-day streak.
+5. A suggested hour based on recorded study history, once enough history exists.
+
+Date-only deadlines include the whole local due date. The best-hour suggestion
+requires at least three positive-work completions in the relevant hour. If no
+rule applies, the Coach card is hidden.
+
+
+11. YOUR STUDY JOURNAL
+----------------------
+Journal combines manual entries and session reflections in a newest-first feed.
+
+Write a Manual Entry
+1. Open Journal and select New Entry.
+2. Enter a Title and Content.
+3. Save the entry.
+
+Read, Edit, or Delete
+- Tap any preview to open its full text.
+- Select Edit, make your changes, and select Save Changes.
+- Manual entries support title and content edits. Session reflections support
+  note edits; their displayed titles come from the associated task.
+- Select Delete and confirm to remove a note. Its study session and task remain.
+
+Editing preserves the original entry date, so an older edited note does not move
+to the top of the feed. Failed saves keep the draft available to retry.
+Manual journal entries do not require a subject and survive subject deletion.
+Subject-linked reflections are removed when their subject is deleted.
+
+
+12. ACCOUNT, APPEARANCE, AND TIME SETTINGS
+-----------------------------------------
+Display Name
+In Settings, select Edit Display Name, enter your name, and select Save Name.
+Names must contain 1 to 128 characters after trimming surrounding spaces. A
+successful update appears immediately and keeps the same account and study data.
+
+Light and Dark Mode
+The appearance switch is OFF for Light Mode and ON for Dark Mode. A fresh setup
+defaults to Light Mode. Your choice is remembered on this device.
+
+24-Hour Time
+ON shows clock times such as 17:30; OFF shows times such as 05:30 PM. The default
+is ON, and the choice is remembered on this device. Elapsed work/break counters
+and chart duration labels remain durations.
+
+Sign Out
+Select Sign Out to end your login session. Your local study records remain
+available when you sign back into the same account on the same installation.
+
+
+13. EXPORTING AND IMPORTING BACKUPS
+-----------------------------------
+Study data is local. Exporting and importing Yotei JSON is the supported manual
+backup and restore process; signing in on another device does not transfer it.
+
+Export a Backup
+1. Open Settings and find Data Management.
+2. Select Export Backup.
+3. Use the native share sheet to save the JSON somewhere outside the app.
+4. Check that the file was actually saved; opening the share sheet alone does not
+   guarantee that you kept a copy.
+
+Backups contain subjects, tasks, study blocks, reflections, manual journal entries,
+and material references. They do not include attachment file contents, passwords,
+login sessions, display-name profiles, or appearance/clock preferences. Keep copies
+of important study files separately; material paths may not work on another device.
+
+Import a Backup
+1. Export your current records first if you may need them later.
+2. Select Import Backup and choose a Yotei backup JSON file.
+3. Wait for validation and restoration to finish, then inspect your tabs.
+
+IMPORTANT: Selecting a valid backup replaces the signed-in account's existing
+local study records. Import is a replacement, not a merge. Other accounts' local
+records are preserved. Canceling the picker or choosing an invalid backup leaves
+existing records unchanged.
+
+
+14. DEMO MODE
+--------------
+Load Demo Data appears only in a Mock/demo build. It is hidden when real Appwrite
+authentication is enabled. Mock and real accounts are independent.
+
+Built-In Mock Login
+Email:    student@yotei.demo
+Password: study12345
+
+In Mock mode, sign in and select Settings > Load Demo Data. This replaces that
+Mock account's local study records with six months of sample history, 20 subjects
+across five fields, 40 tasks, study materials, reflections, and journal entries.
+Today's sample blocks total exactly 240 planned minutes for workload demonstrations.
+
+Export first if you need the current records. Reload the demo on a new date to
+create that day's sample schedule. Use the built-in account for repeatable demos;
+custom Mock credentials are held in memory for development/testing.
+
+
+15. TROUBLESHOOTING
+-------------------
+Start Session Is Disabled
+Check the selected date/time. The session must be within its scheduled window.
+Wait for pending loading or saving to finish. If it is missed, reschedule it.
+
+Another Session Is Already Running
+Find the active card on Home and select Finish Session before starting another.
+A session on break still counts as active.
+
+A Saved Future Session Is Not in Today's List
+Home focuses on today, active work, and unresolved missed blocks. Check the date
+you selected; a future block belongs to its scheduled date.
+
+A Form Reports an Error
+Check the required fields, including Subject Code. For scheduling, use a future
+Start, a later End, and a valid positive duration. Correct the draft and retry.
+
+The Keyboard Covers Part of a Form
+Scroll inside the open form to the field or action you need. Forms support
+keyboard avoidance and scrolling.
+
+A File Will Not Open
+Check that it still exists on this device and that a suitable app can open it.
+If you moved devices, restore the file separately and update its material reference.
+
+A Backup Import Fails
+Choose a supported Yotei JSON backup rather than a document or source-code archive.
+The app reports the failure; invalid imports do not replace current study records.
+
+The Browser Shows a Mobile Notice
+Use the Android or iOS app. The browser view does not provide native study storage.
+
+
+16. RUNNING THIS PROJECT LOCALLY
+--------------------------------
+For the project maintainer using the VS Code terminal, run from the project root:
+
+  npm.cmd ci
+  npx.cmd expo start --clear
+
+In a shell without Windows shim restrictions, the commands are:
+
+  npm ci
+  npx expo start --clear
+
+Open the app with a compatible native Expo Go client or development build.
+Use npx expo start, not npx start.
+
+To enable the built-in demo locally, the maintainer sets USE_REAL_AUTH to false
+in auth/index.js and fully reloads the app. The current project configuration
+uses real authentication. Switching adapters does not migrate accounts or data.
+
+For project setup and detailed troubleshooting, see README.md and
+docs/DEMO_AND_TESTING.md. For backup details, see docs/DATA_BACKUP.md.
+
+END OF USER MANUAL

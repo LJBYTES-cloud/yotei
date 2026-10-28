@@ -12,9 +12,19 @@ export function getFocusTiming(block, now = Date.now()) {
     workSeconds: block.actual_end_time !== null ? block.actual_study_seconds : started === null ? 0 : Math.max(0, Math.floor((end - started - breakMs) / 1000)),
     breakSeconds: Math.floor(breakMs / 1000),
     currentBreakSeconds: Math.floor(openBreak / 1000),
-    startedLate: started !== null && started > Date.parse(block.start_time),
-    lateMinutes: started === null ? 0 : Math.max(0, Math.floor((started - Date.parse(block.start_time)) / 60000)),
   };
+}
+
+/** Completion-only feedback; live work/break ticks do not calculate lateness.
+ * @param {{actual_start_time: string | null, start_time: string}} block
+ */
+export function getCompletionStartMessage(block) {
+  const difference = Date.parse(block.actual_start_time ?? '') - Date.parse(block.start_time);
+  if (!Number.isFinite(difference)) return 'Session complete!';
+  if (difference === 0) return 'You started exactly on time!';
+  const minutes = Math.floor(Math.abs(difference) / 60000);
+  const amount = minutes === 0 ? 'less than a minute' : `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+  return `Session complete! You started ${amount} ${difference > 0 ? 'late' : 'early'}.`;
 }
 
 /** @param {number} seconds */

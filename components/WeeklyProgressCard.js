@@ -1,11 +1,13 @@
-import { useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
+import { Circle } from 'react-native-svg';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { createStudyStyles } from './studyStyles';
 import { fonts, typeScale, typeLeading } from './typography';
 import { InfoButton } from './ui';
 import ProgressDetailsModal from './ProgressDetailsModal';
+import { formatProgressAxisLabel, getProgressAxis } from '../utils/progressChart';
 
 /** @param {string} date */
 const localDay = date => new Date(`${date}T12:00:00`);
@@ -13,13 +15,14 @@ const localDay = date => new Date(`${date}T12:00:00`);
 const minuteLabel = value => value.toLocaleString(undefined, { maximumFractionDigits: 1 });
 
 /** @param {{userId: string, days: import('../db/ProgressService').StudyProgressDay[], ready: boolean, error?: string}} props */
-export default function WeeklyProgressCard({ userId, days, ready, error = '' }) {
+function WeeklyProgressCard({ userId, days, ready, error = '' }) {
   const { colors: p } = useTheme();
   const s = useThemedStyles(createStudyStyles);
   const w = useThemedStyles(createStyles);
   const [width, setWidth] = useState(0);
   const [selectedDate, setSelectedDate] = useState(/** @type {string | null} */ (null));
   const pointPress = useRef(false);
+  const axis = getProgressAxis(days.map(day => day.minutes));
   const total = days.reduce((sum, day) => sum + day.minutes, 0);
   const summary = days.map(day => `${localDay(day.date).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}: ${minuteLabel(day.minutes)} minutes`).join('; ');
   return <View style={s.card}>
@@ -35,16 +38,18 @@ export default function WeeklyProgressCard({ userId, days, ready, error = '' }) 
         : width > 0 && days.length === 7 ? <Pressable accessibilityRole="button" accessibilityLabel={`Open Weekly Summary. ${summary}`}
           onStartShouldSetResponderCapture={() => { pointPress.current = false; return false; }}
           onPress={() => { if (!pointPress.current) setSelectedDate('week'); }}>
-          <LineChart width={width} height={220} fromZero fromNumber={1}
+          <LineChart width={width} height={220} fromZero fromNumber={axis.maximum} segments={axis.segments} formatYLabel={formatProgressAxisLabel}
             data={{ labels: days.map(day => localDay(day.date).toLocaleDateString(undefined, { weekday: 'short' })), datasets: [{ data: days.map(day => day.minutes) }] }}
             chartConfig={{ backgroundColor: p.background, backgroundGradientFrom: p.background, backgroundGradientTo: p.background,
               backgroundGradientFromOpacity: 1, backgroundGradientToOpacity: 1,
               color: () => p.accent, labelColor: () => p.muted, strokeWidth: 2, decimalPlaces: 0,
               propsForLabels: { fontFamily: fonts.body, fontSize: typeScale.small },
-              propsForDots: { r: '4', strokeWidth: '2', stroke: p.background },
+              propsForDots: { r: '7', strokeWidth: '2', stroke: p.background },
             }}
             withShadow={false} withInnerLines={false} withOuterLines={false} withHorizontalLines={false} withVerticalLines={false}
             yLabelsOffset={8} style={{ borderRadius: 12, paddingRight: 40, paddingTop: 20 }}
+            renderDotContent={({ x, y, index }) => <Circle key={`target-${index}`} cx={x} cy={y} r={22} fill={p.accent} fillOpacity={0}
+              onPressIn={() => { if (days[index]) { pointPress.current = true; setSelectedDate(days[index].date); } }} />}
             onDataPointClick={({ index }) => { if (days[index]) { pointPress.current = true; setSelectedDate(days[index].date); } }} />
         </Pressable> : null}
     </View>
@@ -52,6 +57,8 @@ export default function WeeklyProgressCard({ userId, days, ready, error = '' }) 
     {selectedDate && <ProgressDetailsModal key={`${userId}-${selectedDate}`} userId={userId} days={days} selection={selectedDate} onDay={setSelectedDate} onClose={() => setSelectedDate(null)} />}
   </View>;
 }
+
+export default memo(WeeklyProgressCard);
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({

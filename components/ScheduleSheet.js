@@ -31,7 +31,8 @@ export default function ScheduleSheet({ userId, task, sourceBlock, initialDurati
     durationRef.current = value; setDuration(value); setError('');
     if (!value.trim()) return;
     try {
-      const next = applyStudyDuration(windowRef.current, value);
+      // Every edit is anchored to Start, never to the previously calculated End.
+      const next = applyStudyDuration({ start: windowRef.current.start, end: windowRef.current.start }, value);
       windowRef.current = next; setWindow(next);
     } catch { /* Keep the draft and previous dates; invalid input cannot be saved. */ }
   }

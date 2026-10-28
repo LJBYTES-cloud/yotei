@@ -3,6 +3,7 @@ import { Keyboard, Text, View } from 'react-native';
 import { useThemedStyles } from '../ThemeContext';
 import { createStudyStyles } from './studyStyles';
 import { Button, Input, Message, Sheet } from './ui';
+import { getCompletionStartMessage } from '../utils/focusTimer';
 
 /** @param {{block: import('../db/StudyBlockService').StudyBlock, busy: boolean, onClose: () => void, onAdd: (note: string) => Promise<boolean>}} props */
 export default function CompletionReflectionSheet({ block, busy, onClose, onAdd }) {
@@ -17,7 +18,7 @@ export default function CompletionReflectionSheet({ block, busy, onClose, onAdd 
     finally { submitting.current = false; }
   }
   return <Sheet title="Reflect on This Session" kicker="Session Completed" busy={busy} onClose={onClose}>
-    <View style={{ gap: 12, marginBottom: 24 }}><Text style={s.subject}>{block.subject_name}</Text><Text style={s.title}>{block.task_title}</Text><Text style={s.hint}>Reflect on this session.</Text></View>
+    <View style={{ gap: 12, marginBottom: 24 }}><Text style={s.subject}>{block.subject_name}</Text><Text style={s.title}>{block.task_title}</Text><Text style={s.hint}>{getCompletionStartMessage(block)}</Text><Text style={s.hint}>Reflect on this session.</Text></View>
     <Input label="Reflection Note" multiline textAlignVertical="top" style={{ minHeight: 140 }} placeholder="What did you learn? What needs more practice?" value={note} onChangeText={setNote} maxLength={4000} editable={!busy} />
     <Message text={error} /><View style={{ gap: 12 }}><Button label="Save Reflection" busy={busy} onPress={() => void save()} /><Button label="Skip" tone="outline" disabled={busy} onPress={onClose} /></View>
   </Sheet>;

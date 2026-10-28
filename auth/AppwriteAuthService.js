@@ -1,6 +1,6 @@
 import { Account, AppwriteException, Client, ID } from 'react-native-appwrite';
 import { APPWRITE_ENDPOINT, APPWRITE_PLATFORM, APPWRITE_PROJECT_ID } from '../appwriteConfig';
-import AuthService from './AuthService';
+import AuthService, { normalizeDisplayName } from './AuthService';
 
 /** @param {{ $id: string, name: string, email: string }} user */
 const normalizeUser = (user) => ({ id: user.$id, name: user.name, email: user.email });
@@ -92,6 +92,14 @@ export default class AppwriteAuthService extends AuthService {
       // An already expired session is also signed out.
       if (!(error instanceof AppwriteException) || error.code !== 401) throw error;
     }
+  }
+
+  /** @param {string} name */
+  async updateName(name) {
+    const normalized = normalizeDisplayName(name);
+    await this.initializeSession();
+    if (!this.sessionEstablished && !await this.getCurrentUser()) throw new Error('Sign in before updating your name.');
+    return normalizeUser(await this.getAccount().updateName({ name: normalized }));
   }
 
   async signOut() {

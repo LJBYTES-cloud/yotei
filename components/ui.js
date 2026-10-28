@@ -29,15 +29,15 @@ export function FieldLabel({ label, help, textStyle }) {
   </View>;
 }
 
-/** @param {{ label: string, accessibilityLabel?: string, onPress: () => void, busy?: boolean, disabled?: boolean, tone?: 'primary' | 'quiet' | 'outline' | 'danger', compact?: boolean }} props */
-export function Button({ label, accessibilityLabel = label, onPress, busy = false, disabled = false, tone = 'primary', compact = false }) {
+/** @param {{ label: string, accessibilityLabel?: string, onPress: () => void, busy?: boolean, disabled?: boolean, tone?: 'primary' | 'quiet' | 'outline' | 'danger', compact?: boolean, style?: import('react-native').StyleProp<import('react-native').ViewStyle>, textStyle?: import('react-native').StyleProp<import('react-native').TextStyle> }} props */
+export function Button({ label, accessibilityLabel = label, onPress, busy = false, disabled = false, tone = 'primary', compact = false, style, textStyle }) {
   const { colors: p } = useTheme();
   const s = useThemedStyles(createStyles);
   const blocked = disabled || busy;
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ disabled: blocked, busy }} disabled={blocked} onPress={onPress}
-      style={({ pressed }) => [s.button, s[tone], compact && s.compact, pressed && s.pressed, blocked && s.disabled]}>
-      {busy ? <ActivityIndicator color={tone === 'danger' ? p.error : tone === 'primary' ? p.onAccent : p.accent} /> : <Text style={[s.buttonText, tone !== 'primary' && s.lightButtonText, tone === 'danger' && s.dangerText]}>{label}</Text>}
+      style={({ pressed }) => [s.button, s[tone], compact && s.compact, style, pressed && s.pressed, blocked && s.disabled]}>
+      {busy ? <ActivityIndicator color={tone === 'danger' ? p.error : tone === 'primary' ? p.onAccent : p.accent} /> : <Text style={[s.buttonText, tone !== 'primary' && s.lightButtonText, tone === 'danger' && s.dangerText, textStyle]}>{label}</Text>}
     </Pressable>
   );
 }

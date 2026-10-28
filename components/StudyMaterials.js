@@ -6,6 +6,7 @@ import { getMaterialUrl } from '../utils/materialLinks';
 import { useStudy } from './StudyWorkspace';
 import { createStudyStyles } from './studyStyles';
 import { Button, Message } from './ui';
+import ItemActionsMenu from './ItemActionsMenu';
 
 /** @param {{subjectId: number}} props */
 export default function StudyMaterials({ subjectId }) {
@@ -23,11 +24,11 @@ export default function StudyMaterials({ subjectId }) {
     <Button label="Add Material" tone="outline" disabled={disabled} onPress={() => openMaterial(subjectId)} />
     <View style={{ gap: 24, marginTop: 24 }}>
       {materials.length === 0 && <Text style={s.hint}>No Study Materials Yet</Text>}
-      {materials.map(item => <View key={item.id} style={{ gap: 12 }}>
-        <Pressable accessibilityRole="link" accessibilityLabel={`Open ${item.title}`} onPress={() => void open(item)} style={{ flexDirection: 'row', gap: 12, alignItems: 'center', minHeight: 44 }}>
+      {materials.map(item => <View key={item.id} style={{ gap: 12, flexDirection: 'row', alignItems: 'flex-start' }}>
+        <Pressable accessibilityRole="link" accessibilityLabel={`Open ${item.title}`} onPress={() => void open(item)} style={{ flex: 1, flexDirection: 'row', gap: 12, alignItems: 'center', minHeight: 44 }}>
           <Ionicons name="document-text-outline" color={p.accent} size={22} /><View style={s.flex}><Text style={s.title}>{item.title}</Text><Text style={s.hint} numberOfLines={2}>{item.url_or_note || item.local_file_path}</Text></View><Ionicons name="open-outline" color={p.accent} size={18} />
         </Pressable>
-        <View style={{ flexDirection: 'row', gap: 12 }}><Button label="Edit" compact tone="quiet" disabled={disabled} onPress={() => openMaterial(subjectId, item)} /><Button label="Delete" compact tone="danger" disabled={disabled} busy={deletingMaterial === item.id} onPress={() => confirmDeleteMaterial(item)} /></View>
+        <ItemActionsMenu label={item.title} disabled={disabled} busy={deletingMaterial === item.id} onEdit={() => openMaterial(subjectId, item)} onDelete={() => confirmDeleteMaterial(item)} />
       </View>)}
     </View><Message text={error} />
   </View>;

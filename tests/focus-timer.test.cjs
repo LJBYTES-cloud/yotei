@@ -15,6 +15,7 @@ async function setup() {
   const palette = { text: '#000000', muted: '#000000', accent: '#000000', warm: '#000000' };
   const modules = {
     react: {
+      memo: component => component,
       useState(initial) { const index = cursor++; if (!slots[index]) slots[index] = { value: typeof initial === 'function' ? initial() : initial }; return [slots[index].value, value => { slots[index].value = value; }]; },
       useCallback(callback) { const index = cursor++; if (!slots[index]) slots[index] = callback; return slots[index]; },
     },
@@ -49,9 +50,9 @@ async function setup() {
   };
 }
 
-test('live focus view counts work, shows lateness, freezes it on break and wires resume/finish actions', async () => {
+test('live focus view counts work without lateness feedback, freezes on break and wires resume/finish', async () => {
   const s = await setup();
-  assert.match(s.text(), /12:34/); assert.match(s.text(), /Started 13 minutes late/);
+  assert.match(s.text(), /12:34/); assert.doesNotMatch(s.text(), /late|on time/i);
   s.button('Take Break').onPress(); assert.deepEqual(s.calls, [[7, 'break']]);
   s.block.break_started_at = '2026-10-20T09:25:34Z'; s.advance(60000);
   assert.match(s.text(), /12:34 studied · work paused/); assert.match(s.text(), /1:00/);
@@ -60,7 +61,7 @@ test('live focus view counts work, shows lateness, freezes it on break and wires
   assert.match(s.text(), /13:34/);
   s.button('Finish Session').onPress(); assert.deepEqual(s.calls.at(-1), [7, 'finish']);
   s.block.actual_start_time = '2026-10-20T09:00:30Z';
-  assert.match(s.text(), /Started less than a minute late/);
+  assert.doesNotMatch(s.text(), /late|on time/i);
   s.block.actual_start_time = s.block.start_time;
   assert.doesNotMatch(s.text(), /Started .* late/);
   s.dispose(); assert.equal(s.intervals.size, 0);

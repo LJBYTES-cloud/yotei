@@ -1,17 +1,20 @@
 import { fonts, typeScale, typeLeading } from './typography';
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, useThemedStyles } from '../ThemeContext';
-import { bookGradient } from '../utils/subjectFields';
+import { bookGradient, groupSubjectsByField } from '../utils/subjectFields';
 
-/** @param {{subject: import('../db/SubjectService').Subject, count: number, revealed: boolean, disabled: boolean, reduceMotion: boolean, onReveal: () => void, onReturn: () => void, onOpen: () => void, onEdit: () => void}} props */
+/** @param {{subject: import('../db/SubjectService').Subject, count: number, revealed: boolean, disabled: boolean, reduceMotion: boolean, onReveal: (id: number) => void, onReturn: () => void, onOpen: (subject: import('../db/SubjectService').Subject) => void, onEdit: (subject: import('../db/SubjectService').Subject) => void}} props */
 function SubjectBook({ subject, count, revealed, disabled, reduceMotion, onReveal, onReturn, onOpen, onEdit }) {
   const s = useThemedStyles(createStyles);
   const { colors: p } = useTheme();
   const [progress] = useState(() => new Animated.Value(revealed ? 1 : 0));
   const [coverHeight, setCoverHeight] = useState(280);
+  const reveal = useCallback(() => onReveal(subject.id), [onReveal, subject.id]);
+  const open = useCallback(() => onOpen(subject), [onOpen, subject]);
+  const edit = useCallback(() => onEdit(subject), [onEdit, subject]);
   useEffect(() => {
     if (reduceMotion) { progress.setValue(revealed ? 1 : 0); return; }
     const animation = Animated.timing(progress, { toValue: revealed ? 1 : 0, duration: 260, useNativeDriver: false, isInteraction: false });
@@ -40,12 +43,12 @@ function SubjectBook({ subject, count, revealed, disabled, reduceMotion, onRevea
             <Pressable accessibilityRole="button" accessibilityLabel={`Close ${subject.subject_code}`} disabled={disabled || !revealed} onPress={onReturn} style={s.tool}>
               <Ionicons name="chevron-back" size={18} color={p.bookInk} /><Text style={s.closeLabel}>Close</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${subject.name}`} accessibilityHint="Edit subject name, code, field of study, and colors" accessibilityState={{ disabled: disabled || !revealed }} disabled={disabled || !revealed} onPress={onEdit} style={s.tool}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${subject.name}`} accessibilityHint="Edit subject name, code, field of study, and colors" accessibilityState={{ disabled: disabled || !revealed }} disabled={disabled || !revealed} onPress={edit} style={s.tool}>
               <Ionicons name="pencil-outline" size={18} color={p.bookInk} />
             </Pressable>
           </View>
           <Pressable accessibilityRole="button" accessibilityLabel={`Open ${subject.name}, ${subject.subject_code}, ${count} ${count === 1 ? 'task' : 'tasks'}`}
-            accessibilityHint="Open this subject's task notebook" accessibilityState={{ expanded: revealed, disabled: disabled || !revealed }} disabled={disabled || !revealed} onPress={onOpen}
+            accessibilityHint="Open this subject's task notebook" accessibilityState={{ expanded: revealed, disabled: disabled || !revealed }} disabled={disabled || !revealed} onPress={open}
             style={({ pressed }) => [s.coverBody, pressed && s.pressed]}>
             <View style={s.coverLabel}>
               <Text style={s.code}>{subject.subject_code}</Text>
@@ -58,7 +61,7 @@ function SubjectBook({ subject, count, revealed, disabled, reduceMotion, onRevea
       <Animated.View pointerEvents={revealed ? 'none' : 'auto'} accessibilityElementsHidden={revealed} importantForAccessibility={revealed ? 'no-hide-descendants' : 'auto'}
         style={[s.layer, { opacity: progress.interpolate({ inputRange: [0, 0.35, 1], outputRange: [1, 0, 0] }) }]}>
       <Pressable accessibilityRole="button" accessibilityLabel={`Reveal ${subject.subject_code}, ${subject.name}`}
-        accessibilityHint="Pull the book off the shelf to reveal its cover" accessibilityState={{ expanded: false, disabled: disabled || revealed }} disabled={disabled || revealed} onPress={onReveal}
+        accessibilityHint="Pull the book off the shelf to reveal its cover" accessibilityState={{ expanded: false, disabled: disabled || revealed }} disabled={disabled || revealed} onPress={reveal}
         style={({ pressed }) => pressed && s.pressed}>
         <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.spine}>
           {details}
@@ -70,14 +73,17 @@ function SubjectBook({ subject, count, revealed, disabled, reduceMotion, onRevea
   );
 }
 
+const MemoSubjectBook = memo(SubjectBook);
+
 /** Horizontal shelves grouped by field. A cover opens a dedicated subject notebook.
  * @param {{subjects: import('../db/SubjectService').Subject[], taskCounts: Map<number, number>, disabled?: boolean, onOpen: (subject: import('../db/SubjectService').Subject) => void, onEdit: (subject: import('../db/SubjectService').Subject) => void, onAddField: (field: string) => void}} props
  */
-export default function SubjectBookshelf({ subjects, taskCounts, disabled = false, onOpen, onEdit, onAddField }) {
+function SubjectBookshelf({ subjects, taskCounts, disabled = false, onOpen, onEdit, onAddField }) {
   const s = useThemedStyles(createStyles);
   const { colors: p } = useTheme();
   const [revealedId, setRevealedId] = useState(/** @type {number | null} */ (null));
   const [reduceMotion, setReduceMotion] = useState(true);
+  const returnBook = useCallback(() => setRevealedId(null), []);
   useEffect(() => {
     let mounted = true;
     let changed = false;
@@ -85,16 +91,7 @@ export default function SubjectBookshelf({ subjects, taskCounts, disabled = fals
     void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (mounted && !changed) setReduceMotion(value); }).catch(() => {});
     return () => { mounted = false; subscription.remove(); };
   }, []);
-  const groups = useMemo(() => {
-    const fields = new Map(/** @type {[string, {name: string, subjects: import('../db/SubjectService').Subject[]}][]} */ ([]));
-    for (const subject of subjects) {
-      const key = subject.field_of_study.toLowerCase();
-      const group = fields.get(key);
-      if (group) group.subjects.push(subject);
-      else fields.set(key, { name: subject.field_of_study, subjects: [subject] });
-    }
-    return Array.from(fields, ([key, value]) => ({ key, ...value }));
-  }, [subjects]);
+  const groups = useMemo(() => groupSubjectsByField(subjects), [subjects]);
   return <View style={s.shelves}>
     {groups.map(group => <View key={group.key} style={s.shelf}>
       <View style={s.shelfHeading}><Text style={s.fieldTitle}>{group.name}</Text>
@@ -103,15 +100,17 @@ export default function SubjectBookshelf({ subjects, taskCounts, disabled = fals
         </Pressable>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={s.books} keyboardShouldPersistTaps="handled">
-        {group.subjects.map(subject => <SubjectBook key={subject.id} subject={subject} count={taskCounts.get(subject.id) ?? 0}
+        {group.subjects.map(subject => <MemoSubjectBook key={subject.id} subject={subject} count={taskCounts.get(subject.id) ?? 0}
           revealed={subject.id === revealedId} disabled={disabled} reduceMotion={reduceMotion}
-          onReveal={() => setRevealedId(subject.id)} onReturn={() => setRevealedId(null)}
-          onOpen={() => onOpen(subject)} onEdit={() => onEdit(subject)} />)}
+          onReveal={setRevealedId} onReturn={returnBook}
+          onOpen={onOpen} onEdit={onEdit} />)}
       </ScrollView>
       <View style={s.shelfEdge}><View style={s.shelfHighlight} /></View>
     </View>)}
   </View>;
 }
+
+export default memo(SubjectBookshelf);
 
 /** @param {import('../ThemeContext').ThemeColors} p */
 const createStyles = p => StyleSheet.create({

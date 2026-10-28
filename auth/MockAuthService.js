@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import AuthService from './AuthService';
+import AuthService, { normalizeDisplayName } from './AuthService';
 
 const SESSION_KEY = 'yotei.mock-auth.session.v1';
 export const DEMO_EMAIL = 'student@yotei.demo';
@@ -83,6 +83,20 @@ export default class MockAuthService extends AuthService {
     this.sessionEstablished = false;
   }
 
+  /** Update public session storage without changing the remember-me choice.
+   * @param {string} name
+   */
+  async updateName(name) {
+    const normalized = normalizeDisplayName(name), user = await this.getCurrentUser();
+    if (!user) throw new Error('Sign in before updating your name.');
+    const updated = { ...user, name: normalized };
+    if (await SecureStore.isAvailableAsync()) await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(updated));
+    const credentials = this.users.get(user.email);
+    if (credentials?.id === user.id) this.users.set(user.email, { ...credentials, name: normalized });
+    this.currentUser = updated;
+    return { ...updated };
+  }
+
   async getCurrentUser() {
     const restoreAllowed = await this.initializeSession();
     if (!restoreAllowed && !this.sessionEstablished) return null;
@@ -109,6 +123,8 @@ export default class MockAuthService extends AuthService {
     }
     // Restore the public session, never the in-memory password database.
     this.currentUser = publicUser(parsed);
+    const credentials = this.users.get(this.currentUser.email);
+    if (credentials?.id === this.currentUser.id) this.users.set(this.currentUser.email, { ...credentials, name: this.currentUser.name });
     this.sessionEstablished = true;
     return { ...this.currentUser };
   }

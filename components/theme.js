@@ -4,7 +4,4 @@ export function formatMinutes(minutes) {
   return rounded >= 60 ? `${Math.floor(rounded / 60)}h${rounded % 60 ? ` ${rounded % 60}m` : ''}` : `${rounded}m`;
 }
 
-/** @param {string} timestamp */
-export function formatTime(timestamp) {
-  return new Date(timestamp).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-}
+export { formatTime } from '../utils/timeFormat';

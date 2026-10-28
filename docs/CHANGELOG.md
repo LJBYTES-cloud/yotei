@@ -2,6 +2,154 @@
 
 This consolidates the feature requests and reworks through the 2026-10-21 handoff. The current implementation and [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) take precedence over earlier intermediate designs.
 
+## Scheduled-Card Kebab and Active-Session Notice (2026-10-27)
+
+- Reverted the three-button action row. Scheduled cards now have only the full-width primary Start Session button; the top-right kebab beside time/status contains exact Mark as Done and Delete Block actions. Status text can shrink/wrap while keeping the menu touch target. The existing themed block-deletion modal remains connected.
+- ItemActionsMenu accepts custom label/onPress/tone actions or the backward-compatible optional Edit/Delete callbacks with custom labels. Existing task/material defaults remain. Callbacks still wait for iOS dismissal or Android's post-commit frame before opening another modal; busy/disabled/duplicate choices are guarded.
+- Another active or paused session no longer disables an otherwise eligible Start button. The start-only workspace check posts **You already have a session in progress. Finish it before starting a new one.** and returns before SQLite/mutation state. Early-window/pending-action disabling stays in place; pause/resume continue normally. Removed unused canStart plumbing and old row styles.
+- Validation: lint/typecheck, 45 focused UI tests, full regression with 195 passes/one existing timezone skip (196 cases), and Android/iOS exports passed. No dependency/schema/database-service changes.
+
+| File | Change |
+| --- | --- |
+| `components/ItemActionsMenu.js` | Added custom action arrays/labels and optional legacy callbacks; retained default Edit/Delete behavior and deferred action dispatch. |
+| `components/StudyCards.js` | Moved scheduled secondary actions into the header kebab and kept one primary Start button without the active-session disabling prop. |
+| `components/studyStyles.js` | Replaced obsolete three-button row styles with a shrinkable status/menu header group. |
+| `screens/HomeScreen.js` | Removed unused canStart calculation, prop and callback dependency. |
+| `components/StudyWorkspace.js` | Added the start-only active-session notice and early return before SQLite; retained pause/resume and mutation guards. |
+| `tests/task-library.test.cjs` | Covered custom menus/dismissal/duplicates, secondary-action wiring, eligible start clicks, exact conflict notice/no service call and unaffected break/resume. |
+| `README.md` | Updated the scheduled-card/menu and active-session UX overview. |
+| `docs/PROJECT_CONTEXT.md` | Updated menu API, current layout and start-guard contracts. |
+| `docs/NEXT_SESSION_PROMPT.md` | Replaced the superseded action-row contract with current menu/notice behavior. |
+| `docs/DEMO_AND_TESTING.md` | Added menu-to-confirmation and active/paused-session toast acceptance checks. |
+| `docs/VALIDATION.md` | Recorded current tests/exports and remaining physical-device checks. |
+| `docs/CHANGELOG.md` | Recorded this update and the complete 12-file summary. |
+
+Twelve existing files updated; no files created or deleted in this pass. Pre-existing work remains intact.
+
+## Themed Block Deletion and Scheduled-Card Action Row (2026-10-27)
+
+- Replaced scheduled-block native Alert with a themed BlockDeletionModal: Merriweather heading/task, Inter body/buttons, matching light/dark surfaces, Cancel and destructive Delete Block. Idle backdrop/Back/accessibility escape cancel without writes; pending deletion locks dismissal and duplicate submissions. Failure stays in the dialog for retry; success closes it and refreshes shared data. Other record confirmations retain their current behavior.
+- Scheduled cards now show Start Session, Mark as Done and Delete Block in one horizontal space-between row. Start has a larger 1.6 flex share and filled primary styling; compact secondaries have one share each. Centered wrapping labels, zero minimum width and smaller padding retain the row on narrow screens without fixed-height text clipping. Start remains visible but disabled before its scheduled window or while another timer is active.
+- Added optional shared Button style/textStyle overrides; default buttons retain their styling and pressed/disabled behavior. No dependency, schema or database-service changes.
+- Validation: lint/typecheck passed, 49 focused UI tests passed, full regression reported 193 passes/one existing timezone skip (194 cases), and Android/iOS exports passed. Physical-device layout/touch checks remain manual.
+
+| File | Change |
+| --- | --- |
+| `components/BlockDeletionModal.js` (created) | Themed, accessible confirmation dialog with loading, error/retry display and guarded cancellation/confirmation. |
+| `components/StudyWorkspace.js` | Own the block-deletion selection/busy/error state, lock competing actions, perform the existing owned delete and refresh, and keep failures retryable. |
+| `components/StudyCards.js` | Render all three scheduled actions in one row with a larger primary Start and smaller secondary actions; preserve start eligibility. |
+| `components/studyStyles.js` | Add responsive row, flex sizing, padding and wrapping label styles. |
+| `components/ui.js` | Accept optional Button container/text styles while preserving shared defaults and interaction states. |
+| `tests/task-library.test.cjs` | Update confirmation tests for the custom modal and add row/eligibility, no-Alert, cancellation, duplicate, pending, ownership/status and failure/retry coverage. |
+| `tests/notifications.test.cjs` | Verify confirmation typography/colors in both themes, cancel/confirm paths and busy guards through the actual modal component. |
+| `docs/PROJECT_CONTEXT.md` | Document the themed deletion state/locks and scheduled action-row behavior. |
+| `docs/NEXT_SESSION_PROMPT.md` | Add the new modal and button-layout contracts for continuation. |
+| `docs/DEMO_AND_TESTING.md` | Add both-theme, narrow-screen, larger-text and deletion-interaction checks. |
+| `docs/VALIDATION.md` | Record current test/export evidence and physical-device limits. |
+| `docs/CHANGELOG.md` | Record this update and the complete 12-file summary. |
+
+One file created, 11 existing files updated, no files deleted in this pass. Pre-existing work is preserved.
+
+## Settings, Manual Completion, Journal Management, and Coach (2026-10-27)
+
+- Restored strictly Mock-only demo rendering and guarded the reset action; real auth remains enabled. New Subject Code drafts are empty with the exact e.g. GEN-101 placeholder; saved/migrated codes remain intact. Duration replacement explicitly recalculates End from the selected Start, with rapid-edit/save regressions. Data Management again exposes themed JSON-backup guidance.
+- Added device-wide 24-Hour Time, default ON, restored before screens mount and saved in order to AsyncStorage. Shared formatting covers scheduled times, journal dates, completion logs and coach hour suggestions. Elapsed counters and study-hour axes remain durations. Android uses is24Hour; iOS uses a formatted time button and locale-controlled native spinner, retaining the compact calendar.
+- Scheduled Home blocks now support Mark as Done and confirmed Delete Block. Manual completion saves scheduled seconds, action-time completion and no invented actual start/breaks; retries preserve the first result. Progress credits the completion date and optional reflection still opens. Deletion keeps Task/other history. Backup version 6 validates and restores this new state using existing columns; no schema change.
+- Journal previews are tappable and open full text in a themed keyboard-aware detail sheet. Both manual entries and automatic reflections support owned edit/delete with native confirmation, retryable drafts and duplicate locks. Manual titles/content and reflection notes are editable; reflection titles remain task-derived. Edits keep dates/links; note deletion does not delete sessions or change study totals.
+- Added Display Name editing through both auth adapters and SessionContext. Appwrite updates the account name; Mock updates its memory/public SecureStore session without changing Remember Me. The UI updates immediately after success and keeps the same user ID. SQLite has no separate profile-name/session table, so study ownership stays intact.
+- Coach priority is now overdue incomplete tasks, repeated postponement, planned workload >240, completed today+yesterday, then optional most-studied-hour advice after sufficient history. Calendar-day deadlines, streaks and historical hours use consistent JS/device time semantics; SQLite native-localtime conversion was removed after timezone testing exposed a mismatch. Exactly one message appears, or none if no rule matches.
+- Verification: lint/typecheck, 191 passing tests plus one existing timezone-specific skip (192 cases), all 72 New York database tests, fractional-offset checks, and Android/iOS/web exports. Native gestures/rendering and live Appwrite rename still require a device. See [VALIDATION.md](VALIDATION.md).
+
+### File-by-File Summary for This Update
+
+| File | Change |
+| --- | --- |
+| `TimeFormatContext.js` (created) | Hydrated device-wide 12/24-hour preference, stable shared formatters, ordered AsyncStorage saves and safe fallbacks. |
+| `utils/timeFormat.js` (created) | Locale-aware clock/date-time formatting, h23 midnight handling and invalid-value fallback. |
+| `components/DisplayNameSheet.js` (created) | Keyboard-aware display-name editor with validation, duplicate guard, loading and retained error drafts. |
+| `components/JournalDetailSheet.js` (created) | Full journal/reflection text, appropriate edit fields, owned saves and confirmed deletion. |
+| `db/CoachService.js` (created) | Owned completion-day streak flags and sufficient-history best-hour aggregation using UTC buckets plus JS local conversion. |
+| `App.js` | Mounted TimeFormatProvider between theme hydration and application/session screens. |
+| `auth/AuthService.js` | Added validated display-name normalization and the updateName adapter interface. |
+| `auth/AppwriteAuthService.js` | Implemented normalized Account.updateName with the current session. |
+| `auth/MockAuthService.js` | Implemented session/memory name updates and remembered-name restoration without changing remember flags or persisting passwords. |
+| `auth/SessionContext.js` | Immediate normalized profile updates, loading/competing-action guards and protection against replacing a different current user. |
+| `auth/index.js` | Widened the adapter flag's static type to boolean for strict false checks; retained real mode. |
+| `screens/SettingsScreen.js` | Strict Mock-only demo card, JSON-backup help, persisted time switch and Display Name edit action. |
+| `components/EntrySheet.js` | Empty new Subject Code state and exact requested placeholder; editing keeps the saved code. |
+| `components/ScheduleSheet.js` | Explicit Start-anchored duration replacement instead of deriving from a prior End. |
+| `components/DateTimeField.js` | Shared formatted times, Android clock preference and expandable iOS locale-controlled native time spinner. |
+| `components/theme.js` | Re-exported the shared clock formatter instead of maintaining a separate implementation. |
+| `components/StudyCards.js` | Shared clock labels, scheduled Mark as Done/Delete Block actions and manual-completion feedback. |
+| `components/StudyWorkspace.js` | Guarded manual completion/deletion, native block confirmation, shared journal-detail state/refresh, name-update busy state, Mock-only seeding and preferred-format schedule notices. |
+| `screens/HomeScreen.js` | Wired scheduled-block actions and the new coach-history input while retaining memoized rendering. |
+| `screens/JournalScreen.js` | Tappable four-line previews, preferred-format dates and shared full-detail opening with stable callbacks. |
+| `components/ProgressDetailsModal.js` | Preferred-format scheduled windows and actual/manual completion timestamps. |
+| `components/CoachCard.js` | New rule-history input and time-preference-aware best-hour note. |
+| `utils/coaching.js` | Explicit overdue/postponement/workload/streak/best-time priority, complete-day deadline semantics and stable selection. |
+| `db/StudyBlockService.js` | Serialized, owned, idempotent manual completion and scheduled-only block deletion preserving tasks. |
+| `db/ProgressService.js` | Credit manually saved seconds on their completion day and keep day-detail totals consistent. |
+| `db/BackupService.js` | Validate explicit manual completions while retaining legacy untimed and measured-timer validation. |
+| `db/JournalService.js` | Owned update/delete for manual and reflection sources, preserving dates, links, tasks and study sessions. |
+| `hooks/useDashboardData.js` | Load coach streak/hour history in shared refresh; removed unused lastCompleted hook state/query. |
+| `tests/database.test.cjs` | Manual session/note CRUD, ownership, history preservation, new coach priorities, calendar/DST/fractional-time behavior and prior regressions. |
+| `tests/backup.test.cjs` | Manual completion round-trip plus invalid-state rejection/rollback checks. |
+| `tests/auth.test.cjs` | Adapter rename normalization, identity/remember preservation, cold restore and API/storage failure checks. |
+| `tests/theme.test.cjs` | Generalized provider host and added time-preference hydration/order/remount/failure and clock-format tests. |
+| `tests/task-library.test.cjs` | Actual Settings, duration, native clock, profile/session, scheduled-action, journal-detail and coach wiring/locking regressions. |
+| `tests/web-platform.test.cjs` | Updated root-provider host while preserving native startup and web SQLite guard checks. |
+| `README.md` | Updated supported settings, Mock visibility, journal actions, manual completions, name ownership and coach priorities. |
+| `docs/PROJECT_CONTEXT.md` | Updated providers/service map, time/name/session/note/manual-completion contracts and current coach rules. |
+| `docs/DEMO_AND_TESTING.md` | Updated Mock-only walkthrough and acceptance checks for clocks, profiles, manual blocks and journal management. |
+| `docs/NEXT_SESSION_PROMPT.md` | Added current continuation contracts and superseded old coach/demo assumptions. |
+| `docs/DATA_BACKUP.md` | Documented manual completion validation, excluded preferences/profile data and current demo-export checks. |
+| `docs/VALIDATION.md` | Recorded dated full-suite, timezone, native export and component/adapter evidence plus device-only limits. |
+| `docs/CHANGELOG.md` | Recorded this feature and the complete 41-file change summary. |
+
+Five files created, 36 existing files updated, no project files deleted in this pass. No dependency/schema/backup-version changes; pre-existing work is preserved.
+
+## List Performance, Six-Month Demo, and Rule-Based Coach (2026-10-27)
+
+- Memoized Home focus rows, Journal entries, field shelves and books; stabilized renderers, keys and workspace actions. All three screen FlatLists use 10 initial items, batches of 10, windowSize 5 and removeClippedSubviews=true. Library now virtualizes vertical field shelves while retaining its horizontal animated books. Static focus cards receive narrow props instead of subscribing to the entire ticking workspace.
+- Expanded the owned, atomic demo reset to six calendar months, 20 unique subjects across five fields, 40 uniquely titled described tasks, 40 references and hundreds of completed sessions. All tasks appear in history. Varied experiences/next steps combine with assignment/date/timing details to make reflection notes and manual journal titles/content unique. Today's four blocks still total exactly 240 planned minutes, with honest elapsed completion near midnight, older rest days and a populated recent week.
+- Weekly Progress uses rounded whole-hour ticks and hour/minute labels. The ceiling follows real data, an empty week retains 0 to 1h, and extreme days use larger whole-hour steps to keep at most six intervals. Actual point values, touch targets and detail dialogs are preserved.
+- Removed lateness computation/display from the active timer. The completion reflection sheet derives exact-on-time, subminute and whole-minute late feedback from persisted timestamps; missing starts get neutral completion text. Work/break accounting and timer transitions are unchanged.
+- Added one Home Coach note with explicit priority: repeated postponement, >240 planned minutes, no completion within 72 hours, then latest actual work >1.5x allocation. The most-postponed task wins, with ID as a stable tie-break. No match hides the card. An owned all-history query provides the latest completion independently of Home's date-filtered list; the existing refresh pipeline updates it after actions/import/reset. Task-level notebook coaching remains.
+- Validation: lint/typecheck passed; ten suites produced 173 passes, zero failures and one timezone-specific skip (174 cases); all 68 database cases passed in New York. Android/iOS exports passed. Native scrolling/clipping/frame performance and rendered gestures still need physical-device checks. See [VALIDATION.md](VALIDATION.md).
+
+### File-by-File Summary for This Update
+
+| File | Change |
+| --- | --- |
+| `components/CoachCard.js` (created) | Themed Merriweather/Inter mentor-note card showing one selected rule or nothing. |
+| `utils/coaching.js` (created) | Pure ordered coach-rule selector, stable task selection, workload/72-hour/actual-work boundaries. |
+| `utils/progressChart.js` (created) | Whole-hour axis ceilings/steps, bounded interval count and hour/minute labels. |
+| `db/StudyBlockService.js` | Added validated, account-scoped latest completed-session lookup across all dates, using actual completion/fallback end and stable ID ordering. |
+| `db/seedData.js` | Six-month, 20-subject/five-field/40-task/40-reference demo; hundreds of sessions and unique journal/reflection text; retained atomic isolation and today's 240-minute example. |
+| `hooks/useDashboardData.js` | Fetch and expose lastCompleted in the existing guarded shared refresh. |
+| `screens/HomeScreen.js` | Stable focus renderer/keys, requested list limits, narrow static-card props and one CoachCard replacing stacked postponement notes. |
+| `screens/JournalScreen.js` | Extracted memoized timeline cards, stable renderer/keys and requested virtualization props. |
+| `screens/LibraryScreen.js` | Replaced the all-shelf vertical ScrollView with a FlatList of memoized field shelves, stable callbacks and requested performance settings. |
+| `components/SubjectBookshelf.js` | Memoized shelves/books, shared grouping helper and stable book-action callbacks; preserved reveal/return animation and field additions. |
+| `components/StudyCards.js` | Memoized FocusCard with explicit readiness/loading/action props, avoiding unrelated workspace updates. |
+| `components/FocusTimer.js` | Memoized active view; removed live lateness calculations/UI while preserving work/break ticking and actions. |
+| `components/CompletionReflectionSheet.js` | Display saved-start timing feedback after completion, above the optional reflection note. |
+| `components/WeeklyProgressCard.js` | Memoized chart card and integrated clean whole-hour bounds, segment count and formatted Y labels. |
+| `components/StudyWorkspace.js` | Stabilized timer/reschedule/subject-entry/edit actions and updated the demo-load notice to six months/20 subjects/40 tasks. |
+| `utils/focusTimer.js` | Separated completion-only start feedback from live work/break calculations. |
+| `utils/subjectFields.js` | Added shared case-insensitive subject grouping for virtualized field shelves. |
+| `tests/database.test.cjs` | Added owned history, coach priority/boundaries, clean-axis and completion-text cases; expanded six-month uniqueness/count/isolation/rollback checks. |
+| `tests/task-library.test.cjs` | Added one-note/completion/virtualization/callback/readiness checks and updated actual-component hosts for memoized rows and field lists. |
+| `tests/focus-timer.test.cjs` | Updated the actual timer host for memoization and verified no active lateness message while work/break/actions still behave correctly. |
+| `README.md` | Updated demo size, coach priority, chart ticks, completion feedback and list-performance overview. |
+| `docs/PROJECT_CONTEXT.md` | Updated component/service map and current coach, history, list, timer, chart and six-month seed contracts. |
+| `docs/DEMO_AND_TESTING.md` | Updated presentation steps/counts and manual coach, axis, completion and scrolling checks. |
+| `docs/NEXT_SESSION_PROMPT.md` | Added continuation context for the coach/query, list props, completion feedback, axis and expanded seed. |
+| `docs/VALIDATION.md` | Recorded current commands/results, boundary/SQL/component coverage and physical-device limits. |
+| `docs/CHANGELOG.md` | Recorded this implementation and this complete 26-file summary. |
+
+Three files created, 23 existing files updated, no files deleted in this pass. No dependency/schema/backup-format changes. Earlier local changes remain intact.
+
 ## Feature slices
 
 ### Authentication foundation
@@ -603,6 +751,60 @@ Complete per-file summary for this overhaul (nine files created, four retired):
 | `docs/DATA_BACKUP.md` | Document version-5 JSON and versions 1-4 conversion, linked IDs, materials and current Settings feedback. |
 | `docs/VALIDATION.md` | Record current regression/timezone/bundle evidence and native verification limits. |
 | `docs/CHANGELOG.md` | Record implementation decisions and this complete file-by-file summary. |
+
+### Light Startup, Kebab Actions, Permanent Files, Journal, and Quarter-Long Demo (2026-10-27)
+
+- Fixed the reversed appearance switch: OFF now means Light and ON means Dark. Startup is explicitly cream/Light in ThemeContext, App.js and app config. Hydration ignores legacy plain strings from the old switch UI; only corrected version-2 JSON preferences restore an explicit Dark choice. New toggles still persist in order. Removed general Settings info icons while retaining complex guidance elsewhere.
+- Replaced inline task/material Edit/Delete buttons with one top-right kebab. Themed Edit/Delete/Cancel options preserve destructive confirmations and owned service calls. iOS waits for modal dismissal before opening another editor/alert; Android hands off after commit. Chart dots grow to 7px and gain transparent 44px touch targets without changing point-vs-background behavior.
+- Rechecked expo-document-picker with Expo's SDK installer. Browse File Manager is MaterialSheet's primary action; selected files copy from temporary/provider storage into private permanent documents storage. Saved rows persist local_file_path; manual URL/path entry remains secondary. Cancellation/replacement/unmount cleans up only unsaved new copies, not provider originals or committed files. JSON backups retain file URIs, not file bytes.
+- Added owned JournalEntry(id,user_id,title,content,created_at), JournalService and a New Entry sheet. Journal replaces Reflections in the route/tab UI with one newest-first timeline combining manual entries and focus-session reflections. Namespaced IDs prevent cross-table key collisions; manual entries survive subject deletion. Focus reflection behavior remains intact, and shared refresh/toast/mutation guards connect both entry types.
+- Backup version 6 includes manual entries. Versions 1-5 still import with an empty manual collection; existing descriptions, reflection/session links and timer/history conversion remain. Restore binds ownership to the destination and preserves transactional rollback.
+- Demo data now spans three calendar months, clamped at month ends and generated by local dates. It includes 3 subjects, 18 described tasks, 12 materials, over 100 completed sessions with over/underruns/breaks/lateness, reflection notes and manual entries. Older rest days mix with a populated recent week. Today's 240 planned minutes remain; its first completion uses real elapsed time up to now. Counts vary with the calendar. Duration overruns compare elapsed time against allocation; late clock finishes are reported separately.
+- Verification: lint/typecheck, dependency check, 166 passing regression cases with one existing timezone skip, all 64 New York database cases, and Android/iOS/web bundle exports. Device appearance, gestures, picker/file access and native handler permissions remain manual checks. A pre-existing AuthScreen local edit was preserved.
+
+File-by-file summary for this pass (seven new files, two replaced routes/screens):
+
+| File | Change |
+| --- | --- |
+| `ThemeContext.js` | Start Light, validate version-2 saved choices, ignore old reversed-switch values, and support a startup fallback during hydration. |
+| `App.js` | Render cream StartupScreen with dark status text during font/theme hydration. |
+| `app.json` | Set native startup appearance to Light. |
+| `screens/SettingsScreen.js` | Correct switch value to isDark, remove redundant help icons, and describe the three-month demo. |
+| `components/ItemActionsMenu.js` | **Created:** themed kebab options with safe platform-specific edit/delete handoff. |
+| `components/StudyCards.js` | Replace inline task actions with kebab and allow simple headers without info icons. |
+| `components/StudyMaterials.js` | Replace inline material actions with kebab controls. |
+| `components/studyStyles.js` | Remove obsolete inline task-action styles. |
+| `components/WeeklyProgressCard.js` | Larger visible dots and transparent 44px point targets that retain day/background isolation. |
+| `utils/materialFiles.js` | **Created:** system picker, account-scoped permanent copy, partial-copy rollback and pending-copy cleanup. |
+| `components/MaterialSheet.js` | Primary file picker, title autofill, permanent-file metadata, secondary manual input and draft/copy lifecycle guards. |
+| `db/MaterialService.js` | Persist copied-file URIs in local_file_path with existing ownership/validation rules. |
+| `db/database.js` | Add JournalEntry and owned chronological index without replacing existing records. |
+| `db/JournalService.js` | **Created:** validated manual-entry creation/reads and owned combined chronological SQL feed. |
+| `components/JournalEntrySheet.js` | **Created:** keyboard-aware Title/Content editor with validation and draft-preserving errors. |
+| `screens/JournalScreen.js` | **Created:** virtualized manual-entry/reflection timeline and New Entry action. |
+| `src/app/(tabs)/journal.tsx` | **Created:** active Journal route. |
+| `src/app/(tabs)/_layout.tsx` | Rename the tab to Journal and retain journal icons. |
+| `screens/ReflectionsScreen.js` | **Deleted:** replaced by the combined Journal screen; stored reflections remain. |
+| `src/app/(tabs)/reflections.tsx` | **Deleted:** replaced by journal.tsx. |
+| `hooks/useDashboardData.js` | Fetch the combined Journal feed through existing shared refresh/stale-request guards. |
+| `components/StudyWorkspace.js` | Add journal sheet/save locks, refresh/toast feedback and updated backup/demo summaries. |
+| `db/BackupService.js` | Version-6 manual-entry validation/export/import/counts, older-version defaults and awaited file lifecycle operations. |
+| `db/ProgressService.js` | Separate duration overruns from scheduled-end clock lateness. |
+| `components/ProgressDetailsModal.js` | Highlight Scheduled/Actual/Overrun comparisons and report late finishes separately. |
+| `db/seedData.js` | Generate three calendar months of realistic sessions, reflections, manual entries, tasks and materials in one owned reset. |
+| `tests/material-files.test.cjs` | **Created:** actual helper tests for persistent copies, cache independence, cancel/failure and scoped cleanup. |
+| `tests/database.test.cjs` | Journal ownership/feed/keys, stored file URI, six-table/quarter-seed and overrun/workload/date regression checks. |
+| `tests/backup.test.cjs` | Version-6 manual-entry round trips, file URIs, older imports and invalid-data preservation. |
+| `tests/task-library.test.cjs` | Menus on iOS/Android, larger targets, Settings switch/help, file-picker lifecycle and manual Journal interactions. |
+| `tests/theme.test.cjs` | Legacy preference reset, version-2 choice persistence, hydration and write recovery. |
+| `tests/web-platform.test.cjs` | Assert Light startup fallback and preserve web/native route mounting checks. |
+| `README.md` | Update theme, compact actions, files, Journal, backup and long-term demo overview. |
+| `docs/PROJECT_CONTEXT.md` | Update schema, services, hydration, file lifecycle, Journal, metrics and demo contracts. |
+| `docs/NEXT_SESSION_PROMPT.md` | Rewrite continuation context for the current Journal/file/theme implementation. |
+| `docs/DEMO_AND_TESTING.md` | Update presentation and manual acceptance flows plus ten-suite commands. |
+| `docs/DATA_BACKUP.md` | Document version-6 Journal collection, legacy defaults and permanent-file URI/byte boundary. |
+| `docs/VALIDATION.md` | Record regression/timezone/bundle evidence and physical-device limits. |
+| `docs/CHANGELOG.md` | Record this implementation and complete per-file summary. |
 
 ## Superseded decisions
 

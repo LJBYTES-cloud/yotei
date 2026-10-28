@@ -97,15 +97,20 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
   await reviews.evaluate();
   const materials = await load('./db/MaterialService.js', parent);
   await materials.evaluate();
+  const journal = await load('./db/JournalService.js', parent); await journal.evaluate();
   const progress = await load('./db/ProgressService.js', parent);
   await progress.evaluate();
   const database = modules.get(path.resolve('db/database.js')).namespace;
   const subjectFields = modules.get(path.resolve('utils/subjectFields.js')).namespace;
   const timer = await load('./utils/focusTimer.js', parent);
   await timer.evaluate();
+  const coaching = await load('./utils/coaching.js', parent); await coaching.evaluate();
+  const chartAxis = await load('./utils/progressChart.js', parent); await chartAxis.evaluate();
+  const coachService = await load('./db/CoachService.js', parent); await coachService.evaluate();
   return {
-    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace, ...reviews.namespace, ...subjectFields, ...timer.namespace, ...progress.namespace, ...materials.namespace,
+    ...subjects.namespace, ...tasks.namespace, ...blocks.namespace, ...dates, ...database, ...loadService, ...scheduling.namespace, ...demo.namespace, ...reviews.namespace, ...subjectFields, ...timer.namespace, ...progress.namespace, ...materials.namespace, ...journal.namespace,
     ...modules.get(path.resolve('utils/materialLinks.js')).namespace,
+    ...coaching.namespace, ...chartAxis.namespace, ...coachService.namespace,
     setNow: value => { now = value; },
     get opens() { return opens; },
     close: async () => { for (const connection of connections) await connection.closeAsync(); },
@@ -113,6 +118,270 @@ async function loadServices(filename = ':memory:', failFirstInitialization = fal
 }
 
 const plain = value => JSON.parse(JSON.stringify(value));
+
+test('scheduled blocks complete manually once, credit the completion day and preserve tasks', async t => {
+  const s = await loadServices(':memory:', false, '2026-10-20T12:00:00'); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' });
+  const task = await s.createTask('owner', { subject_id: subject.id, title: 'Cells' });
+  const now = new Date('2026-10-20T12:00:00').toISOString();
+  const start = new Date('2026-10-21T17:00:00'), end = new Date('2026-10-21T17:45:00');
+  const block = await s.createStudyBlock('owner', { task_id: task.id, start_time: start.toISOString(), end_time: end.toISOString() });
+  await assert.rejects(s.markStudyBlockDone('other', block.id, now), /account/i);
+  const [first, retry] = await Promise.all([s.markStudyBlockDone('owner', block.id, now), s.markStudyBlockDone('owner', block.id, new Date(Date.parse(now) + 60000).toISOString())]);
+  assert.equal(first.status, 'done'); assert.equal(first.actual_start_time, null);
+  assert.equal(first.actual_end_time, now); assert.equal(retry.actual_end_time, now);
+  assert.equal(first.actual_study_seconds, 2700); assert.equal(first.break_time_ms, 0);
+  const week = await s.getWeeklyStudyMinutes('owner', '2026-10-20');
+  assert.equal(week.at(-1).minutes, 45, 'credit now rather than the future scheduled day');
+  const details = await s.getStudyDayDetails('owner', '2026-10-20');
+  assert.equal(details[0].studied_minutes, 45); assert.equal(details[0].elapsed_minutes, 45);
+  assert.equal(details[0].overrun_minutes, 0); assert.equal(details[0].finished_late_minutes, 0);
+  assert.equal((await s.getTasksForUser('owner'))[0].id, task.id);
+  await assert.rejects(s.deleteStudyBlock('owner', block.id), /scheduled/i);
+  const next = await s.createStudyBlock('owner', { task_id: task.id, start_time: start.toISOString(), end_time: end.toISOString() });
+  await assert.rejects(s.deleteStudyBlock('other', next.id), /account/i);
+  await s.deleteStudyBlock('owner', next.id);
+  assert.deepEqual((await s.getStudyBlocksForUser('owner')).map(row => row.id), [block.id]);
+  assert.equal((await s.getTasksForUser('owner'))[0].latest_scheduled_start, null);
+  for (const id of [0, -1, NaN, '1']) {
+    await assert.rejects(s.deleteStudyBlock('owner', id));
+    await assert.rejects(s.markStudyBlockDone('owner', id, now));
+  }
+  const missed = await s.createStudyBlock('owner', { task_id: task.id, start_time: start.toISOString(), end_time: end.toISOString() });
+  await s.updateStudyBlockStatus('owner', missed.id, 'missed');
+  await assert.rejects(s.markStudyBlockDone('owner', missed.id, now), /scheduled/i);
+  await assert.rejects(s.deleteStudyBlock('owner', missed.id), /scheduled/i);
+});
+
+test('journal management updates/deletes both owned sources without changing dates or study history', async t => {
+  const s = await loadServices(':memory:', false, '2026-10-20T12:00:00'); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' });
+  const task = await s.createTask('owner', { subject_id: subject.id, title: 'Cells' });
+  const block = await s.createStudyBlock('owner', { task_id: task.id, start_time: '2026-10-20T10:00:00Z', end_time: '2026-10-20T10:30:00Z' });
+  await s.markStudyBlockDone('owner', block.id);
+  const reflection = await s.createReflectionItem('owner', { subject_id: subject.id, study_block_id: block.id, note: 'First note' });
+  const entry = await s.createJournalEntry('owner', { title: 'Plan', content: 'First plan' });
+  for (const [id, kind] of [[entry.id, 'entry'], [reflection.id, 'reflection']]) {
+    await assert.rejects(s.updateJournalEntry('other', id, { title: 'Private', content: 'Changed' }, kind), /account/i);
+    await assert.rejects(s.deleteJournalEntry('other', id, kind), /account/i);
+    await assert.rejects(s.updateJournalEntry('owner', id, { title: 'Title', content: ' ' }, kind));
+    await assert.rejects(s.updateJournalEntry('owner', id, { title: 'Title', content: 'x'.repeat(kind === 'entry' ? 12001 : 4001) }, kind));
+  }
+  await s.updateJournalEntry('owner', entry.id, { title: "  Plan'); DROP TABLE Task; --  ", content: '  Revised plan  ' });
+  await s.updateJournalEntry('owner', reflection.id, { content: '  Revised reflection  ' }, 'reflection');
+  const feed = await s.getJournalFeedForUser('owner');
+  assert.equal(feed.find(row => row.kind === 'entry').content, 'Revised plan');
+  assert.equal(feed.find(row => row.kind === 'entry').created_at, entry.created_at);
+  assert.equal(feed.find(row => row.kind === 'reflection').created_at, reflection.created_at);
+  assert.equal(feed.find(row => row.kind === 'reflection').content, 'Revised reflection');
+  assert.equal((await s.getTasksForUser('owner'))[0].title, 'Cells', 'reflection editing does not rename the task');
+  await s.deleteJournalEntry('owner', reflection.id, 'reflection');
+  await s.deleteJournalEntry('owner', entry.id);
+  assert.equal((await s.getJournalFeedForUser('owner')).length, 0);
+  assert.equal((await s.getStudyBlocksForUser('owner'))[0].status, 'done');
+  await assert.rejects(s.deleteJournalEntry('owner', entry.id));
+  await assert.rejects(s.updateJournalEntry('owner', 0, { content: 'x' }, 'reflection'));
+  await assert.rejects(s.deleteJournalEntry('owner', entry.id, 'bad-kind'));
+});
+
+test('coach streaks count local completion days and best-hour aggregation remains account-scoped', async t => {
+  const s = await loadServices(':memory:', false, '2026-10-20T20:00:00'); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' });
+  const task = await s.createTask('owner', { subject_id: subject.id, title: 'Cells' });
+  const db = await s.getDatabase();
+  assert.deepEqual(plain(await s.getCoachHistory('owner', '2026-10-20')), { completedToday: false, completedYesterday: false, bestHour: null });
+  const otherSubject = await s.createSubject('other', { name: 'Private' });
+  const otherTask = await s.createTask('other', { subject_id: otherSubject.id, title: 'Private Task' });
+  for (const day of ['2026-10-17', '2026-10-18', '2026-10-19', '2026-10-20']) {
+    for (const [id, hour, work] of [[task.id, 9, 1800], [otherTask.id, 15, 7200]]) {
+      const start = new Date(`${day}T${hour.toString().padStart(2, '0')}:00:00`), end = new Date(start.getTime() + work * 1000);
+      await db.runAsync(`INSERT INTO StudyBlock (task_id, start_time, end_time, status, actual_start_time, actual_end_time, actual_study_seconds)
+        VALUES (?, ?, ?, 'done', ?, ?, ?)`, id, start.toISOString(), end.toISOString(), start.toISOString(), end.toISOString(), work);
+    }
+  }
+  assert.deepEqual(plain(await s.getCoachHistory('owner', '2026-10-20')), { completedToday: true, completedYesterday: true, bestHour: 9 });
+  assert.equal((await s.getCoachHistory('other', '2026-10-20')).bestHour, 15);
+  const future = new Date('2026-10-21T00:00:00').toISOString();
+  const summary = await s.getCoachHistory('owner', '2026-10-21', future);
+  assert.equal(summary.completedToday, false); assert.equal(summary.completedYesterday, true);
+  await assert.rejects(s.getCoachHistory(' ', '2026-10-20'));
+  await assert.rejects(s.getCoachHistory('owner', 'bad date'));
+});
+
+test('coach productive-hour bins use each historical instant across DST and fractional-hour timezones', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' });
+  const task = await s.createTask('owner', { subject_id: subject.id, title: 'Cells' });
+  const db = await s.getDatabase();
+  for (const date of ['2026-10-31', '2026-11-01', '2026-11-02']) {
+    const start = new Date(`${date}T09:45:00`), end = new Date(start.getTime() + 1800000);
+    await db.runAsync(`INSERT INTO StudyBlock (task_id, start_time, end_time, status, actual_start_time, actual_end_time, actual_study_seconds)
+      VALUES (?, ?, ?, 'done', ?, ?, 1800)`, task.id, start.toISOString(), end.toISOString(), start.toISOString(), end.toISOString());
+  }
+  const summary = await s.getCoachHistory('owner', '2026-11-02', new Date('2026-11-02T20:00:00').toISOString());
+  assert.equal(summary.bestHour, 9); assert.equal(summary.completedToday, true); assert.equal(summary.completedYesterday, true);
+});
+
+test('coach prioritizes overdue, postponement, workload, calendar streak, then best time', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const now = new Date('2026-10-20T12:00:00').getTime();
+  const input = { tasks: [], scheduledMinutes: 240, history: { completedToday: false, completedYesterday: false, bestHour: null }, now };
+  assert.equal(s.selectCoachMessage(input), null);
+  input.history = { completedToday: true, completedYesterday: true, bestHour: 9 };
+  input.bestHourLabel = '09:00';
+  assert.equal(s.selectCoachMessage(input).rule, 'streak');
+  assert.equal(s.selectCoachMessage(input).message, "You're on a 2-day streak! Keep the momentum going.");
+  input.history = { ...input.history, completedYesterday: false };
+  assert.equal(s.selectCoachMessage(input).rule, 'best-time');
+  assert.match(s.selectCoachMessage(input).message, /09:00/);
+  input.scheduledMinutes = 240.01;
+  assert.equal(s.selectCoachMessage(input).rule, 'burnout');
+  input.tasks = [{ id: 8, title: 'Essay Draft', postpone_count: 2 }, { id: 6, title: 'Read Chapter 4', postpone_count: 3 }];
+  const order = input.tasks.map(task => task.id);
+  assert.equal(s.selectCoachMessage(input).message, "I noticed you've been postponing Read Chapter 4. Try a 5-minute micro-action to break the friction.");
+  assert.deepEqual(input.tasks.map(task => task.id), order);
+  input.tasks.push({ id: 1, title: 'Old Assignment', deadline: '2026-10-19', subject_name: 'Biology', status: 'pending', postpone_count: 0 });
+  assert.equal(s.selectCoachMessage(input).message, "You have an overdue task in Biology. Let's reschedule it to avoid burnout.");
+  input.tasks[2].status = 'done';
+  assert.equal(s.selectCoachMessage(input).rule, 'procrastination');
+  input.tasks = [{ id: 1, title: 'Due Today', deadline: '2026-10-20', status: 'pending', postpone_count: 0 }];
+  input.scheduledMinutes = 240;
+  assert.equal(s.selectCoachMessage(input).rule, 'best-time', 'date-only deadlines include the entire local due day');
+  input.tasks[0].deadline = new Date(now - 1).toISOString();
+  assert.equal(s.selectCoachMessage(input).rule, 'overdue', 'timestamp deadlines expire at their exact instant');
+  input.tasks[0].deadline = new Date(now).toISOString();
+  assert.equal(s.selectCoachMessage(input).rule, 'best-time');
+  input.tasks = []; input.history.bestHour = null;
+  assert.equal(s.selectCoachMessage(input), null);
+});
+
+test('coach history reads owned completed sessions across all dates, preferring actual completion time', async t => {
+  const s = await loadServices(':memory:', false, '2026-10-20T12:00:00Z'); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' });
+  const task = await s.createTask('owner', { subject_id: subject.id, title: 'Cells' });
+  const otherSubject = await s.createSubject('other', { name: 'Private' });
+  const otherTask = await s.createTask('other', { subject_id: otherSubject.id, title: 'Private Work' });
+  const db = await s.getDatabase();
+  async function insert(taskId, start, end, status, actualEnd = null, seconds = 0) {
+    return db.runAsync(`INSERT INTO StudyBlock (task_id, start_time, end_time, status, actual_start_time, actual_end_time, actual_study_seconds)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`, taskId, start, end, status, actualEnd === null ? null : start, actualEnd, seconds);
+  }
+  assert.equal(await s.getLatestCompletedStudyBlock('owner'), null);
+  await insert(otherTask.id, '2026-10-20T11:00:00Z', '2026-10-20T11:45:00Z', 'done', '2026-10-20T11:59:00Z', 3540);
+  const older = await insert(task.id, '2026-10-15T09:00:00Z', '2026-10-15T09:30:00Z', 'done');
+  assert.equal((await s.getLatestCompletedStudyBlock('owner')).id, older.lastInsertRowId);
+  assert.equal((await s.getStudyBlocksForUser('owner', { date: '2026-10-20' })).length, 0, 'coach history is independent of the Home date filter');
+  const completed = await insert(task.id, '2026-10-19T10:00:00Z', '2026-10-19T10:30:00Z', 'done', '2026-10-20T10:15:00Z', 2701);
+  const ignored = [];
+  for (const status of ['scheduled', 'active', 'missed']) ignored.push(await insert(task.id, '2026-10-20T11:00:00Z', '2026-10-20T11:45:00Z', status));
+  await insert(task.id, '2026-10-21T09:00:00Z', '2026-10-21T09:30:00Z', 'done', '2026-10-21T09:45:00Z', 2700);
+  let latest = await s.getLatestCompletedStudyBlock('owner');
+  assert.equal(latest.id, completed.lastInsertRowId); assert.equal(latest.task_title, 'Cells');
+  assert.equal(latest.actual_study_seconds, 2701);
+  const tied = await insert(task.id, '2026-10-20T09:00:00Z', '2026-10-20T10:00:00Z', 'done', '2026-10-20T10:15:00Z', 3600);
+  latest = await s.getLatestCompletedStudyBlock('owner');
+  assert.equal(latest.id, tied.lastInsertRowId, 'equal completion instants use ID order');
+  assert.equal((await s.getLatestCompletedStudyBlock('owner', '2026-10-19T12:00:00Z')).id, older.lastInsertRowId);
+  assert.equal(await s.getLatestCompletedStudyBlock("owner' OR 1=1 --"), null, 'query values are bound');
+  await assert.rejects(s.getLatestCompletedStudyBlock(' '), /Sign in/i);
+  await assert.rejects(s.getLatestCompletedStudyBlock('owner', 'bad date'), /reference time/i);
+});
+
+test('chart axes round up to whole hours with bounded clean intervals and retain zero-day values', async t => {
+  const s = await loadServices(); t.after(s.close);
+  for (const [minutes, maximum, segments, step] of [
+    [[0, 0, 0], 60, 1, 60], [[38, 76], 120, 2, 60], [[240, 270.5], 300, 5, 60],
+    [[360], 360, 6, 60], [[361], 480, 4, 120], [[1440], 1440, 6, 240],
+  ]) {
+    const values = [...minutes];
+    assert.deepEqual(plain(s.getProgressAxis(values)), { maximum, segments, step });
+    assert.deepEqual(values, minutes, 'axis scaling never alters actual chart data');
+    for (let index = 1; index <= segments; index++) assert.match(s.formatProgressAxisLabel(String(index * step)), /^\d+h$/);
+  }
+  assert.equal(s.formatProgressAxisLabel('0'), '0');
+  assert.equal(s.formatProgressAxisLabel('60'), '1h');
+  assert.equal(s.formatProgressAxisLabel('120'), '2h');
+  assert.equal(s.formatProgressAxisLabel('90'), '1h 30m');
+});
+
+test('lateness is derived only for completion and distinguishes exact, subminute and absent starts', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const block = { start_time: '2026-10-20T09:00:00Z', actual_start_time: '2026-10-20T09:13:45Z' };
+  assert.equal(s.getCompletionStartMessage(block), 'Session complete! You started 13 minutes late.');
+  block.actual_start_time = '2026-10-20T09:00:30Z';
+  assert.equal(s.getCompletionStartMessage(block), 'Session complete! You started less than a minute late.');
+  block.actual_start_time = block.start_time;
+  assert.equal(s.getCompletionStartMessage(block), 'You started exactly on time!');
+  block.actual_start_time = null;
+  assert.equal(s.getCompletionStartMessage(block), 'Session complete!');
+  const timing = s.getFocusTiming({ ...block, actual_end_time: null, break_started_at: null, break_time_ms: 0, actual_study_seconds: 0 });
+  assert.equal('lateMinutes' in timing || 'startedLate' in timing, false, 'live timing does not calculate lateness');
+});
+
+test('manual journal entries and session reflections form an owned, newest-first feed with unique keys', async t => {
+  const s = await loadServices(':memory:', false, '2026-10-20T10:00:00Z'); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' });
+  const reflection = await s.createReflectionItem('owner', { subject_id: subject.id, note: 'I can explain mitosis.' });
+  s.setNow('2026-10-21T10:00:00Z');
+  const entry = await s.createJournalEntry('owner', { title: "Plan'); DROP TABLE JournalEntry; --", content: '  Revise cells.\nPractise diagrams.  ' });
+  await s.createJournalEntry('other', { title: 'Private', content: 'Not shared' });
+  const feed = await s.getJournalFeedForUser('owner');
+  assert.deepEqual(plain(feed.map(item => [item.id, item.kind])), [[`entry-${entry.id}`, 'entry'], [`reflection-${reflection.id}`, 'reflection']]);
+  assert.equal(feed[0].content, 'Revise cells.\nPractise diagrams.');
+  assert.equal(feed[1].subject_name, 'Biology');
+  assert.equal((await s.getJournalFeedForUser('other')).length, 1);
+  for (const input of [{ title: '', content: 'x' }, { title: 'x', content: '' }, { title: 'x'.repeat(201), content: 'x' }, { title: 'x', content: 'x'.repeat(12001) }]) await assert.rejects(s.createJournalEntry('owner', input));
+  await assert.rejects(s.getJournalFeedForUser(' '));
+  await s.deleteSubject('owner', subject.id);
+  assert.equal((await s.getJournalFeedForUser('owner')).length, 1, 'manual notes survive subject deletion');
+});
+
+test('picked material locations persist in local_file_path and remain owned', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' });
+  const uri = 'file:///documents/materials/user-owner/notes.pdf';
+  const id = await s.createMaterial('owner', subject.id, { title: 'Notes', location: uri, local_file_path: uri });
+  const material = (await s.getMaterialsForUser('owner'))[0];
+  assert.equal(material.local_file_path, uri); assert.equal(material.url_or_note, null);
+  await assert.rejects(s.updateMaterial('other', id, { title: 'Bad', location: uri, local_file_path: uri }));
+  await s.updateMaterial('owner', id, { title: 'Website', location: 'https://example.com' });
+  assert.equal((await s.getMaterialsForUser('owner'))[0].local_file_path, null);
+});
+
+test('six-calendar-month demo spans month ends with unique assignments, honest timing and varied notes', async t => {
+  const s = await loadServices(':memory:', false, '2026-05-31T12:00:00'); t.after(s.close);
+  await s.createJournalEntry('other', { title: 'Private Plan', content: 'Keep this' });
+  const counts = await s.seedDemoData('owner');
+  assert.equal(counts.historyDays, 182); // November 30 through May 30, inclusive.
+  const journal = await s.getJournalEntriesForUser('owner');
+  assert.equal(s.getLocalDateKey(new Date(journal.at(-1).created_at)), '2025-11-30');
+  assert.equal((await s.getJournalEntriesForUser('other'))[0].title, 'Private Plan');
+  const blocks = await s.getStudyBlocksForUser('owner');
+  const subjects = await s.getSubjectsForUser('owner'), tasks = await s.getTasksForUser('owner');
+  assert.equal(subjects.length, 20); assert.equal(new Set(subjects.map(subject => subject.name)).size, 20);
+  assert.equal(new Set(subjects.map(subject => subject.field_of_study)).size, 5);
+  assert.equal(tasks.length, 40); assert.equal(new Set(tasks.map(task => task.title)).size, 40);
+  assert.equal(new Set(blocks.map(block => block.task_id)).size, 40, 'all assignments appear in session history');
+  assert.ok(blocks.filter(block => block.status === 'done').length >= 280);
+  assert.equal(new Set(journal.map(entry => entry.content)).size, journal.length);
+  assert.equal(new Set(journal.map(entry => entry.title)).size, journal.length);
+  const reflections = await s.getReflectionsForUser('owner');
+  assert.equal(new Set(reflections.map(item => item.note)).size, reflections.length);
+  assert.equal(new Set(reflections.map(item => item.subject_id)).size, 20);
+  assert.ok(reflections.some(item => /phone/.test(item.note)) && reflections.some(item => /flow state/.test(item.note)) && reflections.some(item => /math concepts/.test(item.note)));
+  const timed = blocks.filter(block => block.actual_start_time !== null);
+  assert.ok(timed.some(block => Date.parse(block.actual_end_time) - Date.parse(block.actual_start_time) > Date.parse(block.end_time) - Date.parse(block.start_time)));
+  assert.ok(timed.some(block => Date.parse(block.actual_end_time) - Date.parse(block.actual_start_time) < Date.parse(block.end_time) - Date.parse(block.start_time)));
+  for (const block of timed) {
+    const elapsed = Date.parse(block.actual_end_time) - Date.parse(block.actual_start_time);
+    assert.equal(block.actual_study_seconds, Math.floor((elapsed - block.break_time_ms) / 1000));
+    assert.ok(Date.parse(block.actual_end_time) <= Date.parse('2026-05-31T12:00:00'));
+  }
+  const feed = await s.getJournalFeedForUser('owner');
+  assert.equal(feed.length, counts.reflectionItems + counts.journalEntries);
+  assert.equal(new Set(feed.map(item => item.id)).size, feed.length);
+  assert.ok(feed.every((item, index) => !index || Date.parse(item.created_at) <= Date.parse(feed[index - 1].created_at)));
+});
 
 test('reflection migration rolls back old topics and schema on failure, then retries without losing IDs', async t => {
   const filename = path.join(os.tmpdir(), `yotei-reflection-migration-${randomUUID()}.db`);
@@ -209,7 +478,7 @@ test('day details match chart totals, exclude breaks and report scheduled-end ov
   const details = await s.getStudyDayDetails('owner', date);
   assert.equal(details.length, 1); assert.equal(details[0].studied_minutes, 25);
   assert.equal(details[0].planned_minutes, 30); assert.equal(details[0].break_minutes, 2);
-  assert.equal(details[0].elapsed_minutes, 27); assert.equal(details[0].overrun_minutes, 10);
+  assert.equal(details[0].elapsed_minutes, 27); assert.equal(details[0].overrun_minutes, 0); assert.equal(details[0].finished_late_minutes, 10);
   assert.equal((await s.getWeeklyStudyMinutes('owner', date))[6].minutes, details[0].studied_minutes);
   assert.equal((await s.getStudyDayDetails('other', date)).length, 0);
   assert.equal((await s.getStudyDayDetails('owner', '2026-10-19')).length, 0);
@@ -308,7 +577,7 @@ test('focus timer tracks lateness, freezes work on breaks, survives scheduled en
   assert.equal(active.status, 'active');
   assert.equal((await s.getWeeklyStudyMinutes('student', '2026-10-20')).reduce((sum, day) => sum + day.minutes, 0), 0, 'unfinished work is not completed progress');
   assert.equal(active.actual_start_time, '2026-10-20T09:13:00.000Z');
-  assert.equal(s.getFocusTiming(active, Date.parse('2026-10-20T09:18:00Z')).lateMinutes, 13);
+  assert.equal(s.getCompletionStartMessage(active), 'Session complete! You started 13 minutes late.');
   assert.equal(await s.getDailyStudyMinutes('student', s.getLocalDateKey(new Date(block.start_time))), 30, 'active sessions retain their planned workload');
   const paused = await s.pauseStudyBlock('student', block.id, '2026-10-20T09:18:00Z');
   assert.equal(s.getFocusTiming(paused, Date.parse('2026-10-20T09:24:00Z')).workSeconds, 300);
@@ -487,26 +756,25 @@ test('demo reset replaces only the selected account and can be repeated', async 
     snapshots[user] = { subject, task: (await services.getTasksForUser(user))[0], blocks: plain(await services.getStudyBlocksForUser(user)) };
   }
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    assert.deepEqual(plain(await services.seedDemoData('demo-user')), { subjects: 3, tasks: 6, studyBlocks: 10, reflectionItems: 3, totalMinutes: 240 });
+    const counts = await services.seedDemoData('demo-user');
+    assert.equal(counts.historyDays, 183); assert.equal(counts.tasks, 40); assert.equal(counts.totalMinutes, 240);
+    assert.ok(counts.studyBlocks >= 280 && counts.reflectionItems > 150 && counts.journalEntries >= 90);
     const subjects = await services.getSubjectsForUser('demo-user');
     const tasks = await services.getTasksForUser('demo-user');
-    assert.deepEqual(subjects.map(subject => subject.name).sort(), ['Biology', 'History', 'Mathematics']);
-    assert.equal(tasks.length, 6);
+    assert.equal(subjects.length, 20);
+    assert.equal(new Set(subjects.map(subject => subject.field_of_study)).size, 5);
+    assert.equal(tasks.length, 40);
     assert.equal(tasks.filter(task => task.postpone_count >= 2).length, 2);
-    assert.equal(tasks[0].postpone_count, 2, 'coaching examples appear first');
+    assert.ok(tasks.every(task => Boolean(task.description)));
     assert.equal(tasks.filter(task => task.deadline === '2026-10-20').length, 2);
     assert.equal(tasks.filter(task => task.deadline === '2026-10-21').length, 3);
     assert.equal(tasks.filter(task => task.deadline === '2026-10-19').length, 1);
-    assert.equal((await services.getStudyBlocksForUser('demo-user')).length, 10);
+    assert.equal((await services.getStudyBlocksForUser('demo-user')).length, counts.studyBlocks);
     const history = await services.getWeeklyStudyMinutes('demo-user', '2026-10-20');
-    assert.deepEqual(plain(history).slice(0, 6), [
-      { date: '2026-10-14', minutes: 60 }, { date: '2026-10-15', minutes: 90 },
-      { date: '2026-10-16', minutes: 75 }, { date: '2026-10-17', minutes: 120 },
-      { date: '2026-10-18', minutes: 105 }, { date: '2026-10-19', minutes: 150 },
-    ]);
+    assert.ok(history.slice(0, 6).every(day => day.minutes > 0));
     const reviews = await services.getReflectionsForUser('demo-user');
-    assert.equal(reviews.length, 3);
-    assert.deepEqual(reviews.map(review => review.subject_name).sort(), ['Biology', 'History', 'Mathematics']);
+    assert.equal(reviews.length, counts.reflectionItems);
+    assert.equal(new Set(reviews.map(review => review.subject_name)).size, 20);
     assert.ok(reviews.every(review => Number.isFinite(Date.parse(review.created_at))));
     assert.ok(reviews.every(review => review.note !== 'Old review'));
     assert.deepEqual(plain(await services.getSubjectsForUser('other-user')), [plain(snapshots['other-user'].subject)]);
@@ -518,8 +786,8 @@ test('demo reset replaces only the selected account and can be repeated', async 
       assert.equal(rows[0].subject_id, snapshots['other-user'].subject.id);
       if (table === 'ReflectionItem') assert.equal(rows[0].note, 'Old review');
     }
-    assert.equal((await database.getAllAsync('SELECT * FROM Material')).length, 4, 'demo has three links and the other account retains its material');
-    assert.equal((await database.getAllAsync('SELECT * FROM ReflectionItem')).length, 4, 'reloading replaces demo reviews instead of duplicating them');
+    assert.equal((await database.getAllAsync('SELECT * FROM Material')).length, 41);
+    assert.equal((await database.getAllAsync('SELECT * FROM ReflectionItem')).length, counts.reflectionItems + 1);
   }
   await assert.rejects(services.seedDemoData(' '), /Sign in/i);
 });
@@ -530,7 +798,7 @@ test('demo data rolls back completely if an insert fails after the reset', async
   await services.seedDemoData('demo-user');
   const database = await services.getDatabase();
   const before = {};
-  const tables = ['Subject', 'Task', 'StudyBlock', 'ReflectionItem', 'Material'];
+  const tables = ['Subject', 'Task', 'StudyBlock', 'ReflectionItem', 'Material', 'JournalEntry'];
   for (const table of tables) before[table] = await database.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
   const run = database.runAsync;
   database.runAsync = async (sql, ...params) => {
@@ -551,14 +819,15 @@ test('demo sessions stay at 240 minutes and trigger the guardrail at all times o
     await t.test(localNow, async t => {
       const services = await loadServices(':memory:', false, localNow);
       t.after(services.close);
-      await services.seedDemoData('demo-user');
+      const counts = await services.seedDemoData('demo-user');
       const today = services.getLocalDateKey(new Date(localNow));
       const { start, end } = services.getLocalDayRange(today);
       const blocks = await services.getStudyBlocksForUser('demo-user', { date: today });
       assert.equal(blocks.length, 4);
       const progress = await services.getWeeklyStudyMinutes('demo-user', today);
-      assert.deepEqual(plain(progress.map(day => day.minutes)).slice(0, 6), [60, 90, 75, 120, 105, 150]);
-      assert.equal(progress[6].minutes, blocks.filter(block => block.status === 'done').length * 60);
+      assert.ok(progress.slice(0, 6).every(day => day.minutes > 0));
+      const details = await services.getStudyDayDetails('demo-user', today);
+      assert.ok(Math.abs(progress[6].minutes - details.reduce((sum, row) => sum + row.studied_minutes, 0)) < 0.001);
       assert.equal(blocks.reduce((sum, block) => sum + (Date.parse(block.end_time) - Date.parse(block.start_time)) / 60000, 0), 240);
       for (const block of blocks) {
         assert.ok(Date.parse(block.start_time) >= Date.parse(start));
@@ -578,21 +847,21 @@ test('demo sessions stay at 240 minutes and trigger the guardrail at all times o
         assert.ok(error.days[0].total_minutes > 240);
         return true;
       });
-      assert.equal((await services.getStudyBlocksForUser('demo-user')).length, 10, 'warning inserts no data');
+      assert.equal((await services.getStudyBlocksForUser('demo-user')).length, counts.studyBlocks, 'warning inserts no data');
       const confirmed = await services.createStudyBlock('demo-user', input, { allowHeavyDay: true });
       assert.equal(confirmed.status, 'scheduled');
     });
   }
 });
 
-test('initializes all five tables and shares one ready connection', async t => {
+test('initializes all six tables and shares one ready connection', async t => {
   const services = await loadServices();
   t.after(services.close);
   const [first, second] = await Promise.all([services.getDatabase(), services.getDatabase()]);
   assert.equal(first, second);
   assert.equal(services.opens, 1);
   const tables = await first.getAllAsync("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
-  assert.deepEqual(tables.map(row => row.name), ['Material', 'ReflectionItem', 'StudyBlock', 'Subject', 'Task']);
+  assert.deepEqual(tables.map(row => row.name), ['JournalEntry', 'Material', 'ReflectionItem', 'StudyBlock', 'Subject', 'Task']);
   assert.equal((await first.getFirstAsync('PRAGMA foreign_keys')).foreign_keys, 1);
 });
 
@@ -759,7 +1028,7 @@ test('subject deletion cascades tasks, rescheduled blocks, reviews and materials
   await s.rescheduleStudyBlock('owner', source.id, '2026-10-20T12:00:00Z');
   const targetTaskIds = (await s.getTasksForUser('owner')).filter(task => task.subject_id === subjects[0].id).map(task => task.id);
   const before = {};
-  for (const table of ['Subject', 'Task', 'StudyBlock', 'ReflectionItem', 'Material']) before[table] = await db.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
+  for (const table of ['Subject', 'Task', 'StudyBlock', 'ReflectionItem', 'Material', 'JournalEntry']) before[table] = await db.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
   await s.deleteSubject('owner', subjects[0].id);
   for (const table of Object.keys(before)) {
     const expected = before[table].filter(row => table === 'Subject' ? row.id !== subjects[0].id
@@ -779,7 +1048,7 @@ test('subject deletion rejects invalid/unowned IDs and rolls back all cascades o
   const db = await s.getDatabase();
   const snapshot = async () => {
     const data = {};
-    for (const table of ['Subject', 'Task', 'StudyBlock', 'ReflectionItem', 'Material']) data[table] = await db.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
+    for (const table of ['Subject', 'Task', 'StudyBlock', 'ReflectionItem', 'Material', 'JournalEntry']) data[table] = await db.getAllAsync(`SELECT * FROM ${table} ORDER BY id`);
     return data;
   };
   const before = await snapshot();
