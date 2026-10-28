@@ -8,6 +8,21 @@ function directoryFor(userId) {
   return new Directory(Paths.document, 'materials', `user-${encodeURIComponent(userId)}`);
 }
 
+/** @param {Directory} directory @param {string} source @param {string} displayName */
+async function copyIntoDirectory(directory, source, displayName) {
+  const name = displayName.replace(/[^a-zA-Z0-9._ -]/g, '_').slice(-140) || 'Document';
+  const destination = new File(directory, `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${name}`);
+  try {
+    // Await directory creation before dispatching the native copy.
+    await directory.create({ intermediates: true, idempotent: true });
+    await FileSystem.copyAsync({ from: source, to: destination.uri });
+    return destination.uri;
+  } catch (error) {
+    try { if (destination.exists) await destination.delete(); } catch { /* Preserve the original copy error. */ }
+    throw error;
+  }
+}
+
 /** Select one document, preferring a private copy; retain its reference on failure.
  * SDK 57's Paths.document is the current equivalent of documentDirectory.
  * @param {string} userId @returns {Promise<{uri: string, name: string, copied: boolean} | null>}
@@ -18,19 +33,31 @@ export async function pickMaterialFile(userId) {
   if (result.canceled) return null;
   const asset = result.assets[0];
   if (!asset?.uri) throw new Error('No file was selected.');
-  const name = (asset.name || 'Document').replace(/[^a-zA-Z0-9._ -]/g, '_').slice(-140) || 'Document';
-  const destination = new File(directory, `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${name}`);
+  const name = asset.name || 'Document';
   try {
-    await directory.create({ intermediates: true, idempotent: true });
     // SDK 57's root copyAsync is a throwing deprecation stub. The legacy
     // implementation accepts Android content:// providers without a File wrapper.
-    await FileSystem.copyAsync({ from: asset.uri, to: destination.uri });
-    return { uri: destination.uri, name: asset.name || name, copied: true };
+    const uri = await copyIntoDirectory(directory, asset.uri, name);
+    return { uri, name, copied: true };
   } catch (error) {
-    try { if (destination.exists) await destination.delete(); } catch { /* Keep the original provider reference usable. */ }
     console.warn('[MaterialFiles] Copy failed; keeping the original file reference for saving instead.', error);
-    return { uri: asset.uri, name: asset.name || name, copied: false };
+    return { uri: asset.uri, name, copied: false };
   }
+}
+
+/** expo-sharing on Android requires file:// and cannot accept content:// itself.
+ * Keep permanent copies in place; stage provider references in private cache.
+ * Do not delete the cache immediately after sharing: the selected app may still
+ * be reading it after the chooser closes. The OS manages this cache's lifetime.
+ * @param {string} userId @param {string} uri @param {string} [name]
+ * @returns {Promise<string>}
+ */
+export async function getShareableMaterialUri(userId, uri, name = 'Material') {
+  if (typeof userId !== 'string' || !userId.trim()) throw new Error('Sign in before opening a file.');
+  if (/^file:\/\//i.test(uri)) return uri;
+  if (!/^content:\/\//i.test(uri)) throw new Error('Choose a file or content URI to share.');
+  const directory = new Directory(Paths.cache, 'material-sharing', `user-${encodeURIComponent(userId)}`);
+  return copyIntoDirectory(directory, uri, name);
 }
 
 /** Remove only an unsaved file created inside this account's private folder.

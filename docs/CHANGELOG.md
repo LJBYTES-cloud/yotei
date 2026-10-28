@@ -5,6 +5,28 @@ This consolidates the feature requests and reworks through the 2026-10-21 handof
 
 
 
+
+## APK Material Sharing and Legacy Storage Permissions (2026-10-29)
+
+- File materials now use the native share sheet with Open Material and */* MIME type; browser links retain Linking.openURL. The installed Android share module requires file://, so content:// references first get a local cache copy rather than being passed directly to a rejecting native API. Duplicate taps are guarded; failures preserve material rows and permit retry/reselection.
+- Shared copy logic explicitly awaits directory creation before legacy copyAsync; DocumentPicker retains copyToCacheDirectory=true and permanent imports still use Paths.document. Partial-copy cleanup and the prior reference fallback remain. Sharing cache files stay available for the receiving app after chooser dismissal.
+- Added both requested Android storage permissions. Manifest introspection verifies them and retains the user's EAS project metadata. The existing preview APK profile remains untouched. Corrected boolean typing on the current auth flag to restore typecheck without changing its runtime choice.
+- Validation: lint/typecheck clean, **219 passed / 1 existing skip (220 cases)**, 64 focused tests passed, manifest introspection and Android/iOS bundle exports passed. Device APK installation/share-target checks remain; a new APK is required for permissions.
+
+| File Changed | Summary |
+| --- | --- |
+| `components/StudyMaterials.js` | Routes files to Sharing, keeps HTTP(S) in Linking, guards duplicate openings and reports retryable file errors. |
+| `utils/materialFiles.js` | Centralized directory-before-copy logic and added provider-to-local-cache preparation for Android sharing. |
+| `app.json` | Added READ_EXTERNAL_STORAGE/WRITE_EXTERNAL_STORAGE while preserving existing EAS metadata and other config. |
+| `auth/index.js` | Added a boolean type assertion to the current auth flag; its runtime value was preserved. |
+| `tests/material-files.test.cjs` | Covers asynchronous directory ordering, private-file reuse, provider cache staging and failure cleanup. |
+| `tests/task-library.test.cjs` | Covers file/content sharing options, browser routing, duplicate taps, errors and retry. |
+| `docs/PROJECT_CONTEXT.md` | Updated material-opening/copy contracts, Android scheme restriction and APK rebuild requirement. |
+| `docs/VALIDATION.md` | Recorded tests, manifest introspection, native exports and device-check boundaries. |
+| `docs/CHANGELOG.md` | Recorded this fix and all changed files. |
+
+No project files created/deleted by this pass. The pre-existing untracked eas.json and finalized USER_MANUAL.txt were left intact.
+
 ## Android Picker Reference Fallback (2026-10-29)
 
 - Copy or private-directory failures now warn and return the original selected URI instead of blocking the form. Successful copies still use the private Directory/Paths.document destination and legacy copyAsync. Partial destinations are removed; provider references never enter owned-file cleanup.

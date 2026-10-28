@@ -13,6 +13,10 @@
     },
     "android": {
       "package": "com.yotei.app",
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -31,6 +35,12 @@
       "expo-sharing",
       "@react-native-community/datetimepicker",
       "expo-document-picker"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "593c9943-8eeb-4776-88e0-7764ba182325"
+      }
+    }
   }
 }

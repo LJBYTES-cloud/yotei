@@ -3,6 +3,16 @@
 
 
 
+
+## APK Local-Material Sharing (2026-10-29)
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: clean. Focused material/UI tests: **64 passed**. Full 11-suite regression: **220 cases, 219 passed, 0 failed, 1 existing timezone skip**.
+- File/component checks verify file:// uses Sharing.shareAsync with exact Open Material options; content:// stages to local cache first; neither uses Linking.openURL. HTTP/HTTPS still use Linking. Double taps submit once; share failures retain records, show reselection guidance and permit retry. Real helper tests verify cache contents, source preservation, failed-copy cleanup and retention while the receiving app reads.
+- A held Directory.create promise proves no copy is attempted before it resolves. copyToCacheDirectory remains true, successful picks use Paths.document and the prior fallback remains covered. The installed expo-sharing Android source was inspected: shareAsync requires a file scheme and grants read access through its FileProvider.
+- `npx.cmd expo config --type introspect --json`: passed; generated Android manifest includes android.permission.READ_EXTERNAL_STORAGE and android.permission.WRITE_EXTERNAL_STORAGE. Existing EAS project ID was preserved and eas.json was left untouched. An auth flag type assertion was corrected without switching its current runtime value.
+- `npx.cmd expo export --platform android --platform ios --output-dir .expo/material-sharing-verification`: passed using src/app/. No dependencies/schema/backup changes. The finalized manual was not modified.
+- These checks compile JS/assets and simulate native transports; they do not install an APK or prove PDF-viewer/provider behavior on a device. Rebuild/install the preview APK for manifest changes, then test a picked PDF, fallback provider reference, share dismissal and a web link. Revoked provider access can still require reselecting a document.
+
 ## Android Picker Copy-Failure Fallback (2026-10-29)
 
 - `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: clean. Focused file/component/database run: **132 cases, 131 passed, 1 existing timezone skip**. Full 11-suite regression: **214 cases, 213 passed, 0 failed, 1 existing timezone skip**.

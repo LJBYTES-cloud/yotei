@@ -69,6 +69,7 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
     'expo-linear-gradient': { LinearGradient: 'Gradient' },
     '@react-native-community/datetimepicker': { default: 'NativePicker', DateTimePickerAndroid: { open: options => actions.push(['picker', options]), dismiss: async () => {} } },
     'react-native-chart-kit': { LineChart: 'LineChart' }, 'react-native-svg': { Circle: 'Circle' },
+    'expo-sharing': { shareAsync: async (...args) => { actions.push(['share', ...args]); await gate; if (failure) throw new Error('Share unavailable'); } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider' },
     'expo-router': { useFocusEffect: cb => hooks.useEffect(cb, [cb]), useScrollToTop() {}, useLocalSearchParams: () => ({ subjectId: routeSubjectId, entryId: routeSubjectId }), Redirect: 'Redirect', Stack: { Screen: 'StackScreen' }, router: { navigate: value => actions.push(['navigate', value]), push: value => actions.push(['push', value]), canGoBack: () => true, back: () => actions.push(['back']), replace: value => actions.push(['replace', value]) } },
     '../auth': { USE_REAL_AUTH: realAuth },
@@ -95,7 +96,8 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
     '../db/JournalService': { createJournalEntry: async (...args) => { actions.push(['journal', ...args]); await gate; if (failure) throw new Error('Disk error'); },
       updateJournalEntry: async (...args) => { actions.push(['editJournal', ...args]); await gate; if (failure) throw new Error('Disk error'); },
       deleteJournalEntry: async (...args) => { actions.push(['deleteJournal', ...args]); await gate; if (failure) throw new Error('Disk error'); } },
-    '../utils/materialFiles': { pickMaterialFile: async () => { actions.push(['pick']); return pickedFile; }, discardMaterialFile: async (...args) => actions.push(['discard', ...args]) },
+    '../utils/materialFiles': { pickMaterialFile: async () => { actions.push(['pick']); return pickedFile; }, discardMaterialFile: async (...args) => actions.push(['discard', ...args]),
+      getShareableMaterialUri: async (...args) => { actions.push(['prepareShare', ...args]); return args[1].startsWith('content://') ? 'file:///cache/material-sharing/user-owner/notes.pdf' : args[1]; } },
     '../db/ReflectionService': { createReflectionItem: async (...args) => { actions.push(['reflection', ...args]); await gate; if (failure) throw new Error('Disk error'); } },
     '../db/MaterialService': { createMaterial: async (...args) => { actions.push(['createMaterial', ...args]); if (failure) throw new Error('Disk error'); }, updateMaterial: async (...args) => { actions.push(['updateMaterial', ...args]); if (failure) throw new Error('Disk error'); }, deleteMaterial: async (...args) => { actions.push(['deleteMaterial', ...args]); } },
     '../db/ProgressService': { getStudyDayDetails: async (...args) => { actions.push(['day', ...args]); if (failure) throw new Error('Read failed'); return data.daySessions; } },
@@ -1052,4 +1054,42 @@ test('manually replacing a picked reference restores input validation and keeps 
   assert.match(find(s.render(props), 'Message').props.text, /4,096/);
   change('https://example.com/notes'); await save();
   assert.equal(s.actions.find(action => action[0] === 'createMaterial')[3].location, 'https://example.com/notes');
+});
+
+
+test('materials share local files/provider references with Open Material and never send them to Linking', async () => {
+  for (const uri of ['file:///documents/materials/user-owner/notes.pdf', 'content://provider/document/42']) {
+    const s = await setup('components/StudyMaterials.js', { hold: true });
+    s.data.materials = [{ id: 1, subject_id: 7, title: 'Notes.pdf', local_file_path: uri.startsWith('file:') ? uri : null, url_or_note: uri.startsWith('content:') ? uri : null }];
+    const render = () => s.render({ subjectId: 7 });
+    const tap = () => find(render(), 'Pressable', p => p.accessibilityRole === 'link').props.onPress();
+    tap(); tap(); await s.flush();
+    const shares = s.actions.filter(action => action[0] === 'share'); assert.equal(shares.length, 1);
+    assert.equal(shares[0][1], uri.startsWith('file:') ? uri : 'file:///cache/material-sharing/user-owner/notes.pdf');
+    assert.deepEqual(JSON.parse(JSON.stringify(shares[0][2])), { mimeType: '*/*', dialogTitle: 'Open Material' });
+    assert.equal(s.actions.some(action => action[0] === 'openURL'), false);
+    s.release(); await s.flush();
+    assert.equal(find(render(), 'Message').props.text, '');
+  }
+});
+
+test('file-sharing failures preserve the material, report reselection guidance and permit retry', async () => {
+  const s = await setup('components/StudyMaterials.js', { failure: true });
+  s.data.materials = [{ id: 1, subject_id: 7, title: 'Notes.pdf', local_file_path: 'file:///documents/notes.pdf' }];
+  const render = () => s.render({ subjectId: 7 });
+  const tap = async () => { find(render(), 'Pressable', p => p.accessibilityRole === 'link').props.onPress(); await s.flush(); };
+  await tap(); assert.match(find(render(), 'Message').props.text, /select it again/);
+  assert.equal(s.data.materials.length, 1);
+  s.fail(false); await tap(); assert.equal(find(render(), 'Message').props.text, '');
+  assert.equal(s.actions.filter(action => action[0] === 'share').length, 2);
+  assert.equal(s.actions.some(action => action[0] === 'openURL'), false);
+});
+
+test('http and https material links keep using the browser without preparing or sharing files', async () => {
+  for (const url of ['http://example.com/notes', 'https://example.com/notes']) {
+    const s = await setup('components/StudyMaterials.js');
+    s.data.materials = [{ id: 1, subject_id: 7, title: 'Reference', url_or_note: url }];
+    find(s.render({ subjectId: 7 }), 'Pressable', p => p.accessibilityRole === 'link').props.onPress(); await s.flush();
+    assert.deepEqual(s.actions, [['openURL', url]]);
+  }
 });
