@@ -55,7 +55,7 @@ test('live focus view counts work without lateness feedback, freezes on break an
   assert.match(s.text(), /12:34/); assert.doesNotMatch(s.text(), /late|on time/i);
   s.button('Take Break').onPress(); assert.deepEqual(s.calls, [[7, 'break']]);
   s.block.break_started_at = '2026-10-20T09:25:34Z'; s.advance(60000);
-  assert.match(s.text(), /12:34 studied · work paused/); assert.match(s.text(), /1:00/);
+  assert.match(s.text(), /12:34 Studied · Work Paused/); assert.match(s.text(), /1:00/);
   s.button('Resume Work').onPress(); assert.deepEqual(s.calls.at(-1), [7, 'resume']);
   s.block.break_started_at = null; s.block.break_time_ms = 60000; s.advance(60000);
   assert.match(s.text(), /13:34/);

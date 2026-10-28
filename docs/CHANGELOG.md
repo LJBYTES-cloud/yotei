@@ -3,6 +3,60 @@
 This consolidates the feature requests and reworks through the 2026-10-21 handoff. The current implementation and [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) take precedence over earlier intermediate designs.
 
 
+
+
+## Android Picker Reference Fallback (2026-10-29)
+
+- Copy or private-directory failures now warn and return the original selected URI instead of blocking the form. Successful copies still use the private Directory/Paths.document destination and legacy copyAsync. Partial destinations are removed; provider references never enter owned-file cleanup.
+- Fixed the save-path mismatch: content:// fallback references use url_or_note with local_file_path=null, while successful copies retain the existing local-file field. The form sets the URL from the picker, distinguishes File Reference Selected, and reserves manual URL/path limits for manually edited drafts.
+- getMaterialUrl preserves valid Android content references, including long percent-encoded IDs. It still rejects malformed authorities/control characters and invalid manual URLs/paths. Existing SQLite ownership, backup format and previous theme/header changes are preserved.
+- Validation: clean lint/typecheck; full regression **214 cases, 213 passed, 0 failed, 1 existing timezone skip**; Android/iOS exports passed. Provider references may lose OS access later; this fallback stores the location rather than guaranteeing a permanent copy.
+
+| File Changed in This Fix | Summary |
+| --- | --- |
+| `utils/materialFiles.js` | Added copied provenance, warning/original-URI fallback, directory-failure handling and provider-safe partial/unsaved cleanup. |
+| `components/MaterialSheet.js` | Sets URL from picks, stores fallback references separately from copies, limits cleanup to owned copies and validates manual drafts separately. |
+| `utils/materialLinks.js` | Preserves valid opaque content:// URIs before manual length/URL handling; rejects malformed provider authority. |
+| `tests/material-files.test.cjs` | Covers copy/directory fallback, warnings, partial cleanup and source preservation. |
+| `tests/task-library.test.cjs` | Covers long-reference form saving, labels, cancellation safety and manual replacement validation. |
+| `tests/database.test.cjs` | Verifies real owned SQLite persistence/editing of content references and URI normalization rules. |
+| `docs/PROJECT_CONTEXT.md` | Updated picker result, reference/copy storage, validation and provider-access contracts. |
+| `docs/VALIDATION.md` | Recorded regression results and remaining device checks. |
+| `docs/CHANGELOG.md` | Recorded this fix and all nine files changed in this pass. |
+
+No files created/deleted in this fix. Pre-existing local changes are retained; USER_MANUAL.txt is unchanged.
+
+## File Picker, Header Logo, Labels and Theme Cost (2026-10-29)
+
+- Replaced the picker source File wrapper with FileSystem.copyAsync. SDK 57 requires the expo-file-system/legacy entry point: the similarly named root export intentionally throws at runtime. Android content:// sources now pass directly to the native copy; permanent account folders, picker cancellation, failure cleanup and original error propagation remain.
+- Extracted the auth mark into BrandLogo and reused it beside the screen-header wordmark. Home status captions plus live-timer/chart labels now use Title Case; user content, sentences, the lowercase brand and motto keep their existing casing.
+- ThemeProvider already memoized its value and had no study/timer dependencies. Added shared per-factory/per-palette style reuse and memoized navigation values; separated the browser notice so native theme updates avoid an extra SessionProvider/auth-context cascade. Theme persistence and Light fallback remain.
+- Validation: lint/typecheck clean; 78 focused tests passed; full regression **210 cases: 209 passed, 0 failed, 1 existing timezone skip**; Android/iOS exports passed. Actual Expo Go provider permissions and theme-switch latency need device checks; no millisecond speed claim is made.
+
+| File | Change |
+| --- | --- |
+| `App.js` | Memoized navigation theme/root stack options and isolated the web-only theme consumer so native theme updates do not rerender SessionProvider. |
+| `ThemeContext.js` | Retained memoized provider state; added shared style caching by pure factory/palette across rows and return theme toggles. |
+| `components/BrandLogo.js` | Created the shared, theme-aware version of the existing 36px auth mark with identical bar geometry. |
+| `components/FocusTimer.js` | Title Cased Elapsed and Studied / Work Paused captions. |
+| `components/StudyCards.js` | Added the shared auth logo next to yotei. in every ScreenHeader masthead. |
+| `components/WeeklyProgressCard.js` | Title Cased completed-study and last-seven-days labels. |
+| `components/studyStyles.js` | Added the aligned logo/wordmark group without changing screen layout or fonts. |
+| `docs/CHANGELOG.md` | Recorded this pass and a complete file-by-file summary. |
+| `docs/PROJECT_CONTEXT.md` | Documented the SDK 57 copy import, shared logo, labels and style/navigation memoization contracts. |
+| `docs/VALIDATION.md` | Recorded focused/full test results, native exports and remaining physical-device checks. |
+| `screens/AuthScreen.js` | Reused BrandLogo instead of duplicated inline mark geometry; auth behavior/appearance remain. |
+| `screens/HomeScreen.js` | Changed Planned & Completed, Ahead, Done Today and workload-threshold labels to Title Case. |
+| `tests/focus-timer.test.cjs` | Updated expected timer captions for Title Case. |
+| `tests/material-files.test.cjs` | Added Android content-URI and partial-copy failure tests, with throwing root-copy/File-source mocks. |
+| `tests/notifications.test.cjs` | Added the shared-logo bridge for existing actual-component notification/card tests. |
+| `tests/task-library.test.cjs` | Added shared-logo bridges while preserving existing UI regression coverage. |
+| `tests/theme.test.cjs` | Added provider identity, nonblocking persistence and cross-row/per-palette style-reuse tests. |
+| `tests/web-platform.test.cjs` | Verified web notice isolation, native session boundary behavior and memoized navigation values. |
+| `utils/materialFiles.js` | Uses provider-compatible copyAsync from expo-file-system/legacy; preserves private destinations, cancellation and partial-file cleanup. |
+
+One shared component created; no files deleted. No dependency, schema, routing, backup-format or authentication behavior changes. Finalized USER_MANUAL.txt remains untouched.
+
 ## Performance and UI Polish (2026-10-29)
 
 - Preserved finalized USER_MANUAL.txt, study rules, schema, backup version 6, authentication and four tabs. Journal previews now open the requested dedicated note screen; the saved clock-format control moved from Settings into Schedule Session.

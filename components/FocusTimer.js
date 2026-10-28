@@ -38,7 +38,7 @@ function FocusTimer({ block }) {
       <Text style={t.label}>{onBreak ? 'Break' : 'Work'}</Text>
       <Text style={t.elapsed} accessibilityLabel={`${onBreak ? 'Break' : 'Work'} time ${formatElapsed(onBreak ? timing.currentBreakSeconds : timing.workSeconds)}`}>
         {formatElapsed(onBreak ? timing.currentBreakSeconds : timing.workSeconds)}</Text>
-      <Text style={s.hint}>{onBreak ? `${formatElapsed(timing.workSeconds)} studied · work paused` : 'elapsed'}</Text>
+      <Text style={s.hint}>{onBreak ? `${formatElapsed(timing.workSeconds)} Studied · Work Paused` : 'Elapsed'}</Text>
     </View>
     <Text style={t.breakTotal}>Total Breaks: {formatElapsed(timing.breakSeconds)}</Text>
     <View style={t.actions}>

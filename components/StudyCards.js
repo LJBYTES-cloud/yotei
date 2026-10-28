@@ -9,12 +9,16 @@ import { useTimeFormat } from '../TimeFormatContext';
 import { Button, FieldLabel, InfoButton, Message } from './ui';
 import { formatElapsed } from '../utils/focusTimer';
 import ItemActionsMenu from './ItemActionsMenu';
+import BrandLogo from './BrandLogo';
 
 /** @param {{title: string, edition?: string, eyebrow?: string, children?: import('react').ReactNode, subtitle?: string, badge?: string, action?: import('react').ReactNode}} props */
 export function ScreenHeader({ title, edition, eyebrow, children, subtitle, badge, action }) {
   const s = useThemedStyles(createStudyStyles);
   return <>
-    <View style={s.masthead}><Text style={s.wordmark}>yotei<Text style={s.accent}>.</Text></Text>{edition && <Text style={s.edition}>{edition}</Text>}</View>
+    <View style={s.masthead}>
+      <View style={s.brandLockup}><BrandLogo /><Text style={s.wordmark}>yotei<Text style={s.accent}>.</Text></Text></View>
+      {edition && <Text style={s.edition}>{edition}</Text>}
+    </View>
     {eyebrow && <Text style={s.eyebrow}>{eyebrow}</Text>}
     <View style={s.screenTitleRow}>
       <View style={s.screenTitleGroup}><Text accessibilityRole="header" style={s.screenTitle}>{title}</Text>

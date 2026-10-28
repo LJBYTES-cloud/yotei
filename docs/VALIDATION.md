@@ -1,6 +1,25 @@
 # Validation snapshot
 
 
+
+
+## Android Picker Copy-Failure Fallback (2026-10-29)
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: clean. Focused file/component/database run: **132 cases, 131 passed, 1 existing timezone skip**. Full 11-suite regression: **214 cases, 213 passed, 0 failed, 1 existing timezone skip**.
+- Native transport mocks now verify failed legacy copies and unavailable destination directories return the original URI with copied=false and console warnings, removing partial private copies while preserving provider originals. Successful private copies, cancellation and account cleanup continue passing.
+- Actual MaterialSheet tests save long picked content references without the manual length error, pass local_file_path=null, retain the full URL, show the reference-specific label and never clean that reference on cancellation/unmount. Manual replacement restores validation; invalid drafts remain. Production SQL verifies stored URI equality, editing/open-link conversion and account isolation. Utility tests reject malformed content authorities while preserving valid percent-encoded IDs.
+- Android/iOS exports passed using `npx.cmd expo export --platform android --platform ios --output-dir .expo/material-reference-verification`; active routes remain src/app/.
+- No dependencies, schema/service contract or backup-version changes; previous UI/theme work and finalized USER_MANUAL.txt remain. Native Expo Go picker/provider interaction still requires a device check; URI access can be revoked later even when a reference saves successfully.
+
+## File Copy, Shared Logo, Title Case and Theme Rendering (2026-10-29)
+
+- `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed without warnings/errors. Focused component/file/theme/root tests: **78 passed**. Full 11-suite regression: **210 cases, 209 passed, 0 failed, 1 existing timezone skip**.
+- File transport tests simulate Android content-provider URIs that reject File construction; primary legacy copyAsync succeeds for them and cached file:// sources. Injected partial-copy failures retain the original error, delete only the destination, and preserve provider originals/other accounts. The root copyAsync mock deliberately throws, matching installed SDK 57. Docs verified: SDK 57 FileSystem and FileSystem Legacy supported URI schemes.
+- Theme tests verify stable provider identity on unrelated renders, synchronous UI selection while persistence is held, one style-factory execution per palette across separate row instances, and reuse after returning to Light. Native root tests verify Application does not subscribe the session boundary to theme updates and navigation theme/options remain stable during auth-only renders. Existing hydration, ordering and storage-failure checks pass.
+- Logo extraction reuses the same geometry/colors in auth and screen headers. Existing UI/timer/chart suites pass with the updated labels. No database/schema, backup, routing, dependency or native-config changes. Finalized USER_MANUAL.txt is unchanged.
+- Android/iOS exports passed with `npx.cmd expo export --platform android --platform ios --output-dir .expo/final-fixes-verification`, using src/app/.
+- Native provider permissions and real Expo Go file-manager interaction still need a device check. No physical theme-switch latency/FPS measurement was taken; identity/style-build assertions demonstrate eliminated work, not a millisecond guarantee.
+
 ## Performance and UI Polish (2026-10-29)
 
 - `npx.cmd expo lint` and `npx.cmd tsc --noEmit`: passed with no warnings.

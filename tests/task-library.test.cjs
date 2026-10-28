@@ -14,7 +14,8 @@ function find(node, type, predicate = () => true, includeHidden = false) {
 }
 
 // Compile actual components; substitute only hooks/native/storage transports.
-async function setup(file, { failure = false, hold = false, warn = false, dark = false, reduceMotion = false, holdAnimations = false, platform = 'ios', realAuth = true } = {}) {
+async function setup(file, { failure = false, hold = false, warn = false, dark = false, reduceMotion = false, holdAnimations = false, platform = 'ios', realAuth = true,
+  pickedFile = { uri: 'file:///documents/materials/user-owner/notes.pdf', name: 'Notes.pdf', copied: true } } = {}) {
   let slots = [];
   const instances = new Map(), memoized = new Set(), alerts = [], updates = [], createdSubjects = [], subjectUpdates = [], subjectDeletions = [], deletions = [], actions = [], schedules = [], animations = [];
   let routeSubjectId = '7';
@@ -94,7 +95,7 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
     '../db/JournalService': { createJournalEntry: async (...args) => { actions.push(['journal', ...args]); await gate; if (failure) throw new Error('Disk error'); },
       updateJournalEntry: async (...args) => { actions.push(['editJournal', ...args]); await gate; if (failure) throw new Error('Disk error'); },
       deleteJournalEntry: async (...args) => { actions.push(['deleteJournal', ...args]); await gate; if (failure) throw new Error('Disk error'); } },
-    '../utils/materialFiles': { pickMaterialFile: async () => { actions.push(['pick']); return { uri: 'file:///documents/materials/user-owner/notes.pdf', name: 'Notes.pdf' }; }, discardMaterialFile: async (...args) => actions.push(['discard', ...args]) },
+    '../utils/materialFiles': { pickMaterialFile: async () => { actions.push(['pick']); return pickedFile; }, discardMaterialFile: async (...args) => actions.push(['discard', ...args]) },
     '../db/ReflectionService': { createReflectionItem: async (...args) => { actions.push(['reflection', ...args]); await gate; if (failure) throw new Error('Disk error'); } },
     '../db/MaterialService': { createMaterial: async (...args) => { actions.push(['createMaterial', ...args]); if (failure) throw new Error('Disk error'); }, updateMaterial: async (...args) => { actions.push(['updateMaterial', ...args]); if (failure) throw new Error('Disk error'); }, deleteMaterial: async (...args) => { actions.push(['deleteMaterial', ...args]); } },
     '../db/ProgressService': { getStudyDayDetails: async (...args) => { actions.push(['day', ...args]); if (failure) throw new Error('Read failed'); return data.daySessions; } },
@@ -104,6 +105,7 @@ async function setup(file, { failure = false, hold = false, warn = false, dark =
     './DateTimeField': { default: 'DateTimeField' }, './ItemActionsMenu': { default: 'ItemActionsMenu' }, './JournalEntrySheet': { default: 'JournalEntrySheet' },
     '../components/JournalEntryContent': { default: 'JournalEntryContent' }, '../components/DisplayNameSheet': { default: 'DisplayNameSheet' },
     './BlockDeletionModal': { default: 'BlockDeletionModal' },
+    './BrandLogo': { default: 'BrandLogo' }, '../components/BrandLogo': { default: 'BrandLogo' },
     './StudyWorkspace': { useStudy: () => study, useStudyList: () => study }, '../components/StudyWorkspace': { useStudy: () => study, useStudyList: () => study },
     '../hooks/useScreenClock': { useScreenClock: () => study.clock },
     './ui': controls, '../components/ui': controls,
@@ -1013,4 +1015,41 @@ test('saved journal text remains readable without a refresh and cancelling the n
   find(render(), 'Input', p => p.label === 'Content').props.onChangeText('Discarded draft');
   find(render(), 'Button', p => p.label === 'Cancel Editing').props.onPress();
   assert.ok(find(render(), 'Text', p => p.children === 'Saved note'));
+});
+
+
+test('picked content references bypass manual limits, save as references and are never cleaned as app-owned copies', async () => {
+  const uri = `content://com.android.providers.downloads.documents/document/${'part%2F'.repeat(700)}42`;
+  const pickedFile = { uri, name: 'External Notes.pdf', copied: false };
+  const props = { userId: 'owner', subjectId: 7, onClose() {}, onSaved() {} };
+  const s = await setup('components/MaterialSheet.js', { pickedFile });
+  find(s.render(props), 'Button', p => p.label === 'Browse File Manager').props.onPress(); await s.flush();
+  assert.ok(find(s.render(props), 'Text', p => p.children === 'File Reference Selected'));
+  assert.equal(find(s.render(props), 'Text', p => p.children === 'File Saved to App Storage'), undefined);
+  find(s.render(props), 'Button', p => p.label === 'Use URL / File Path').props.onPress();
+  assert.equal(find(s.render(props), 'Input', p => p.label.includes('URL')).props.value, uri);
+  find(s.render(props), 'Button', p => p.label === 'Save Material').props.onPress(); await s.flush();
+  const input = s.actions.find(action => action[0] === 'createMaterial')[3];
+  assert.equal(input.location, uri); assert.equal(input.local_file_path, null);
+  assert.equal(find(s.render(props), 'Message').props.text, '');
+  s.unmount(); await s.flush(); assert.equal(s.actions.some(action => action[0] === 'discard'), false);
+  const cancelled = await setup('components/MaterialSheet.js', { pickedFile });
+  find(cancelled.render(props), 'Button', p => p.label === 'Browse File Manager').props.onPress(); await cancelled.flush();
+  cancelled.unmount(); await cancelled.flush(); assert.equal(cancelled.actions.some(action => action[0] === 'discard'), false);
+});
+
+test('manually replacing a picked reference restores input validation and keeps invalid drafts', async () => {
+  const s = await setup('components/MaterialSheet.js', { pickedFile: { uri: 'content://provider/document/42', name: 'Notes.pdf', copied: false } });
+  const props = { userId: 'owner', subjectId: 7, onClose() {}, onSaved() {} };
+  find(s.render(props), 'Button', p => p.label === 'Browse File Manager').props.onPress(); await s.flush();
+  find(s.render(props), 'Button', p => p.label === 'Use URL / File Path').props.onPress();
+  const change = value => find(s.render(props), 'Input', p => p.label.includes('URL')).props.onChangeText(value);
+  const save = async () => { find(s.render(props), 'Button', p => p.label === 'Save Material').props.onPress(); await s.flush(); };
+  change('relative-notes.pdf'); await save();
+  assert.match(find(s.render(props), 'Message').props.text, /absolute file path/);
+  assert.equal(s.actions.some(action => action[0] === 'createMaterial'), false);
+  change('x'.repeat(4097)); await save();
+  assert.match(find(s.render(props), 'Message').props.text, /4,096/);
+  change('https://example.com/notes'); await save();
+  assert.equal(s.actions.find(action => action[0] === 'createMaterial')[3].location, 'https://example.com/notes');
 });

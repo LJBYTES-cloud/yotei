@@ -428,7 +428,23 @@ test('material URL conversion preserves websites and encodes device/Windows file
   assert.equal(s.getMaterialUrl('C:\\Study Notes\\Week #1.pdf'), 'file:///C:/Study%20Notes/Week%20%231.pdf');
   assert.equal(s.getMaterialUrl('/storage/Week 1.pdf'), 'file:///storage/Week%201.pdf');
   assert.equal(s.getMaterialUrl('content://provider/document/1'), 'content://provider/document/1');
+  const providerUri = `content://com.android.externalstorage.documents/document/primary%3A${'encoded-path%2F'.repeat(400)}notes.pdf`;
+  assert.equal(s.getMaterialUrl(providerUri), providerUri, 'opaque picker references are not normalized or limited like manual paths');
+  for (const value of ['content://', 'content:///missing-authority', 'content://bad authority/1']) assert.throws(() => s.getMaterialUrl(value));
   for (const value of ['javascript:alert(1)', '../notes.pdf', 'https://', 'https://example.com\nother']) assert.throws(() => s.getMaterialUrl(value));
+});
+
+test('fallback Android material references save unchanged, remain owned and can be edited without a local-copy flag', async t => {
+  const s = await loadServices(); t.after(s.close);
+  const subject = await s.createSubject('owner', { name: 'Biology' });
+  const uri = `content://com.android.providers.downloads.documents/document/${'part%2F'.repeat(700)}42`;
+  const id = await s.createMaterial('owner', subject.id, { title: 'Picked Notes', location: uri, local_file_path: null });
+  const stored = (await s.getMaterialsForUser('owner'))[0];
+  assert.equal(stored.url_or_note, uri); assert.equal(stored.local_file_path, null);
+  assert.equal(s.getMaterialUrl(stored.url_or_note), uri);
+  await s.updateMaterial('owner', id, { title: 'Updated Notes', location: uri, local_file_path: null });
+  assert.equal((await s.getMaterialsForUser('owner'))[0].url_or_note, uri);
+  assert.equal((await s.getMaterialsForUser('other')).length, 0);
 });
 
 test('task descriptions create/edit/clear, preserve omitted values and remain account-scoped', async t => {

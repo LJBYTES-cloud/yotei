@@ -33,7 +33,7 @@ function WeeklyProgressCard({ userId, days, ready, error = '' }) {
     <View style={s.section}><Text style={s.sectionTitle}>Weekly Progress</Text>
       <InfoButton title="Weekly Progress" message="Completed study minutes over the last seven local dates, including today. Timer sessions use actual study time; older untimed completions use scheduled duration. Each session counts on its completion date." />
     </View>
-    {ready && <Text style={w.total}>{minuteLabel(total)} min completed · last 7 days</Text>}
+    {ready && <Text style={w.total}>{minuteLabel(total)} min Completed · Last 7 Days</Text>}
     <View style={w.plot} onLayout={event => {
       const next = Math.floor(event.nativeEvent.layout.width);
       if (Number.isFinite(next) && next > 0) setWidth(current => current === next ? current : next);

@@ -45,10 +45,10 @@ export default function HomeScreen() {
           <ScreenHeader title="Home" eyebrow={new Date(clock).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()} subtitle="View scheduled sessions and daily study time." />
           <View style={h.summary}>
             <View style={h.summaryHeading}><Text style={h.kicker}>Daily Study Time</Text><InfoButton title="Daily Study Time" message="Planned minutes for scheduled, active and completed blocks count toward the 4-hour workload threshold. Missed sessions are excluded; overnight sessions are split by calendar day. The focus timer records studied time separately." /></View>
-            <View style={h.numbers}><Text style={h.minutes}>{formatMinutes(data.minutes)}</Text><Text style={h.caption}>planned{ '\n' }& completed</Text></View>
+            <View style={h.numbers}><Text style={h.minutes}>{formatMinutes(data.minutes)}</Text><Text style={h.caption}>Planned{ '\n' }& Completed</Text></View>
             <View style={h.meter}><View style={[h.fill, { width: `${Math.min(data.minutes / 240 * 100, 100)}%`, backgroundColor: p.accent }]} /></View>
-            {data.minutes > 240 && <Text style={h.summaryNote}>Over the 4-hour threshold</Text>}
-            <View style={h.stats}><Text style={s.hint}><Text style={h.statNumber}>{planned}</Text> ahead</Text><Text style={s.hint}><Text style={h.statNumber}>{completed}</Text> done today</Text></View>
+            {data.minutes > 240 && <Text style={h.summaryNote}>Over the 4-Hour Threshold</Text>}
+            <View style={h.stats}><Text style={s.hint}><Text style={h.statNumber}>{planned}</Text> Ahead</Text><Text style={s.hint}><Text style={h.statNumber}>{completed}</Text> Done Today</Text></View>
           </View>
           <Feedback />
           <WeeklyProgressCard userId={study.user.id} days={data.weekly} ready={data.ready} error={data.error} />

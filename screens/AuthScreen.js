@@ -10,6 +10,7 @@ import { DEMO_EMAIL, DEMO_PASSWORD } from '../auth/MockAuthService';
 import { useSession } from '../auth/SessionContext';
 import { useTheme, useThemedStyles } from '../ThemeContext';
 import { InfoButton } from '../components/ui';
+import BrandLogo from '../components/BrandLogo';
 
 /** @param {{ label: string, action?: import('react').ReactNode } & import('react-native').TextInputProps} props */
 function Field({ label, action, ...props }) {
@@ -119,9 +120,7 @@ export default function AuthScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <View style={styles.content}>
             <View style={styles.brand}>
-              <View style={styles.logo} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                <View style={styles.logoLeft} /><View style={styles.logoRight} />
-              </View>
+              <BrandLogo />
               <Text style={styles.brandName}>yotei<Text style={styles.brandDot}>.</Text></Text>
             </View>
 
@@ -230,9 +229,6 @@ const createStyles = colors => StyleSheet.create({
   scrollContent: { flexGrow: 1, paddingHorizontal: 24, paddingVertical: 28, justifyContent: 'center' },
   content: { width: '100%', maxWidth: 440, alignSelf: 'center' },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 40 },
-  logo: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.accent, overflow: 'hidden' },
-  logoLeft: { position: 'absolute', width: 5, height: 22, borderRadius: 3, backgroundColor: colors.background, left: 12, top: 7, transform: [{ rotate: '28deg' }] },
-  logoRight: { position: 'absolute', width: 5, height: 14, borderRadius: 3, backgroundColor: colors.background, left: 21, top: 14, transform: [{ rotate: '-28deg' }] },
   brandName: { fontFamily: fonts.serifBold, fontSize: typeScale.h1, lineHeight: typeLeading.h1, fontWeight: 'normal', letterSpacing: -1.5, color: colors.text },
   brandDot: { color: colors.accent },
   intro: { marginBottom: 28 },

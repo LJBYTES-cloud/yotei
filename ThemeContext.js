@@ -31,6 +31,10 @@ export const lightPalette = {
 /** @typedef {typeof darkPalette} ThemeColors */
 /** @typedef {{ colors: ThemeColors, isDark: boolean, toggleTheme: () => void, subjectColor: (storedColor: string) => string }} ThemeValue */
 const ThemeContext = createContext(/** @type {ThemeValue | null} */ (null));
+// A list can mount many consumers of the same style factory. Build each
+// palette/factory pair once and reuse it across rows and return theme toggles.
+/** @type {WeakMap<Function, WeakMap<ThemeColors, unknown>>} */
+const styleCache = new WeakMap();
 
 /** @param {{children: import('react').ReactNode, fallback?: import('react').ReactNode}} props */
 export function ThemeProvider({ children, fallback = null }) {
@@ -92,5 +96,10 @@ export function useTheme() {
 /** @template T @param {(colors: ThemeColors) => T} factory @returns {T} */
 export function useThemedStyles(factory) {
   const { colors } = useTheme();
-  return useMemo(() => factory(colors), [factory, colors]);
+  return useMemo(() => {
+    let palettes = styleCache.get(factory);
+    if (!palettes) { palettes = new WeakMap(); styleCache.set(factory, palettes); }
+    if (!palettes.has(colors)) palettes.set(colors, factory(colors));
+    return /** @type {T} */ (palettes.get(colors));
+  }, [factory, colors]);
 }

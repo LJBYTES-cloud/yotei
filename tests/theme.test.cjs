@@ -10,6 +10,8 @@ async function setup({ saved = null, readError = false, writeError = false, hold
   filename = 'ThemeContext.js', storageKey = 'yotei.theme', provider = 'ThemeProvider' } = {}) {
   let slots = [], cursor = 0, effects = [], cleanups = [];
   const warnings = [], writes = [], appearance = [];
+  const styleInstances = new Map();
+  let activeTheme;
   let releaseRead, releaseWrite;
   const readGate = holdRead ? new Promise(resolve => { releaseRead = resolve; }) : Promise.resolve();
   const writeGate = holdWrite ? new Promise(resolve => { releaseWrite = resolve; }) : Promise.resolve();
@@ -17,7 +19,7 @@ async function setup({ saved = null, readError = false, writeError = false, hold
   const dependenciesEqual = (a, b) => a && b && a.length === b.length && a.every((value, index) => Object.is(value, b[index]));
   const react = {
     createContext: () => ({ Provider: 'Provider' }),
-    useContext: () => { throw new Error('Not used by provider'); },
+    useContext: () => activeTheme,
     useState(initial) {
       const index = cursor++;
       if (!slots[index]) slots[index] = { value: initial };
@@ -89,6 +91,15 @@ async function setup({ saved = null, readError = false, writeError = false, hold
     render, flush, writes, warnings, appearance,
     releaseRead: () => releaseRead?.(), releaseWrite: () => releaseWrite?.(),
     remount: () => { for (const cleanup of cleanups) cleanup?.(); slots = []; cleanups = []; },
+    palettes: { light: module.namespace.lightPalette, dark: module.namespace.darkPalette },
+    renderStyles: (factory, colors, instance = 'row') => {
+      const providerSlots = slots;
+      slots = styleInstances.get(instance) ?? []; styleInstances.set(instance, slots);
+      cursor = 0; activeTheme = { colors };
+      const styles = module.namespace.useThemedStyles(factory);
+      slots = providerSlots;
+      return styles;
+    },
   };
 }
 
@@ -147,6 +158,32 @@ test('an explicitly saved dark preference still restores before screens mount', 
   s.releaseRead(); await s.flush();
   assert.equal(s.render().props.value.isDark, true);
   assert.deepEqual(s.appearance, ['dark']); assert.deepEqual(s.writes, []);
+});
+
+test('provider identity stays stable on unrelated renders and the UI toggles before storage finishes', async () => {
+  const s = await setup({ holdWrite: true }); s.render(); await s.flush();
+  const light = s.render().props.value;
+  assert.equal(s.render().props.value, light);
+  light.toggleTheme();
+  const dark = s.render().props.value;
+  assert.notEqual(dark, light); assert.equal(dark.isDark, true);
+  assert.equal(dark.toggleTheme, light.toggleTheme);
+  assert.equal(s.render().props.value, dark);
+  s.releaseWrite(); await s.flush();
+});
+
+test('themed styles build once per factory/palette across rows and reuse earlier styles when toggling back', async () => {
+  const s = await setup(); let builds = 0;
+  const factory = colors => { builds++; return { label: { color: colors.text } }; };
+  const light = s.renderStyles(factory, s.palettes.light, 'row-1');
+  assert.equal(s.renderStyles(factory, s.palettes.light, 'row-2'), light);
+  assert.equal(builds, 1);
+  const dark = s.renderStyles(factory, s.palettes.dark, 'row-1');
+  assert.notEqual(dark, light); assert.equal(dark.label.color, '#F0F0F0');
+  assert.equal(s.renderStyles(factory, s.palettes.dark, 'row-2'), dark);
+  assert.equal(s.renderStyles(factory, s.palettes.light, 'row-1'), light);
+  assert.equal(builds, 2);
+  assert.notEqual(s.renderStyles(colors => ({ color: colors.text }), s.palettes.light), light);
 });
 
 test('time preference hydrates before screens, defaults to 24 hours and preserves saved 12-hour choice', async () => {
