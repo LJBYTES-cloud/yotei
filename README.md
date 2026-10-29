@@ -56,4 +56,4 @@ All academic data (tasks, schedules, journals) is stored locally in SQLite. Ever
 This project uses EAS Build to generate standalone Android packages.
 
 ```bash
-npx eas-cli@latest build --platform android --profile preview
+https://expo.dev/accounts/lawrencebits/projects/yotei/builds/c12e8928-0223-4cef-8af5-cb7e4c44bb47
